@@ -165,7 +165,7 @@ progress_bar 0.5
 
 # ---- Step 8: Database ----
 step_header 8 8 "Creating database tables" "="
-docker compose exec -T app npx drizzle-kit push 2>&1 | tail -3
+docker compose exec -T app ./node_modules/.bin/drizzle-kit push 2>&1 | tail -3
 progress_bar 0.3
 
 # ---- Finale ----

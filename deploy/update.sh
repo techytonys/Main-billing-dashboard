@@ -49,7 +49,7 @@ echo -e "        ${CHECK}"
 echo ""
 
 echo -e "  ${WHITE}[4/4]${RESET} ${BOLD}Syncing database${RESET}"
-docker compose exec -T app npx drizzle-kit push 2>&1 | tail -2
+docker compose exec -T app ./node_modules/.bin/drizzle-kit push 2>&1 | tail -2
 echo -e "        ${CHECK}"
 
 echo ""

@@ -18,7 +18,8 @@ ENV PORT=5000
 COPY package.json package-lock.json ./
 COPY tsconfig.json drizzle.config.ts ./
 COPY shared ./shared
-RUN npm ci --omit=dev && npm install drizzle-kit tsx
+RUN npm ci --omit=dev
+RUN npm install --save drizzle-kit tsx
 
 COPY --from=builder /app/dist ./dist
 
