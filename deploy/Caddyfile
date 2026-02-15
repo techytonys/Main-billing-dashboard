@@ -1,3 +1,11 @@
 :80 {
 	reverse_proxy app:5000
 }
+
+aipoweredsites.com {
+	reverse_proxy app:5000
+}
+
+www.aipoweredsites.com {
+	redir https://aipoweredsites.com{uri} permanent
+}
