@@ -118,17 +118,28 @@ progress_bar 0.3
 
 # ---- Step 6: Environment ----
 step_header 6 8 "Setting up environment" "%"
-if [ ! -f "$APP_DIR/.env" ]; then
+
+STRIPE_SK=""
+STRIPE_PK=""
+RESEND_KEY=""
+
+if [ -f "$APP_DIR/.env" ]; then
+  STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  RESEND_KEY=$(grep "^RESEND_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+fi
+
+if [ -z "$STRIPE_SK" ] || [ -z "$STRIPE_PK" ] || [ -z "$RESEND_KEY" ]; then
   echo ""
   echo -e "  ${YELLOW}${BOLD}Paste your 3 API keys (Stripe & Resend):${RESET}"
   echo ""
-
-  read -p "$(echo -e "  ${MAGENTA}")Stripe Secret Key (sk_...): $(echo -e "${RESET}")" STRIPE_SK
-  read -p "$(echo -e "  ${MAGENTA}")Stripe Publishable Key (pk_...): $(echo -e "${RESET}")" STRIPE_PK
-  read -p "$(echo -e "  ${MAGENTA}")Resend API Key (re_...): $(echo -e "${RESET}")" RESEND_KEY
+  [ -z "$STRIPE_SK" ] && read -p "$(echo -e "  ${MAGENTA}")Stripe Secret Key (sk_...): $(echo -e "${RESET}")" STRIPE_SK
+  [ -z "$STRIPE_PK" ] && read -p "$(echo -e "  ${MAGENTA}")Stripe Publishable Key (pk_...): $(echo -e "${RESET}")" STRIPE_PK
+  [ -z "$RESEND_KEY" ] && read -p "$(echo -e "  ${MAGENTA}")Resend API Key (re_...): $(echo -e "${RESET}")" RESEND_KEY
   echo ""
+fi
 
-  cat > "$APP_DIR/.env" << ENVFILE
+cat > "$APP_DIR/.env" << ENVFILE
 DOMAIN=aipoweredsites.com
 POSTGRES_USER=aips
 POSTGRES_PASSWORD=84de28bcec055938a4b83637def758be
@@ -145,10 +156,7 @@ VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com
 ENVFILE
 
-  echo -e "  ${GREEN}Environment locked and loaded${RESET}"
-else
-  echo -e "  ${DIM}.env exists, keeping current values${RESET}"
-fi
+echo -e "  ${GREEN}Environment locked and loaded${RESET}"
 progress_bar 0.2
 
 # ---- Step 7: Build & Launch ----
