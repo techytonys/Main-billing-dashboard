@@ -1,28 +1,28 @@
 #!/bin/bash
 set -e
 
+APP_DIR="/opt/aipoweredsites"
+REPO_URL="https://github.com/techytonys/Main-billing-dashboard.git"
+
 echo "============================================"
-echo "  AI Powered Sites - Server Setup (Ubuntu)"
+echo "  AI Powered Sites - Full Server Deploy"
 echo "============================================"
 echo ""
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "ERROR: This script must be run as root (sudo ./install.sh)"
+  echo "ERROR: This script must be run as root (sudo bash install.sh)"
   exit 1
 fi
 
-echo "[1/6] Updating system packages..."
+# ---- Step 1: System packages ----
+echo "[1/8] Updating system packages..."
 apt update && apt upgrade -y
 
-echo "[2/6] Installing required dependencies..."
-apt install -y \
-  ca-certificates \
-  curl \
-  gnupg \
-  git \
-  ufw
+echo "[2/8] Installing dependencies..."
+apt install -y ca-certificates curl gnupg git ufw
 
-echo "[3/6] Installing Docker..."
+# ---- Step 2: Docker ----
+echo "[3/8] Installing Docker..."
 if ! command -v docker &> /dev/null; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -35,7 +35,7 @@ if ! command -v docker &> /dev/null; then
 
   apt update
   apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  echo "Docker installed successfully."
+  echo "Docker installed."
 else
   echo "Docker already installed, skipping."
 fi
@@ -43,37 +43,70 @@ fi
 systemctl enable docker
 systemctl start docker
 
-echo "[4/6] Creating application directory..."
-APP_DIR="/opt/aipoweredsites"
-mkdir -p "$APP_DIR"
-
-echo "[5/6] Setting up firewall..."
+# ---- Step 3: Firewall ----
+echo "[4/8] Setting up firewall..."
 ufw allow 22/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
-echo "Firewall configured (SSH, HTTP, HTTPS allowed)."
 
-echo "[6/6] Setup complete!"
+# ---- Step 4: Clone repo ----
+echo "[5/8] Cloning repository..."
+if [ -d "$APP_DIR/.git" ]; then
+  echo "Repo already exists, pulling latest..."
+  cd "$APP_DIR"
+  git pull origin main
+else
+  mkdir -p "$APP_DIR"
+  git clone "$REPO_URL" "$APP_DIR"
+  cd "$APP_DIR"
+fi
+
+# ---- Step 5: Environment file ----
+echo "[6/8] Setting up environment..."
+if [ ! -f "$APP_DIR/.env" ]; then
+  cp "$APP_DIR/deploy/.env.example" "$APP_DIR/.env"
+  echo ""
+  echo "============================================"
+  echo "  IMPORTANT: Edit your .env file now"
+  echo "============================================"
+  echo ""
+  echo "  You need to set these 4 values:"
+  echo "    - ADMIN_PASSWORD (your admin login password)"
+  echo "    - STRIPE_SECRET_KEY (from Stripe dashboard)"
+  echo "    - STRIPE_PUBLISHABLE_KEY (from Stripe dashboard)"
+  echo "    - RESEND_API_KEY (from Resend dashboard)"
+  echo ""
+  echo "  Opening the file for you now..."
+  echo "  Save and close when done (Ctrl+X, Y, Enter)"
+  echo ""
+  nano "$APP_DIR/.env"
+else
+  echo ".env already exists, keeping current values."
+fi
+
+# ---- Step 6: Build and start ----
+echo "[7/8] Building and starting containers..."
+cd "$APP_DIR"
+docker compose up -d --build
+
+echo "Waiting for database to be ready..."
+sleep 10
+
+# ---- Step 7: Database ----
+echo "[8/8] Setting up database tables..."
+docker compose exec -T app npx drizzle-kit push
+
 echo ""
 echo "============================================"
-echo "  NEXT STEPS"
+echo "  Deployment Complete!"
 echo "============================================"
 echo ""
-echo "  1. Clone your repo into $APP_DIR:"
-echo "     cd $APP_DIR"
-echo "     git clone <your-repo-url> ."
+echo "  Your site is now live."
 echo ""
-echo "  2. Copy and edit the environment file:"
-echo "     cp deploy/.env.example .env"
-echo "     nano .env"
-echo ""
-echo "  3. Set your domain in the .env file"
-echo ""
-echo "  4. Start everything:"
-echo "     docker compose up -d --build"
-echo ""
-echo "  5. Push database tables:"
-echo "     docker compose exec app npx drizzle-kit push"
+echo "  Useful commands:"
+echo "    Check status:  docker compose ps"
+echo "    View logs:     docker compose logs -f app"
+echo "    Update later:  bash $APP_DIR/deploy/update.sh"
 echo ""
 echo "============================================"
