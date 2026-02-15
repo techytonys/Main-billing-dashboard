@@ -66,22 +66,37 @@ fi
 # ---- Step 5: Environment file ----
 echo "[6/8] Setting up environment..."
 if [ ! -f "$APP_DIR/.env" ]; then
-  cp "$APP_DIR/deploy/.env.example" "$APP_DIR/.env"
   echo ""
   echo "============================================"
-  echo "  IMPORTANT: Edit your .env file now"
+  echo "  Enter your credentials (one-time setup)"
   echo "============================================"
   echo ""
-  echo "  You need to set these 4 values:"
-  echo "    - ADMIN_PASSWORD (your admin login password)"
-  echo "    - STRIPE_SECRET_KEY (from Stripe dashboard)"
-  echo "    - STRIPE_PUBLISHABLE_KEY (from Stripe dashboard)"
-  echo "    - RESEND_API_KEY (from Resend dashboard)"
+
+  read -sp "  Admin password (for dashboard login): " ADMIN_PWD
   echo ""
-  echo "  Opening the file for you now..."
-  echo "  Save and close when done (Ctrl+X, Y, Enter)"
+  read -p "  Stripe Secret Key (sk_live_...): " STRIPE_SK
+  read -p "  Stripe Publishable Key (pk_live_...): " STRIPE_PK
+  read -p "  Resend API Key (re_...): " RESEND_KEY
   echo ""
-  nano "$APP_DIR/.env"
+
+  cat > "$APP_DIR/.env" << ENVFILE
+DOMAIN=aipoweredsites.com
+POSTGRES_USER=aips
+POSTGRES_PASSWORD=84de28bcec055938a4b83637def758be
+POSTGRES_DB=aipoweredsites
+SESSION_SECRET=7b06782f45dd45ac378615729094ec23e10dbad48f38474910bf8a79c2219324
+ADMIN_EMAIL=anthonyjacksonverizon@gmail.com
+ADMIN_PASSWORD=${ADMIN_PWD}
+STRIPE_SECRET_KEY=${STRIPE_SK}
+STRIPE_PUBLISHABLE_KEY=${STRIPE_PK}
+RESEND_API_KEY=${RESEND_KEY}
+RESEND_AUDIENCE_ID=f2598d50-ee09-40eb-9939-163ea6e7f938
+VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
+VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
+VAPID_SUBJECT=mailto:hello@aipoweredsites.com
+ENVFILE
+
+  echo "Environment file created."
 else
   echo ".env already exists, keeping current values."
 fi
