@@ -3,11 +3,40 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema } from "@shared/schema";
 import { z } from "zod";
-import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail } from "./email";
+import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor } from "./email";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { generateInvoicePDF } from "./pdf";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import type { Customer } from "@shared/schema";
+import webpush from "web-push";
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:hello@aipoweredsites.com",
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY,
+  );
+}
+
+async function sendPushToCustomer(customerId: string, payload: { title: string; body: string; url?: string; tag?: string }) {
+  try {
+    const subs = await storage.getPushSubscriptions(customerId);
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify(payload),
+        );
+      } catch (err: any) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await storage.deletePushSubscription(sub.endpoint);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Push notification error:", err);
+  }
+}
 
 async function createNotificationAndEmail(
   customerId: string,
@@ -41,6 +70,14 @@ async function createNotificationAndEmail(
         portalUrl,
       }).catch((err) => console.error("Notification email failed:", err));
     }
+
+    sendPushToCustomer(customerId, {
+      title,
+      body: body || "",
+      url: linkUrl,
+      tag: type,
+    }).catch((err) => console.error("Push notification failed:", err));
+
     return notification;
   } catch (err) {
     console.error("Failed to create notification:", err);
@@ -402,6 +439,31 @@ export async function registerRoutes(
           `A new invoice for ${amt} has been generated${project ? ` for project "${project.name}"` : ""}. Due date: ${new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`,
         ).catch(() => {});
       }
+
+      res.status(201).json(invoice);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to generate invoice" });
+    }
+  });
+
+  app.post("/api/invoices/generate-from-agent-costs", isAuthenticated, async (req, res) => {
+    try {
+      const { customerId, projectId } = req.body;
+      if (!customerId) return res.status(400).json({ message: "customerId is required" });
+
+      const customer = await storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+      const invoice = await storage.generateInvoiceFromAgentCosts(customerId, projectId || undefined);
+      if (!invoice) return res.status(400).json({ message: "No unbilled agent cost entries found for this customer" });
+
+      const amt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(invoice.totalAmountCents / 100);
+      createNotificationAndEmail(
+        invoice.customerId,
+        "invoice_created",
+        `New Invoice: ${invoice.invoiceNumber}`,
+        `A new invoice for ${amt} has been generated for AI development services. Due date: ${new Date(invoice.dueDate!).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`,
+      ).catch(() => {});
 
       res.status(201).json(invoice);
     } catch (err: any) {
@@ -1715,6 +1777,45 @@ export async function registerRoutes(
     }
   });
 
+  // ===== Push Notification Routes =====
+
+  app.get("/api/push/vapid-key", (_req, res) => {
+    res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || "" });
+  });
+
+  app.post("/api/portal/:token/push/subscribe", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const { endpoint, keys } = req.body;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "Invalid subscription data" });
+      }
+      const sub = await storage.createPushSubscription({
+        customerId: customer.id,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+      });
+      res.json(sub);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save push subscription" });
+    }
+  });
+
+  app.post("/api/portal/:token/push/unsubscribe", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const { endpoint } = req.body;
+      if (!endpoint) return res.status(400).json({ message: "Missing endpoint" });
+      await storage.deletePushSubscription(endpoint);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to remove push subscription" });
+    }
+  });
+
   // ===== Quote Proposal Routes =====
 
   app.get("/api/quotes", isAuthenticated, async (_req, res) => {
@@ -1999,6 +2100,221 @@ export async function registerRoutes(
       res.status(201).json(created);
     } catch (err) {
       res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  app.get("/api/agent-costs", isAuthenticated, async (_req, res) => {
+    try {
+      const projectId = _req.query.projectId as string | undefined;
+      const entries = await storage.getAgentCostEntries(projectId);
+      res.json(entries);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch agent cost entries" });
+    }
+  });
+
+  app.post("/api/agent-costs", isAuthenticated, async (req, res) => {
+    try {
+      const { description, agentCostCents, markupPercent, projectId, customerId, sessionDate } = req.body;
+      if (!description?.trim() || !agentCostCents || agentCostCents <= 0) {
+        return res.status(400).json({ message: "Description and valid agent cost are required" });
+      }
+      const markup = markupPercent ?? 50;
+      const clientChargeCents = Math.round(agentCostCents * (1 + markup / 100));
+      const entry = await storage.createAgentCostEntry({
+        description: description.trim(),
+        agentCostCents,
+        markupPercent: markup,
+        clientChargeCents,
+        projectId: projectId || null,
+        customerId: customerId || null,
+        sessionDate: sessionDate ? new Date(sessionDate) : new Date(),
+        invoiceId: null,
+      });
+      res.status(201).json(entry);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create agent cost entry" });
+    }
+  });
+
+  app.delete("/api/agent-costs/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteAgentCostEntry(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Entry not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete agent cost entry" });
+    }
+  });
+
+  // ─── Conversations ─────────────────────────────────────────────────
+  app.get("/api/conversations", isAuthenticated, async (_req, res) => {
+    try {
+      const convos = await storage.getConversations();
+      const results = await Promise.all(convos.map(async (c) => {
+        const messages = await storage.getConversationMessages(c.id);
+        return { ...c, messageCount: messages.length, lastMessage: messages[messages.length - 1] || null };
+      }));
+      res.json(results);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  app.get("/api/conversations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const conv = await storage.getConversation(req.params.id);
+      if (!conv) return res.status(404).json({ message: "Conversation not found" });
+      const messages = await storage.getConversationMessages(conv.id);
+      res.json({ ...conv, messages });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch conversation" });
+    }
+  });
+
+  app.post("/api/conversations/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const conv = await storage.getConversation(req.params.id);
+      if (!conv) return res.status(404).json({ message: "Conversation not found" });
+      const { message } = req.body;
+      if (!message || typeof message !== "string") return res.status(400).json({ message: "Message is required" });
+      const msg = await storage.createConversationMessage({
+        conversationId: conv.id,
+        senderType: "admin",
+        senderName: "AI Powered Sites",
+        message,
+        attachments: req.body.attachments || null,
+      });
+      sendConversationReplyToVisitor({
+        visitorName: conv.visitorName,
+        visitorEmail: conv.visitorEmail,
+        subject: conv.subject,
+        message,
+        conversationToken: conv.accessToken || "",
+      }).catch((err) => console.error("Failed to send conversation reply email:", err));
+      res.status(201).json(msg);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to send reply" });
+    }
+  });
+
+  app.patch("/api/conversations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.body;
+      const updated = await storage.updateConversation(req.params.id, { status });
+      if (!updated) return res.status(404).json({ message: "Conversation not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update conversation" });
+    }
+  });
+
+  // Public conversation endpoints (no auth - token-based access)
+  app.post("/api/public/conversations", async (req, res) => {
+    try {
+      const { name, email, subject, message } = req.body;
+      if (!name || !email || !subject || !message) {
+        return res.status(400).json({ message: "Name, email, subject, and message are required" });
+      }
+      const conv = await storage.createConversation({
+        visitorName: name,
+        visitorEmail: email,
+        subject,
+        status: "active",
+        customerId: null,
+      });
+      await storage.createConversationMessage({
+        conversationId: conv.id,
+        senderType: "visitor",
+        senderName: name,
+        message,
+        attachments: null,
+      });
+      sendConversationNotificationToAdmin({
+        visitorName: name,
+        visitorEmail: email,
+        subject,
+        message,
+        conversationId: conv.id,
+      }).catch((err) => console.error("Failed to send admin notification:", err));
+      res.status(201).json({ accessToken: conv.accessToken, conversationId: conv.id });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to start conversation" });
+    }
+  });
+
+  app.get("/api/public/conversations/:token", async (req, res) => {
+    try {
+      const conv = await storage.getConversationByToken(req.params.token);
+      if (!conv) return res.status(404).json({ message: "Conversation not found" });
+      const messages = await storage.getConversationMessages(conv.id);
+      res.json({
+        id: conv.id,
+        visitorName: conv.visitorName,
+        subject: conv.subject,
+        status: conv.status,
+        createdAt: conv.createdAt,
+        messages,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch conversation" });
+    }
+  });
+
+  app.post("/api/public/conversations/:token/messages", async (req, res) => {
+    try {
+      const conv = await storage.getConversationByToken(req.params.token);
+      if (!conv) return res.status(404).json({ message: "Conversation not found" });
+      if (conv.status === "closed") return res.status(400).json({ message: "This conversation has been closed" });
+      const { message } = req.body;
+      if (!message || typeof message !== "string") return res.status(400).json({ message: "Message is required" });
+      const msg = await storage.createConversationMessage({
+        conversationId: conv.id,
+        senderType: "visitor",
+        senderName: conv.visitorName,
+        message,
+        attachments: req.body.attachments || null,
+      });
+      sendConversationNotificationToAdmin({
+        visitorName: conv.visitorName,
+        visitorEmail: conv.visitorEmail,
+        subject: conv.subject,
+        message,
+        conversationId: conv.id,
+      }).catch((err) => console.error("Failed to send admin notification:", err));
+      res.status(201).json(msg);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  app.get("/api/agent-costs/summary", isAuthenticated, async (_req, res) => {
+    try {
+      const entries = await storage.getAgentCostEntries();
+      const totalAgentCost = entries.reduce((sum, e) => sum + e.agentCostCents, 0);
+      const totalClientCharge = entries.reduce((sum, e) => sum + e.clientChargeCents, 0);
+      const totalProfit = totalClientCharge - totalAgentCost;
+      const byProject: Record<string, { projectId: string; agentCost: number; clientCharge: number; profit: number; count: number }> = {};
+      for (const e of entries) {
+        const pid = e.projectId || "unassigned";
+        if (!byProject[pid]) byProject[pid] = { projectId: pid, agentCost: 0, clientCharge: 0, profit: 0, count: 0 };
+        byProject[pid].agentCost += e.agentCostCents;
+        byProject[pid].clientCharge += e.clientChargeCents;
+        byProject[pid].profit += e.clientChargeCents - e.agentCostCents;
+        byProject[pid].count += 1;
+      }
+      const unbilled = entries.filter(e => !e.invoiceId);
+      res.json({
+        totalEntries: entries.length,
+        totalAgentCostCents: totalAgentCost,
+        totalClientChargeCents: totalClientCharge,
+        totalProfitCents: totalProfit,
+        unbilledCount: unbilled.length,
+        unbilledChargeCents: unbilled.reduce((sum, e) => sum + e.clientChargeCents, 0),
+        byProject: Object.values(byProject),
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to generate summary" });
     }
   });
 

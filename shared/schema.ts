@@ -307,3 +307,65 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export const agentCostEntries = pgTable("agent_cost_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id"),
+  customerId: varchar("customer_id"),
+  description: text("description").notNull(),
+  agentCostCents: integer("agent_cost_cents").notNull(),
+  markupPercent: integer("markup_percent").notNull().default(50),
+  clientChargeCents: integer("client_charge_cents").notNull(),
+  sessionDate: timestamp("session_date").defaultNow(),
+  invoiceId: varchar("invoice_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentCostEntrySchema = createInsertSchema(agentCostEntries).omit({ id: true, createdAt: true });
+
+export type AgentCostEntry = typeof agentCostEntries.$inferSelect;
+export type InsertAgentCostEntry = z.infer<typeof insertAgentCostEntrySchema>;
+
+export const conversations = pgTable("conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  visitorName: text("visitor_name").notNull(),
+  visitorEmail: text("visitor_email").notNull(),
+  subject: text("subject").notNull(),
+  status: text("status").notNull().default("active"),
+  accessToken: text("access_token").default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const conversationMessages = pgTable("conversation_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull(),
+  senderType: text("sender_type").notNull(),
+  senderName: text("sender_name").notNull(),
+  message: text("message").notNull(),
+  attachments: text("attachments"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertConversationSchema = createInsertSchema(conversations).omit({ id: true, createdAt: true, updatedAt: true, accessToken: true });
+export const insertConversationMessageSchema = createInsertSchema(conversationMessages).omit({ id: true, createdAt: true });
+
+export type Conversation = typeof conversations.$inferSelect;
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+export type ConversationMessage = typeof conversationMessages.$inferSelect;
+export type InsertConversationMessage = z.infer<typeof insertConversationMessageSchema>;
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true });
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;

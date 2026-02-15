@@ -2,6 +2,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
+  conversations, conversationMessages,
   type User, type InsertUser,
   type Customer, type InsertCustomer,
   type Project, type InsertProject,
@@ -22,6 +23,12 @@ import {
   type Quote, type InsertQuote,
   type QuoteLineItem, type InsertQuoteLineItem,
   type QuoteComment, type InsertQuoteComment,
+  type AgentCostEntry, type InsertAgentCostEntry,
+  type Conversation, type InsertConversation,
+  type ConversationMessage, type InsertConversationMessage,
+  pushSubscriptions,
+  type PushSubscription, type InsertPushSubscription,
+  agentCostEntries,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -128,6 +135,23 @@ export interface IStorage {
   createQuoteLineItem(item: InsertQuoteLineItem): Promise<QuoteLineItem>;
   getQuoteComments(quoteId: string): Promise<QuoteComment[]>;
   createQuoteComment(comment: InsertQuoteComment): Promise<QuoteComment>;
+
+  getAgentCostEntries(projectId?: string): Promise<AgentCostEntry[]>;
+  getAgentCostEntry(id: string): Promise<AgentCostEntry | undefined>;
+  createAgentCostEntry(entry: InsertAgentCostEntry): Promise<AgentCostEntry>;
+  deleteAgentCostEntry(id: string): Promise<boolean>;
+
+  getConversations(): Promise<Conversation[]>;
+  getConversation(id: string): Promise<Conversation | undefined>;
+  getConversationByToken(token: string): Promise<Conversation | undefined>;
+  createConversation(conversation: InsertConversation): Promise<Conversation>;
+  updateConversation(id: string, updates: Partial<{ status: string; customerId: string }>): Promise<Conversation | undefined>;
+  getConversationMessages(conversationId: string): Promise<ConversationMessage[]>;
+  createConversationMessage(message: InsertConversationMessage): Promise<ConversationMessage>;
+
+  getPushSubscriptions(customerId: string): Promise<PushSubscription[]>;
+  createPushSubscription(sub: InsertPushSubscription): Promise<PushSubscription>;
+  deletePushSubscription(endpoint: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -703,6 +727,135 @@ export class DatabaseStorage implements IStorage {
   async createQuoteComment(comment: InsertQuoteComment): Promise<QuoteComment> {
     const [created] = await db.insert(quoteComments).values(comment).returning();
     return created;
+  }
+
+  async getAgentCostEntries(projectId?: string): Promise<AgentCostEntry[]> {
+    if (projectId) {
+      return db.select().from(agentCostEntries).where(eq(agentCostEntries.projectId, projectId)).orderBy(desc(agentCostEntries.sessionDate));
+    }
+    return db.select().from(agentCostEntries).orderBy(desc(agentCostEntries.sessionDate));
+  }
+
+  async getAgentCostEntry(id: string): Promise<AgentCostEntry | undefined> {
+    const [entry] = await db.select().from(agentCostEntries).where(eq(agentCostEntries.id, id));
+    return entry;
+  }
+
+  async createAgentCostEntry(entry: InsertAgentCostEntry): Promise<AgentCostEntry> {
+    const [created] = await db.insert(agentCostEntries).values(entry).returning();
+    return created;
+  }
+
+  async deleteAgentCostEntry(id: string): Promise<boolean> {
+    const result = await db.delete(agentCostEntries).where(eq(agentCostEntries.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getUnbilledAgentCosts(customerId?: string, projectId?: string): Promise<AgentCostEntry[]> {
+    const conditions = [isNull(agentCostEntries.invoiceId)];
+    if (customerId) conditions.push(eq(agentCostEntries.customerId, customerId));
+    if (projectId) conditions.push(eq(agentCostEntries.projectId, projectId));
+    return db.select().from(agentCostEntries).where(and(...conditions)).orderBy(desc(agentCostEntries.sessionDate));
+  }
+
+  async generateInvoiceFromAgentCosts(customerId: string, projectId?: string): Promise<Invoice | null> {
+    const unbilled = await this.getUnbilledAgentCosts(customerId, projectId);
+    if (unbilled.length === 0) return null;
+
+    const subtotalCents = unbilled.reduce((sum, e) => sum + e.clientChargeCents, 0);
+    const totalAmountCents = subtotalCents;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(invoices);
+    const invoiceNum = `INV-${new Date().getFullYear()}-${String(Number(countResult.count) + 1).padStart(4, "0")}`;
+
+    const now = new Date();
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + 30);
+
+    const invoice = await this.createInvoice({
+      customerId,
+      projectId: projectId || null,
+      invoiceNumber: invoiceNum,
+      status: "pending",
+      issuedAt: now,
+      dueDate,
+      subtotalCents,
+      taxRate: "0",
+      taxAmountCents: 0,
+      totalAmountCents,
+      currency: "USD",
+    });
+
+    for (const entry of unbilled) {
+      await this.createInvoiceLineItem({
+        invoiceId: invoice.id,
+        workEntryId: null,
+        description: `AI Development — ${entry.description}`,
+        quantity: "1",
+        unitPrice: entry.clientChargeCents,
+        totalCents: entry.clientChargeCents,
+      });
+
+      await db
+        .update(agentCostEntries)
+        .set({ invoiceId: invoice.id })
+        .where(eq(agentCostEntries.id, entry.id));
+    }
+
+    return invoice;
+  }
+
+  async getConversations(): Promise<Conversation[]> {
+    return db.select().from(conversations).orderBy(desc(conversations.updatedAt));
+  }
+
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conv;
+  }
+
+  async getConversationByToken(token: string): Promise<Conversation | undefined> {
+    const [conv] = await db.select().from(conversations).where(eq(conversations.accessToken, token));
+    return conv;
+  }
+
+  async createConversation(conversation: InsertConversation): Promise<Conversation> {
+    const [created] = await db.insert(conversations).values(conversation).returning();
+    return created;
+  }
+
+  async updateConversation(id: string, updates: Partial<{ status: string; customerId: string }>): Promise<Conversation | undefined> {
+    const [updated] = await db.update(conversations).set({ ...updates, updatedAt: new Date() }).where(eq(conversations.id, id)).returning();
+    return updated;
+  }
+
+  async getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
+    return db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, conversationId)).orderBy(conversationMessages.createdAt);
+  }
+
+  async createConversationMessage(message: InsertConversationMessage): Promise<ConversationMessage> {
+    const [created] = await db.insert(conversationMessages).values(message).returning();
+    await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, message.conversationId));
+    return created;
+  }
+
+  async getPushSubscriptions(customerId: string): Promise<PushSubscription[]> {
+    return db.select().from(pushSubscriptions).where(eq(pushSubscriptions.customerId, customerId));
+  }
+
+  async createPushSubscription(sub: InsertPushSubscription): Promise<PushSubscription> {
+    const existing = await db.select().from(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.customerId, sub.customerId), eq(pushSubscriptions.endpoint, sub.endpoint)));
+    if (existing.length > 0) return existing[0];
+    const [created] = await db.insert(pushSubscriptions).values(sub).returning();
+    return created;
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<boolean> {
+    const result = await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).returning();
+    return result.length > 0;
   }
 }
 

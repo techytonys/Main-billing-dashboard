@@ -30,6 +30,9 @@ import PublicQA from "@/pages/public-qa";
 import ProjectProgress from "@/pages/project-progress";
 import QuoteBuilder from "@/pages/quote-builder";
 import QuoteView from "@/pages/quote-view";
+import ConversationPage from "@/pages/conversation";
+import AdminConversations from "@/pages/admin-conversations";
+import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
   return (
@@ -44,6 +47,7 @@ function DashboardRouter() {
       <Route path="/admin/support" component={SupportTickets} />
       <Route path="/admin/qa" component={QaAdmin} />
       <Route path="/admin/quote-builder" component={QuoteBuilder} />
+      <Route path="/admin/conversations" component={AdminConversations} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
@@ -122,6 +126,8 @@ function AppRouter() {
       <Route path="/portal/:token" component={ClientPortal} />
       <Route path="/progress/:projectId" component={ProjectProgress} />
       <Route path="/quote/:token" component={QuoteView} />
+      <Route path="/conversation/:token" component={ConversationPage} />
+      <Route path="/login" component={LoginPage} />
       <Route path="/admin/:rest*">
         <DashboardLayout />
       </Route>

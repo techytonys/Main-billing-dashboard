@@ -60,11 +60,72 @@ async function upsertUser(claims: any) {
   });
 }
 
+function isSelfHosted(): boolean {
+  return !!process.env.ADMIN_PASSWORD && !process.env.REPL_ID;
+}
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+  if (isSelfHosted()) {
+    console.log("[Auth] Self-hosted mode: using email/password login");
+
+    app.post("/api/login", async (req, res) => {
+      const { email, password } = req.body || {};
+      const adminEmail = process.env.ADMIN_EMAIL || "anthonyjacksonverizon@gmail.com";
+      const adminPassword = process.env.ADMIN_PASSWORD;
+
+      if (!adminPassword) {
+        return res.status(500).json({ message: "ADMIN_PASSWORD not configured" });
+      }
+
+      if (email !== adminEmail || password !== adminPassword) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const adminId = "admin-local";
+      await upsertUser({
+        sub: adminId,
+        email: adminEmail,
+        first_name: "Admin",
+        last_name: null,
+        profile_image_url: null,
+      });
+
+      const user: any = {
+        claims: {
+          sub: adminId,
+          email: adminEmail,
+          username: adminEmail.split("@")[0],
+          exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+      };
+
+      req.login(user, (err) => {
+        if (err) return res.status(500).json({ message: "Login failed" });
+        return res.json({ message: "ok", redirect: "/admin" });
+      });
+    });
+
+    app.get("/api/login", (_req, res) => {
+      res.redirect("/login");
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+
+    return;
+  }
 
   const config = await getOidcConfig();
 
@@ -80,10 +141,8 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  // Keep track of registered strategies
   const registeredStrategies = new Set<string>();
 
-  // Helper function to ensure strategy exists for a domain
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
@@ -101,9 +160,6 @@ export async function setupAuth(app: Express) {
     }
   };
 
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
-
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
@@ -115,7 +171,7 @@ export async function setupAuth(app: Express) {
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
+      successReturnToOrRedirect: "/admin",
       failureRedirect: "/api/login",
     })(req, res, next);
   });
@@ -137,6 +193,8 @@ const ADMIN_IDENTIFIERS = new Set([
 ]);
 
 function isAdminUser(claims: any): boolean {
+  if (claims?.["sub"] === "admin-local") return true;
+
   const candidates = [
     claims?.["username"],
     claims?.["preferred_username"],
@@ -160,6 +218,10 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const now = Math.floor(Date.now() / 1000);
   if (now <= user.expires_at) {
     return next();
+  }
+
+  if (isSelfHosted()) {
+    return res.status(401).json({ message: "Session expired" });
   }
 
   const refreshToken = user.refresh_token;

@@ -6,7 +6,7 @@ import {
   FolderOpen, User, Mail, Phone, Pencil, Save, Loader2, LifeBuoy, Plus, Send,
   ArrowLeft, CircleDot, MessageSquare, CreditCard, Download, Trash2, ShieldAlert, Star,
   CalendarClock, ExternalLink, ImageIcon, Receipt, Wallet, LayoutDashboard, Bell, Check,
-  Upload, File, ThumbsUp, RotateCcw, Eye,
+  Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -759,6 +759,278 @@ function RecentActivityFeed({ token }: { token: string }) {
   );
 }
 
+function PushNotificationToggle({ token }: { token: string }) {
+  const { toast } = useToast();
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      setPushSupported(true);
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          setPushEnabled(!!sub);
+        });
+      });
+    }
+  }, []);
+
+  const subscribePush = async () => {
+    setLoading(true);
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+
+      const keyRes = await fetch("/api/push/vapid-key");
+      const { publicKey } = await keyRes.json();
+      if (!publicKey) throw new Error("Push not configured");
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicKey,
+      });
+
+      const subJson = sub.toJSON();
+      await apiRequest("POST", `/api/portal/${token}/push/subscribe`, {
+        endpoint: subJson.endpoint,
+        keys: { p256dh: subJson.keys?.p256dh, auth: subJson.keys?.auth },
+      });
+
+      setPushEnabled(true);
+      setDialogOpen(false);
+      toast({ title: "Notifications enabled", description: "You'll now receive push notifications for updates." });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        toast({ title: "Notifications blocked", description: "Please enable notifications in your browser settings.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: "Could not enable push notifications.", variant: "destructive" });
+      }
+    }
+    setLoading(false);
+  };
+
+  const unsubscribePush = async () => {
+    setLoading(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await apiRequest("POST", `/api/portal/${token}/push/unsubscribe`, { endpoint: sub.endpoint });
+        await sub.unsubscribe();
+      }
+      setPushEnabled(false);
+      setDialogOpen(false);
+      toast({ title: "Notifications disabled", description: "You won't receive push notifications anymore." });
+    } catch {
+      toast({ title: "Error", description: "Could not disable push notifications.", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
+  if (!pushSupported) return null;
+
+  return (
+    <>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={() => setDialogOpen(true)}
+        disabled={loading}
+        className={`relative bg-white/[0.08] text-white/80 ${pushEnabled ? "text-emerald-400" : ""}`}
+        title={pushEnabled ? "Manage push notifications" : "Enable push notifications"}
+        data-testid="button-push-toggle"
+      >
+        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : pushEnabled ? <BellRing className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+      </Button>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md bg-[#1a1a2e] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              {pushEnabled ? <BellRing className="w-5 h-5 text-emerald-400" /> : <BellOff className="w-5 h-5 text-white/60" />}
+              Push Notifications
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="rounded-md bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/20 p-4 -mt-1">
+            <p className="text-sm font-medium text-white/90 text-center">
+              Allow <span className="text-blue-400 font-semibold">AI Powered Sites</span> to send you notifications
+            </p>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            {pushEnabled ? (
+              <>
+                <div className="flex items-center gap-3 p-3 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                  <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <p className="text-sm text-emerald-300">Push notifications are currently enabled</p>
+                </div>
+                <p className="text-sm text-white/60">
+                  You're receiving instant alerts on this device for new invoices, project updates, support replies, and more.
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-white/10 text-white/80"
+                    onClick={() => setDialogOpen(false)}
+                    data-testid="button-push-keep"
+                  >
+                    Keep Enabled
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="flex-1 text-red-400"
+                    onClick={unsubscribePush}
+                    disabled={loading}
+                    data-testid="button-push-disable"
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Turn Off
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-white/70">
+                  Stay in the loop with instant notifications delivered right to your device. You'll be alerted about:
+                </p>
+                <div className="space-y-2.5">
+                  {[
+                    { icon: Receipt, label: "New invoices & payment confirmations" },
+                    { icon: FolderOpen, label: "Project milestones & updates" },
+                    { icon: MessageSquare, label: "Support ticket replies" },
+                    { icon: ImageIcon, label: "New screenshots & deliverables" },
+                    { icon: Wallet, label: "Payment plan updates" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center gap-3 text-sm text-white/80">
+                      <div className="w-8 h-8 rounded-md bg-white/[0.06] flex items-center justify-center shrink-0">
+                        <item.icon className="w-4 h-4 text-blue-400" />
+                      </div>
+                      {item.label}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-white/40 pt-1">
+                  Your browser will ask for permission. You can turn this off anytime.
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="ghost"
+                    className="flex-1 text-white/60"
+                    onClick={() => setDialogOpen(false)}
+                    data-testid="button-push-cancel"
+                  >
+                    Not Now
+                  </Button>
+                  <Button
+                    className="flex-1 bg-blue-600 text-white"
+                    onClick={subscribePush}
+                    disabled={loading}
+                    data-testid="button-push-enable"
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <BellRing className="w-4 h-4 mr-2" />}
+                    Enable Notifications
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function PushPromptBanner({ token }: { token: string }) {
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const storageKey = `push-banner-dismissed-${token}`;
+
+  useEffect(() => {
+    if (sessionStorage.getItem(storageKey)) {
+      setDismissed(true);
+      return;
+    }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    const checkSubscription = async () => {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) {
+          setTimeout(() => setVisible(true), 1500);
+          return;
+        }
+        const sub = await registration.pushManager.getSubscription();
+        if (!sub) {
+          setTimeout(() => setVisible(true), 1500);
+        }
+      } catch {
+        setTimeout(() => setVisible(true), 1500);
+      }
+    };
+    checkSubscription();
+  }, [storageKey]);
+
+  const handleDismiss = () => {
+    setVisible(false);
+    setDismissed(true);
+    sessionStorage.setItem(storageKey, "1");
+  };
+
+  const handleEnable = () => {
+    handleDismiss();
+    const btn = document.querySelector('[data-testid="button-push-toggle"]') as HTMLButtonElement | null;
+    if (btn) btn.click();
+  };
+
+  if (dismissed || !visible) return null;
+
+  return (
+    <div
+      className="mb-4 -mt-3 animate-in slide-in-from-top-2 fade-in duration-500"
+      data-testid="push-prompt-banner"
+    >
+      <div className="relative rounded-md bg-gradient-to-r from-blue-600/90 to-purple-600/90 p-4 flex items-center gap-4 flex-wrap shadow-lg">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded-md bg-white/15 flex items-center justify-center shrink-0">
+            <BellRing className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white">
+              Never miss an update
+            </p>
+            <p className="text-xs text-white/70 mt-0.5">
+              Get instant alerts for invoices, project milestones, and deliverables right on your device.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white/70"
+            onClick={handleDismiss}
+            data-testid="button-banner-dismiss"
+          >
+            Not Now
+          </Button>
+          <Button
+            size="sm"
+            className="bg-white text-slate-900 font-medium"
+            onClick={handleEnable}
+            data-testid="button-banner-enable"
+          >
+            <BellRing className="w-3.5 h-3.5 mr-1.5" />
+            Enable Notifications
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationBell({ token }: { token: string }) {
   const [open, setOpen] = useState(false);
   const { data, refetch } = useQuery<{ notifications: PortalNotification[]; unreadCount: number }>({
@@ -1117,7 +1389,10 @@ export default function ClientPortal() {
                 {customer.company || customer.name}
               </h1>
             </div>
-            <NotificationBell token={params.token!} />
+            <div className="flex items-center gap-2">
+              <PushNotificationToggle token={params.token!} />
+              <NotificationBell token={params.token!} />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1156,6 +1431,7 @@ export default function ClientPortal() {
       </div>
 
       <div className="max-w-6xl mx-auto px-6">
+        <PushPromptBanner token={params.token!} />
         <div className="-mt-5 mb-8">
           <Card className="p-1.5 inline-flex items-center gap-1 flex-wrap">
             {tabs.map(tab => (

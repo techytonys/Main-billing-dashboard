@@ -9,6 +9,7 @@ import {
   LifeBuoy,
   MessageSquare,
   Calculator,
+  MessagesSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,6 +33,7 @@ const mainItems = [
   { title: "Invoices", url: "/admin/invoices", icon: FileText },
   { title: "Billing Rates", url: "/admin/billing-rates", icon: DollarSign },
   { title: "Quote Builder", url: "/admin/quote-builder", icon: Calculator },
+  { title: "Conversations", url: "/admin/conversations", icon: MessagesSquare },
   { title: "Support Tickets", url: "/admin/support", icon: LifeBuoy },
   { title: "Q&A", url: "/admin/qa", icon: MessageSquare },
 ];

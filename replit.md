@@ -4,6 +4,7 @@
 A project-based billing dashboard for a website design business. Track customers, projects, work deliverables, and generate invoices based on configurable per-unit rates. Includes a client portal for customers to view their invoices and automatic overdue invoice tracking.
 
 ## Recent Changes
+- 2026-02-15: Added client onboarding conversation system - visitors start secure conversations from landing page, back-and-forth messaging with admin, email notifications both ways via Resend, admin dashboard at /admin/conversations with reply/close/reopen, public conversation page at /conversation/:token with 10s auto-refresh
 - 2026-02-14: Added Quote Proposal system - save quotes to DB, send via email with unique links (/quote/:token), customer approve/deny with comments, admin email notifications for responses, discussion thread on quotes
 - 2026-02-13: Added Quote Builder page (/admin/quote-builder) - quick project cost estimator using billing rates, 4 project templates with suggested quantities, copy-to-clipboard quotes, estimation tips sidebar
 - 2026-02-13: Added client file uploads and screenshot approval workflow (admin request approval, client approve/request revisions with notes, admin resubmit, admin view client files)
@@ -31,7 +32,7 @@ A project-based billing dashboard for a website design business. Track customers
 - **Routing**: wouter for client-side, Express for API
 
 ### Key Files
-- `shared/schema.ts` - Data models (customers with portalToken, projects, billing_rates, work_entries, invoices, invoice_line_items, payment_methods, qa_questions, payment_plans)
+- `shared/schema.ts` - Data models (customers with portalToken, projects, billing_rates, work_entries, invoices, invoice_line_items, payment_methods, qa_questions, payment_plans, agent_cost_entries)
 - `server/routes.ts` - API endpoints prefixed with `/api`
 - `server/storage.ts` - Database storage layer with invoice generation and overdue tracking
 - `server/seed.ts` - Demo seed data (web design clients, projects, work entries)
@@ -44,13 +45,15 @@ A project-based billing dashboard for a website design business. Track customers
 - `/customers` - Customer management with portal link copy
 - `/projects` - Project tracking with work logging and invoice generation
 - `/invoices` - Invoice listing with overdue alerts, search, detail view
-- `/billing-rates` - Configure per-unit pricing for work types
+- `/billing-rates` - Configure per-unit pricing for work types + Agent Cost Tracker (log AI agent coding costs with auto-markup)
 - `/payment-methods` - Saved payment method cards
 - `/settings` - Step-by-step guide, notification settings, regional config
 - `/portal/:token` - Public client portal (no sidebar, accessed by customers)
 - `/questions` - Public Q&A page (community questions and answers)
 - `/admin/quote-builder` - Quote Builder (estimate project costs, templates, copy quotes)
 - `/admin/qa` - Admin Q&A management (answer questions, toggle visibility)
+- `/admin/conversations` - Admin conversations dashboard (view all, reply, close/reopen)
+- `/conversation/:token` - Public conversation page (secure token-based messaging)
 
 ### API Endpoints
 - `GET /api/dashboard/stats` - Dashboard summary (auto-marks overdue invoices)
@@ -92,6 +95,15 @@ A project-based billing dashboard for a website design business. Track customers
 - `GET /api/portal/:token/notifications` - Client notifications with unread count
 - `PATCH /api/portal/:token/notifications/:id/read` - Mark single notification read
 - `POST /api/portal/:token/notifications/read-all` - Mark all notifications read
+- `GET/POST/DELETE /api/agent-costs` - Agent cost tracking CRUD (log AI coding costs with auto-markup)
+- `GET /api/agent-costs/summary` - Agent cost summary with totals and per-project breakdown
+- `POST /api/public/conversations` - Start a new conversation (public, no auth)
+- `GET /api/public/conversations/:token` - Get conversation with messages (public, token-based)
+- `POST /api/public/conversations/:token/messages` - Visitor sends a message (blocks if closed)
+- `GET /api/conversations` - Admin list all conversations (auth required)
+- `GET /api/conversations/:id` - Admin get conversation detail with messages
+- `POST /api/conversations/:id/messages` - Admin reply to conversation
+- `PATCH /api/conversations/:id` - Update conversation status (close/reopen)
 
 ### Key Backend Files
 - `server/email.ts` - Resend integration for sending invoice and ticket notification emails

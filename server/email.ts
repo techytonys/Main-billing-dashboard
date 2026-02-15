@@ -652,6 +652,97 @@ export async function sendQuoteRequirementsEmail(data: QuoteRequirementsEmailDat
   }
 }
 
+export async function sendConversationNotificationToAdmin(data: {
+  visitorName: string;
+  visitorEmail: string;
+  subject: string;
+  message: string;
+  conversationId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { client, fromEmail } = await getResendClient();
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <div style="background: #0f0f1a; border-radius: 12px 12px 0 0; padding: 28px 32px;">
+      <h2 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 700;">New Message</h2>
+      <p style="margin: 4px 0 0; color: #94a3b8; font-size: 13px;">From ${data.visitorName} (${data.visitorEmail})</p>
+    </div>
+    <div style="background: #ffffff; border-radius: 0 0 12px 12px; padding: 28px 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
+      <p style="margin: 0 0 6px; font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Subject</p>
+      <p style="margin: 0 0 20px; font-size: 15px; color: #0f172a; font-weight: 600;">${data.subject}</p>
+      <p style="margin: 0 0 6px; font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Message</p>
+      <p style="margin: 0 0 24px; font-size: 14px; color: #334155; line-height: 1.7; white-space: pre-wrap;">${data.message}</p>
+      <a href="${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'https://localhost:5000'}/admin/conversations" style="display: inline-block; background: #6366f1; color: #ffffff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">View in Dashboard</a>
+    </div>
+  </div>
+</body>
+</html>`;
+    const result = await client.emails.send({
+      from: fromEmail || "AI Powered Sites <onboarding@resend.dev>",
+      to: ["hello@aipoweredsites.com"],
+      subject: `[New Message] ${data.subject} — from ${data.visitorName}`,
+      html,
+    });
+    if (result.error) return { success: false, error: result.error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to send notification" };
+  }
+}
+
+export async function sendConversationReplyToVisitor(data: {
+  visitorName: string;
+  visitorEmail: string;
+  subject: string;
+  message: string;
+  conversationToken: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { client, fromEmail } = await getResendClient();
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : process.env.REPL_SLUG
+      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+      : "https://localhost:5000";
+    const conversationUrl = `${baseUrl}/conversation/${data.conversationToken}`;
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+    <div style="background: #0f0f1a; border-radius: 12px 12px 0 0; padding: 28px 32px;">
+      <h2 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 700;">AI Powered Sites</h2>
+      <p style="margin: 4px 0 0; color: #94a3b8; font-size: 13px;">You have a new reply</p>
+    </div>
+    <div style="background: #ffffff; border-radius: 0 0 12px 12px; padding: 28px 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
+      <p style="margin: 0 0 16px; font-size: 15px; color: #334155; line-height: 1.6;">Hi ${data.visitorName},</p>
+      <p style="margin: 0 0 20px; font-size: 14px; color: #334155; line-height: 1.7; white-space: pre-wrap;">${data.message}</p>
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 20px;">
+        <a href="${conversationUrl}" style="display: inline-block; background: #6366f1; color: #ffffff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">View Conversation</a>
+        <p style="margin: 12px 0 0; font-size: 12px; color: #94a3b8;">Re: ${data.subject}</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+    const result = await client.emails.send({
+      from: fromEmail || "AI Powered Sites <onboarding@resend.dev>",
+      to: [data.visitorEmail],
+      subject: `Re: ${data.subject} — AI Powered Sites`,
+      html,
+    });
+    if (result.error) return { success: false, error: result.error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to send reply email" };
+  }
+}
+
 export async function addNewsletterContact(data: { email: string; firstName?: string; lastName?: string }): Promise<{ success: boolean; contactId?: string; error?: string }> {
   try {
     const { client } = await getResendClient();

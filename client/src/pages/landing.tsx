@@ -1,8 +1,5 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -10,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -18,14 +14,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import {
   MessageSquare,
   ArrowRight,
@@ -73,18 +61,6 @@ import serviceDocker from "../assets/images/service-docker.png";
 import serviceOpensource from "../assets/images/service-opensource.png";
 import serviceAccounts from "../assets/images/service-accounts.png";
 import serviceBilling from "../assets/images/service-billing.png";
-
-const quoteFormSchema = z.object({
-  name: z.string().min(2, "Name is required"),
-  email: z.string().email("Please enter a valid email"),
-  company: z.string().optional(),
-  phone: z.string().optional(),
-  projectType: z.string().min(1, "Please select a project type"),
-  budget: z.string().optional(),
-  message: z.string().min(10, "Please describe your project (at least 10 characters)"),
-});
-
-type QuoteFormValues = z.infer<typeof quoteFormSchema>;
 
 const services = [
   {
@@ -299,49 +275,34 @@ function NewsletterForm() {
 }
 
 export default function LandingPage() {
-  const [quoteOpen, setQuoteOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatName, setChatName] = useState("");
+  const [chatEmail, setChatEmail] = useState("");
+  const [chatSubject, setChatSubject] = useState("");
+  const [chatMessage, setChatMessage] = useState("");
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
 
-  const form = useForm<QuoteFormValues>({
-    resolver: zodResolver(quoteFormSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      company: "",
-      phone: "",
-      projectType: "",
-      budget: "",
-      message: "",
-    },
-  });
-
-  const submitQuote = useMutation({
-    mutationFn: async (data: QuoteFormValues) => {
-      const res = await apiRequest("POST", "/api/quote-requests", data);
+  const startConversation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/public/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: chatName, email: chatEmail, subject: chatSubject, message: chatMessage }),
+      });
+      if (!res.ok) throw new Error("Failed to start conversation");
       return res.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Quote Request Sent",
-        description: "We'll get back to you within 24 hours with a custom proposal.",
-      });
-      setQuoteOpen(false);
-      form.reset();
+    onSuccess: (data) => {
+      setChatOpen(false);
+      setChatName(""); setChatEmail(""); setChatSubject(""); setChatMessage("");
+      window.location.href = `/conversation/${data.accessToken}`;
     },
     onError: () => {
-      toast({
-        title: "Something went wrong",
-        description: "Please try again or contact us directly.",
-        variant: "destructive",
-      });
+      toast({ title: "Something went wrong", description: "Please try again.", variant: "destructive" });
     },
   });
-
-  function onSubmit(data: QuoteFormValues) {
-    submitQuote.mutate(data);
-  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden" style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
@@ -357,18 +318,18 @@ export default function LandingPage() {
             <a href="#process" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-process"><Zap className="w-3.5 h-3.5" />Process</a>
             <a href="#features" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-features"><Shield className="w-3.5 h-3.5" />Why Us</a>
             <a href="#testimonials" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-testimonials"><Quote className="w-3.5 h-3.5" />Reviews</a>
-            <a href="#pricing" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-pricing"><Receipt className="w-3.5 h-3.5" />Pricing</a>
+            <a href="#pricing" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-pricing"><Receipt className="w-3.5 h-3.5" />How It Works</a>
             <Link href="/questions"><span className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-qa"><MessageSquare className="w-3.5 h-3.5" />Q&A</span></Link>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
-              onClick={() => setQuoteOpen(true)}
+              onClick={() => setChatOpen(true)}
               size="sm"
               className="hidden sm:inline-flex bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium text-[13px]"
-              data-testid="button-nav-quote"
+              data-testid="button-nav-message"
             >
-              <Sparkles className="w-3.5 h-3.5 mr-1" />
-              Get a Quote
+              <MessageSquare className="w-3.5 h-3.5 mr-1" />
+              Message Us
             </Button>
             {!authLoading && isLoggedIn && (
               <div className="hidden sm:flex items-center gap-1.5">
@@ -414,7 +375,7 @@ export default function LandingPage() {
               <Quote className="w-4 h-4" />Reviews
             </a>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-pricing">
-              <Receipt className="w-4 h-4" />Pricing
+              <Receipt className="w-4 h-4" />How It Works
             </a>
             <Link href="/questions">
               <span onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5 cursor-pointer" data-testid="link-mobile-qa">
@@ -423,12 +384,12 @@ export default function LandingPage() {
             </Link>
             <div className="pt-3 mt-2 border-t border-white/5 space-y-2">
               <Button
-                onClick={() => { setQuoteOpen(true); setMobileMenuOpen(false); }}
+                onClick={() => { setChatOpen(true); setMobileMenuOpen(false); }}
                 className="w-full bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium"
-                data-testid="button-mobile-quote"
+                data-testid="button-mobile-message"
               >
-                <Sparkles className="w-4 h-4 mr-1.5" />
-                Get a Quote
+                <MessageSquare className="w-4 h-4 mr-1.5" />
+                Message Us
               </Button>
               {!authLoading && isLoggedIn && (
                 <>
@@ -479,23 +440,24 @@ export default function LandingPage() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
               <Button
                 size="lg"
-                onClick={() => setQuoteOpen(true)}
+                onClick={() => setChatOpen(true)}
                 className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-base font-medium px-8"
-                data-testid="button-hero-quote"
+                data-testid="button-hero-message"
               >
-                <Send className="w-4 h-4 mr-2" />
-                Get a Quote
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Send Us a Message
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white/20 text-white bg-white/5"
-                onClick={() => document.getElementById("services")?.scrollIntoView({ behavior: "smooth" })}
-                data-testid="button-hero-services"
-              >
-                View Services
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              <a href="#services">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-white/20 text-white bg-white/5"
+                  data-testid="button-hero-services"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  See Our Work
+                </Button>
+              </a>
             </div>
           </div>
         </div>
@@ -685,44 +647,40 @@ export default function LandingPage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-10 sm:mb-16">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4 sm:mb-6">
-              <Receipt className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-white/70">Transparent Pricing</span>
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <span className="text-sm text-white/70">Built Around You</span>
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight mb-3 sm:mb-4" data-testid="text-pricing-title">
-              Pay for What You{" "}
-              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Need</span>
+              Your Project,{" "}
+              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Your Price</span>
             </h2>
             <p className="text-white/50 text-sm sm:text-lg max-w-2xl mx-auto">
-              No bloated packages or hidden fees. Every project is quoted based on exactly what you need, billed by deliverable.
+              No cookie-cutter packages. We learn what you need and craft a plan that fits your goals and your budget.
             </p>
           </div>
 
           <div className="max-w-4xl mx-auto mb-10 sm:mb-14">
             <div className="relative p-6 sm:p-10 rounded-md border border-violet-500/20 bg-gradient-to-b from-violet-500/[0.04] to-blue-500/[0.02]" data-testid="card-pricing-main">
               <div className="text-center mb-8 sm:mb-10">
-                <h3 className="text-xl sm:text-2xl font-bold mb-2">Every Project is Custom-Quoted</h3>
+                <h3 className="text-xl sm:text-2xl font-bold mb-2">Every Project Starts with a Conversation</h3>
                 <p className="text-white/50 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-                  Tell us what you need and we'll send you a detailed proposal within 24 hours, broken down by exactly what you're paying for.
+                  Tell us about your vision and we'll put together a personalized proposal — no pressure, no commitment. Just a clear picture of what we can build together.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-8 sm:mb-10">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-8 sm:mb-10">
                 {[
-                  { icon: Palette, label: "Page Design", desc: "Full-page layouts designed and built to your brand" },
-                  { icon: Globe, label: "Custom Graphics & Assets", desc: "Images, icons, and visual elements tailored to your vision" },
-                  { icon: Wrench, label: "Revisions & Updates", desc: "Changes and refinements until you're happy" },
-                  { icon: HeadphonesIcon, label: "Consulting & Strategy", desc: "Planning and technical guidance via email" },
-                  { icon: Code2, label: "Custom Development", desc: "Backend systems, APIs, and integrations" },
-                  { icon: Shield, label: "Ongoing Support", desc: "Maintenance, updates, and monitoring" },
+                  { step: "1", icon: MessageSquare, label: "Share Your Vision", desc: "Tell us what you're looking for — a new website, a refresh, an app, or something entirely unique. We'll listen." },
+                  { step: "2", icon: Palette, label: "Get a Tailored Plan", desc: "We'll design a proposal around your specific needs and budget. You'll see exactly what's included before saying yes." },
+                  { step: "3", icon: Rocket, label: "Watch It Come to Life", desc: "We build, you review. You'll have a dedicated portal to track progress, preview your site, and give feedback along the way." },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-start gap-3 p-3 sm:p-4 rounded-md bg-white/[0.03] border border-white/5" data-testid={`card-deliverable-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                    <div className="flex items-center justify-center w-9 h-9 rounded-md bg-gradient-to-br from-blue-500/20 to-violet-500/20 shrink-0">
+                  <div key={item.label} className="relative p-4 sm:p-5 rounded-md bg-white/[0.03] border border-white/5 text-center" data-testid={`card-step-${item.step}`}>
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-white/10 mx-auto mb-3">
                       <item.icon className="w-4 h-4 text-violet-400" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{item.label}</p>
-                      <p className="text-xs text-white/40 mt-0.5">{item.desc}</p>
-                    </div>
+                    <p className="text-xs text-blue-400 font-medium mb-1">Step {item.step}</p>
+                    <p className="text-sm font-semibold mb-1.5">{item.label}</p>
+                    <p className="text-xs text-white/40 leading-relaxed">{item.desc}</p>
                   </div>
                 ))}
               </div>
@@ -730,25 +688,26 @@ export default function LandingPage() {
               <div className="flex flex-col items-center">
                 <Button
                   size="lg"
-                  onClick={() => setQuoteOpen(true)}
+                  onClick={() => setChatOpen(true)}
                   className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-base font-medium px-10"
-                  data-testid="button-pricing-quote"
+                  data-testid="button-pricing-message"
                 >
-                  <Send className="w-4 h-4 mr-2" />
-                  Get Your Free Quote
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Start a Conversation
                 </Button>
                 <p className="text-xs text-white/30 mt-3">
-                  Free consultation via email. No calls required.
+                  Free consultation via email. No calls, no pressure.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-3xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 max-w-4xl mx-auto">
             {[
-              { icon: Receipt, title: "Itemized Invoices", desc: "Every invoice shows exactly what was delivered and the rate for each item. Complete transparency." },
-              { icon: Shield, title: "No Hidden Fees", desc: "Your quote is your price. We don't tack on surprise charges or vague \"miscellaneous\" line items." },
-              { icon: Clock, title: "Flexible Payment Plans", desc: "Larger projects can be split into installments. Pay over time with automatic collection via Stripe." },
+              { icon: Shield, title: "No Surprises", desc: "You'll know the full scope and cost before we write a single line of code. What we quote is what you pay." },
+              { icon: Clock, title: "Flexible Payments", desc: "Larger projects can be split into comfortable installments. Pay over time at your own pace." },
+              { icon: UserCog, title: "Your Own Portal", desc: "Track your project, view invoices, and communicate with us — all from your personalized dashboard." },
+              { icon: Mail, title: "All Via Email", desc: "No phone calls or meetings required. Everything is handled through email at a time that works for you." },
             ].map((item) => (
               <div key={item.title} className="text-center p-4 sm:p-5" data-testid={`card-benefit-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                 <div className="flex items-center justify-center w-10 h-10 rounded-md bg-white/[0.04] border border-white/5 mx-auto mb-3">
@@ -775,15 +734,17 @@ export default function LandingPage() {
             Tell us about your project and we'll craft a custom AI-powered solution
             tailored to your specific business needs. No templates, no compromises.
           </p>
-          <Button
-            size="lg"
-            onClick={() => setQuoteOpen(true)}
-            className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-base font-medium px-10"
-            data-testid="button-cta-quote"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Get Your Free Quote
-          </Button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
+            <Button
+              size="lg"
+              onClick={() => setChatOpen(true)}
+              className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-base font-medium px-10"
+              data-testid="button-cta-message"
+            >
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Send Us a Message
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -813,7 +774,7 @@ export default function LandingPage() {
               <ul className="space-y-2.5">
                 <li><a href="#features" className="text-sm text-white/40 transition-colors" data-testid="link-footer-features">Why Choose Us</a></li>
                 <li><a href="#process" className="text-sm text-white/40 transition-colors" data-testid="link-footer-process">Our Process</a></li>
-                <li><a href="#pricing" className="text-sm text-white/40 transition-colors" data-testid="link-footer-pricing">Pricing</a></li>
+                <li><a href="#pricing" className="text-sm text-white/40 transition-colors" data-testid="link-footer-pricing">How It Works</a></li>
                 <li><a href="#testimonials" className="text-sm text-white/40 transition-colors" data-testid="link-footer-testimonials">Testimonials</a></li>
                 <li><a href="#stats" className="text-sm text-white/40 transition-colors" data-testid="link-footer-results">Results</a></li>
                 <li><Link href="/questions"><span className="text-sm text-white/40 transition-colors cursor-pointer" data-testid="link-footer-qa">Q&A</span></Link></li>
@@ -834,12 +795,12 @@ export default function LandingPage() {
               <div className="mt-6">
                 <Button
                   size="sm"
-                  onClick={() => setQuoteOpen(true)}
+                  onClick={() => setChatOpen(true)}
                   className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium"
-                  data-testid="button-footer-quote"
+                  data-testid="button-footer-message"
                 >
-                  <Send className="w-3.5 h-3.5 mr-1.5" />
-                  Get a Quote
+                  <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                  Message Us
                 </Button>
               </div>
             </div>
@@ -858,187 +819,79 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      <Dialog open={quoteOpen} onOpenChange={setQuoteOpen}>
+      <Dialog open={chatOpen} onOpenChange={setChatOpen}>
         <DialogContent className="sm:max-w-lg bg-[#12121a] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-blue-400" />
-              Get a Free Quote
+              <MessageSquare className="w-5 h-5 text-blue-400" />
+              Start a Conversation
             </DialogTitle>
             <DialogDescription className="text-white/50">
-              Tell us about your project and we'll send you a custom proposal within 24 hours.
+              Have a question or want to discuss a project? Send us a message and we'll reply directly to your secure conversation.
             </DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-white/70">Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Your name"
-                          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                          data-testid="input-quote-name"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-white/70">Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="you@company.com"
-                          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                          data-testid="input-quote-email"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+          <div className="space-y-4 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-white/70 mb-1.5 block">Name</label>
+                <Input
+                  placeholder="Your name"
+                  value={chatName}
+                  onChange={(e) => setChatName(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-chat-name"
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="company"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-white/70">Company</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Your company"
-                          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                          data-testid="input-quote-company"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-white/70">Phone</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="(555) 000-0000"
-                          className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                          data-testid="input-quote-phone"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+              <div>
+                <label className="text-sm font-medium text-white/70 mb-1.5 block">Email</label>
+                <Input
+                  placeholder="you@example.com"
+                  value={chatEmail}
+                  onChange={(e) => setChatEmail(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                  data-testid="input-chat-email"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="projectType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-white/70">Project Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="bg-white/5 border-white/10 text-white" data-testid="select-quote-project-type">
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent className="bg-[#1a1a25] border-white/10 text-white">
-                          <SelectItem value="website" className="text-white focus:bg-white/10 focus:text-white">Website</SelectItem>
-                          <SelectItem value="forum" className="text-white focus:bg-white/10 focus:text-white">Forum / Community</SelectItem>
-                          <SelectItem value="blog" className="text-white focus:bg-white/10 focus:text-white">Blog Platform</SelectItem>
-                          <SelectItem value="backend" className="text-white focus:bg-white/10 focus:text-white">Backend / API</SelectItem>
-                          <SelectItem value="support-portal" className="text-white focus:bg-white/10 focus:text-white">Support Portal</SelectItem>
-                          <SelectItem value="docker" className="text-white focus:bg-white/10 focus:text-white">Docker Solutions</SelectItem>
-                          <SelectItem value="opensource" className="text-white focus:bg-white/10 focus:text-white">Open Source App Hosting</SelectItem>
-                          <SelectItem value="account-section" className="text-white focus:bg-white/10 focus:text-white">My Account Section</SelectItem>
-                          <SelectItem value="billing-dashboard" className="text-white focus:bg-white/10 focus:text-white">Billing Dashboard</SelectItem>
-                          <SelectItem value="ecommerce" className="text-white focus:bg-white/10 focus:text-white">E-Commerce</SelectItem>
-                          <SelectItem value="other" className="text-white focus:bg-white/10 focus:text-white">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="budget"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-white/70">Budget Range</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="bg-white/5 border-white/10 text-white" data-testid="select-quote-budget">
-                            <SelectValue placeholder="Select budget" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent className="bg-[#1a1a25] border-white/10 text-white">
-                          <SelectItem value="under-1k" className="text-white focus:bg-white/10 focus:text-white">Under $1,000</SelectItem>
-                          <SelectItem value="1k-5k" className="text-white focus:bg-white/10 focus:text-white">$1,000 - $5,000</SelectItem>
-                          <SelectItem value="5k-10k" className="text-white focus:bg-white/10 focus:text-white">$5,000 - $10,000</SelectItem>
-                          <SelectItem value="10k-25k" className="text-white focus:bg-white/10 focus:text-white">$10,000 - $25,000</SelectItem>
-                          <SelectItem value="25k+" className="text-white focus:bg-white/10 focus:text-white">$25,000+</SelectItem>
-                          <SelectItem value="not-sure" className="text-white focus:bg-white/10 focus:text-white">Not Sure Yet</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="message"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-white/70">Tell Us About Your Project</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Describe your project, goals, and any specific requirements..."
-                        className="bg-white/5 border-white/10 text-white placeholder:text-white/30 min-h-[100px] resize-none"
-                        data-testid="input-quote-message"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-white/70 mb-1.5 block">Subject</label>
+              <Input
+                placeholder="What would you like to discuss?"
+                value={chatSubject}
+                onChange={(e) => setChatSubject(e.target.value)}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                data-testid="input-chat-subject"
               />
-              <Button
-                type="submit"
-                disabled={submitQuote.isPending}
-                className="w-full bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium"
-                data-testid="button-submit-quote"
-              >
-                {submitQuote.isPending ? (
-                  "Sending..."
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Send Quote Request
-                  </>
-                )}
-              </Button>
-            </form>
-          </Form>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-white/70 mb-1.5 block">Message</label>
+              <Textarea
+                placeholder="Share any details, ideas, examples, or links you'd like us to see..."
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 min-h-[100px] resize-none"
+                data-testid="input-chat-message"
+              />
+            </div>
+            <Button
+              onClick={() => startConversation.mutate()}
+              disabled={!chatName.trim() || !chatEmail.trim() || !chatSubject.trim() || !chatMessage.trim() || startConversation.isPending}
+              className="w-full bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium"
+              data-testid="button-start-conversation"
+            >
+              {startConversation.isPending ? (
+                "Starting..."
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Start Conversation
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-white/30 text-center">
+              Your conversation is private and secure. You'll get a unique link to continue the discussion.
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

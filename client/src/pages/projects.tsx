@@ -6,6 +6,7 @@ import {
   Receipt, Trash2, DollarSign, Layers, TrendingUp,
   ExternalLink, Copy, Link, Check, X, Activity, Send, Milestone,
   Camera, Download, Image, Loader2, Users, ThumbsUp, RotateCcw, Eye, File, Upload,
+  ChevronDown, Building2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -431,6 +432,19 @@ export default function Projects() {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateProjectId, setUpdateProjectId] = useState<string | null>(null);
   const [updateForm, setUpdateForm] = useState({ title: "", description: "", type: "update", status: "completed" });
+  const [collapsedCustomers, setCollapsedCustomers] = useState<Set<string>>(new Set());
+
+  const toggleCustomerGroup = (customerId: string) => {
+    setCollapsedCustomers(prev => {
+      const next = new Set(prev);
+      if (next.has(customerId)) {
+        next.delete(customerId);
+      } else {
+        next.add(customerId);
+      }
+      return next;
+    });
+  };
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -662,11 +676,57 @@ export default function Projects() {
       </div>
 
       {filtered.length > 0 ? (
-        <div className="space-y-4">
-          {filtered.map((project) => {
-            const customer = customerMap.get(project.customerId);
-            const metrics = getProjectMetrics(project.id);
-            const projectEntries = workEntries?.filter(e => e.projectId === project.id && !e.invoiceId) ?? [];
+        <div className="space-y-5">
+          {(() => {
+            const grouped = new Map<string, typeof filtered>();
+            filtered.forEach((project) => {
+              const cid = project.customerId;
+              if (!grouped.has(cid)) grouped.set(cid, []);
+              grouped.get(cid)!.push(project);
+            });
+
+            return Array.from(grouped.entries()).map(([customerId, customerProjects]) => {
+              const customer = customerMap.get(customerId);
+              const isCollapsed = collapsedCustomers.has(customerId);
+              const totalUnbilled = customerProjects.reduce((sum, p) => sum + getProjectMetrics(p.id).unbilledAmount, 0);
+              const totalBilled = customerProjects.reduce((sum, p) => sum + getProjectMetrics(p.id).billedAmount, 0);
+
+              return (
+                <div key={customerId} data-testid={`customer-group-${customerId}`}>
+                  <button
+                    onClick={() => toggleCustomerGroup(customerId)}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-muted/50 hover-elevate transition-colors mb-2"
+                    data-testid={`button-toggle-customer-${customerId}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                      <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="font-semibold truncate" data-testid={`text-customer-group-name-${customerId}`}>
+                        {customer?.company || customer?.name || "Unknown Customer"}
+                      </span>
+                      <Badge variant="secondary" className="text-xs shrink-0">
+                        {customerProjects.length} {customerProjects.length === 1 ? "project" : "projects"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4 shrink-0 text-sm">
+                      {totalUnbilled > 0 && (
+                        <span className="text-amber-500 font-medium" data-testid={`text-customer-unbilled-${customerId}`}>
+                          ${(totalUnbilled / 100).toLocaleString()} unbilled
+                        </span>
+                      )}
+                      {totalBilled > 0 && (
+                        <span className="text-muted-foreground" data-testid={`text-customer-billed-${customerId}`}>
+                          ${(totalBilled / 100).toLocaleString()} billed
+                        </span>
+                      )}
+                    </div>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div className="space-y-4 pl-4 border-l-2 border-muted ml-4">
+                      {customerProjects.map((project) => {
+                        const metrics = getProjectMetrics(project.id);
+                        const projectEntries = workEntries?.filter(e => e.projectId === project.id && !e.invoiceId) ?? [];
 
             return (
               <Card key={project.id} className="p-5" data-testid={`card-project-${project.id}`}>
@@ -678,9 +738,6 @@ export default function Projects() {
                         {project.status}
                       </Badge>
                     </div>
-                    {customer && (
-                      <p className="text-sm text-muted-foreground mt-0.5">{customer.company || customer.name}</p>
-                    )}
                     {project.description && (
                       <p className="text-sm text-muted-foreground mt-1">{project.description}</p>
                     )}
@@ -907,8 +964,14 @@ export default function Projects() {
                   <p className="text-sm text-muted-foreground text-center py-4">No unbilled work entries yet</p>
                 )}
               </Card>
-            );
-          })}
+                      );
+                    })}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       ) : (
         <Card className="p-12 text-center">
