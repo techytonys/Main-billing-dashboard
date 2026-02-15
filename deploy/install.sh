@@ -15,8 +15,9 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ---- Step 1: System packages ----
+export DEBIAN_FRONTEND=noninteractive
 echo "[1/8] Updating system packages..."
-apt update && apt upgrade -y
+apt update && apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 
 echo "[2/8] Installing dependencies..."
 apt install -y ca-certificates curl gnupg git ufw
