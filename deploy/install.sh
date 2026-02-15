@@ -120,14 +120,12 @@ progress_bar 0.3
 step_header 6 8 "Setting up environment" "%"
 if [ ! -f "$APP_DIR/.env" ]; then
   echo ""
-  echo -e "  ${YELLOW}${BOLD}Quick setup - enter your 4 keys:${RESET}"
+  echo -e "  ${YELLOW}${BOLD}Paste your 3 API keys (Stripe & Resend):${RESET}"
   echo ""
 
-  read -sp "  $(echo -e "${MAGENTA}")Admin password: $(echo -e "${RESET}")" ADMIN_PWD
-  echo ""
-  read -p "$(echo -e "  ${MAGENTA}")Stripe Secret Key: $(echo -e "${RESET}")" STRIPE_SK
-  read -p "$(echo -e "  ${MAGENTA}")Stripe Publishable Key: $(echo -e "${RESET}")" STRIPE_PK
-  read -p "$(echo -e "  ${MAGENTA}")Resend API Key: $(echo -e "${RESET}")" RESEND_KEY
+  read -p "$(echo -e "  ${MAGENTA}")Stripe Secret Key (sk_...): $(echo -e "${RESET}")" STRIPE_SK
+  read -p "$(echo -e "  ${MAGENTA}")Stripe Publishable Key (pk_...): $(echo -e "${RESET}")" STRIPE_PK
+  read -p "$(echo -e "  ${MAGENTA}")Resend API Key (re_...): $(echo -e "${RESET}")" RESEND_KEY
   echo ""
 
   cat > "$APP_DIR/.env" << ENVFILE
@@ -137,7 +135,7 @@ POSTGRES_PASSWORD=84de28bcec055938a4b83637def758be
 POSTGRES_DB=aipoweredsites
 SESSION_SECRET=7b06782f45dd45ac378615729094ec23e10dbad48f38474910bf8a79c2219324
 ADMIN_EMAIL=anthonyjacksonverizon@gmail.com
-ADMIN_PASSWORD=${ADMIN_PWD}
+ADMIN_PASSWORD=Aipowered2025!
 STRIPE_SECRET_KEY=${STRIPE_SK}
 STRIPE_PUBLISHABLE_KEY=${STRIPE_PK}
 RESEND_API_KEY=${RESEND_KEY}
