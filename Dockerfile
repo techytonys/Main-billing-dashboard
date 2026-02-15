@@ -12,16 +12,17 @@ FROM node:20-slim AS runner
 
 WORKDIR /app
 
-ENV NODE_ENV=production
 ENV PORT=5000
 
 COPY package.json package-lock.json ./
 COPY tsconfig.json drizzle.config.ts ./
 COPY shared ./shared
-RUN npm ci --omit=dev
-RUN npm install --save drizzle-kit tsx
+
+RUN npm ci
 
 COPY --from=builder /app/dist ./dist
+
+ENV NODE_ENV=production
 
 EXPOSE 5000
 
