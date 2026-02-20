@@ -32,7 +32,7 @@ A project-based billing dashboard for a website design business. Track customers
 - **Routing**: wouter for client-side, Express for API
 
 ### Key Files
-- `shared/schema.ts` - Data models (customers with portalToken, projects, billing_rates, work_entries, invoices, invoice_line_items, payment_methods, qa_questions, payment_plans, agent_cost_entries)
+- `shared/schema.ts` - Data models (customers with portalToken, projects, billing_rates, work_entries, invoices, invoice_line_items, payment_methods, qa_questions, payment_plans, agent_cost_entries, api_keys)
 - `server/routes.ts` - API endpoints prefixed with `/api`
 - `server/storage.ts` - Database storage layer with invoice generation and overdue tracking
 - `server/seed.ts` - Demo seed data (web design clients, projects, work entries)
@@ -54,6 +54,8 @@ A project-based billing dashboard for a website design business. Track customers
 - `/admin/qa` - Admin Q&A management (answer questions, toggle visibility)
 - `/admin/conversations` - Admin conversations dashboard (view all, reply, close/reopen)
 - `/conversation/:token` - Public conversation page (secure token-based messaging)
+- `/admin/api-keys` - Admin API key management (create, toggle, delete keys)
+- `/api/docs` - Public API documentation page (beginner-friendly, interactive examples)
 
 ### API Endpoints
 - `GET /api/dashboard/stats` - Dashboard summary (auto-marks overdue invoices)
@@ -104,6 +106,15 @@ A project-based billing dashboard for a website design business. Track customers
 - `GET /api/conversations/:id` - Admin get conversation detail with messages
 - `POST /api/conversations/:id/messages` - Admin reply to conversation
 - `PATCH /api/conversations/:id` - Update conversation status (close/reopen)
+- `GET/POST/PATCH/DELETE /api/api-keys` - Admin API key management (CRUD)
+- `GET /api/v1/customers` - Public API: list customers (API key auth, read scope)
+- `GET /api/v1/customers/:id` - Public API: get customer details
+- `GET /api/v1/projects` - Public API: list projects (filter by customerId)
+- `GET /api/v1/projects/:id` - Public API: get project details
+- `GET /api/v1/projects/:id/updates` - Public API: get project progress updates
+- `GET /api/v1/invoices` - Public API: list invoices (filter by status)
+- `GET /api/v1/invoices/:id` - Public API: get invoice with line items
+- `POST /api/v1/work-entries` - Public API: create work entry (write scope)
 
 ### Key Backend Files
 - `server/email.ts` - Resend integration for sending invoice and ticket notification emails

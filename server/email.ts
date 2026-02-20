@@ -1,7 +1,14 @@
 // Resend integration for sending emails (via Replit connector)
 import { Resend } from 'resend';
 
-const FALLBACK_FROM_EMAIL = "NexusBuild <hello@aipoweredsites.com>";
+const FALLBACK_FROM_EMAIL = "AI Powered Sites <hello@aipoweredsites.com>";
+
+function getSiteUrl(): string {
+  if (process.env.SITE_URL) return process.env.SITE_URL;
+  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  if (process.env.REPL_SLUG) return `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+  return "https://aipoweredsites.com";
+}
 
 async function getCredentials() {
   const directKey = process.env.RESEND_API_KEY;
@@ -676,7 +683,7 @@ export async function sendConversationNotificationToAdmin(data: {
       <p style="margin: 0 0 20px; font-size: 15px; color: #0f172a; font-weight: 600;">${data.subject}</p>
       <p style="margin: 0 0 6px; font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Message</p>
       <p style="margin: 0 0 24px; font-size: 14px; color: #334155; line-height: 1.7; white-space: pre-wrap;">${data.message}</p>
-      <a href="${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'https://localhost:5000'}/admin/conversations" style="display: inline-block; background: #6366f1; color: #ffffff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">View in Dashboard</a>
+      <a href="${getSiteUrl()}/admin/conversations" style="display: inline-block; background: #6366f1; color: #ffffff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">View in Dashboard</a>
     </div>
   </div>
 </body>
@@ -703,11 +710,7 @@ export async function sendConversationReplyToVisitor(data: {
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const { client, fromEmail } = await getResendClient();
-    const baseUrl = process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : process.env.REPL_SLUG
-      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-      : "https://localhost:5000";
+    const baseUrl = getSiteUrl();
     const conversationUrl = `${baseUrl}/conversation/${data.conversationToken}`;
     const html = `
 <!DOCTYPE html>

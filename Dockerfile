@@ -18,7 +18,7 @@ COPY package.json package-lock.json ./
 COPY tsconfig.json drizzle.config.ts ./
 COPY shared ./shared
 
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
 

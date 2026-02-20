@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { FileText, Search, Eye, CheckCircle, AlertTriangle, Send, Loader2, Download, Trash2, CalendarClock, X } from "lucide-react";
+import { FileText, Search, Eye, CheckCircle, AlertTriangle, Send, Loader2, Download, Trash2, CalendarClock, X, Filter, FolderOpen, Clock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,8 +58,23 @@ export default function Invoices() {
   usePageTitle("Invoices");
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<(Invoice & { lineItems?: InvoiceLineItem[] }) | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<(Invoice & {
+    lineItems?: InvoiceLineItem[];
+    projectName?: string | null;
+    customerName?: string | null;
+    workEntries?: Array<{
+      id: string;
+      rateId: string;
+      quantity: string;
+      description: string | null;
+      recordedAt: string | null;
+      rateName: string | null;
+      unitLabel: string | null;
+      rateCents: number;
+    }>;
+  }) | null>(null);
 
   const { data: invoices, isLoading } = useQuery<Invoice[]>({
     queryKey: ["/api/invoices"],
@@ -179,12 +194,22 @@ export default function Invoices() {
 
   const customerMap = new Map(customers?.map(c => [c.id, c]) ?? []);
 
-  const filtered = invoices?.filter(
-    (inv) =>
-      inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
-      inv.status.toLowerCase().includes(search.toLowerCase()) ||
-      (customerMap.get(inv.customerId)?.name ?? "").toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
+  const filtered = invoices?.filter((inv) => {
+    if (statusFilter !== "all" && inv.status !== statusFilter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      inv.invoiceNumber.toLowerCase().includes(q) ||
+      inv.status.toLowerCase().includes(q) ||
+      (customerMap.get(inv.customerId)?.name ?? "").toLowerCase().includes(q) ||
+      (customerMap.get(inv.customerId)?.company ?? "").toLowerCase().includes(q)
+    );
+  }) ?? [];
+
+  const statusCounts = invoices?.reduce((acc, inv) => {
+    acc[inv.status] = (acc[inv.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>) ?? {};
 
   return (
     <div className="space-y-6">
@@ -212,6 +237,37 @@ export default function Invoices() {
           </div>
         </Card>
       )}
+
+      <div className="flex items-center gap-2 flex-wrap" data-testid="status-filter-bar">
+        {[
+          { value: "all", label: "All", icon: FileText },
+          { value: "draft", label: "Draft", icon: Clock },
+          { value: "pending", label: "Pending", icon: Send },
+          { value: "paid", label: "Paid", icon: CheckCircle },
+          { value: "overdue", label: "Overdue", icon: AlertTriangle },
+        ].map(({ value, label, icon: Icon }) => (
+          <Button
+            key={value}
+            variant={statusFilter === value ? "default" : "outline"}
+            size="sm"
+            onClick={() => setStatusFilter(value)}
+            className="gap-1.5"
+            data-testid={`filter-status-${value}`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+            {value !== "all" && statusCounts[value] ? (
+              <Badge variant="secondary" className="ml-1 text-[10px]">
+                {statusCounts[value]}
+              </Badge>
+            ) : value === "all" && invoices ? (
+              <Badge variant="secondary" className="ml-1 text-[10px]">
+                {invoices.length}
+              </Badge>
+            ) : null}
+          </Button>
+        ))}
+      </div>
 
       <Card className="overflow-hidden">
         <div className="flex items-center gap-3 flex-wrap p-4 border-b">
@@ -315,61 +371,114 @@ export default function Invoices() {
       </Card>
 
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Invoice {selectedInvoice?.invoiceNumber}</DialogTitle>
+            <DialogTitle className="flex items-center gap-3" data-testid="text-invoice-detail-title">
+              <FileText className="w-5 h-5 text-primary" />
+              Invoice {selectedInvoice?.invoiceNumber}
+            </DialogTitle>
           </DialogHeader>
           {selectedInvoice && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap text-sm">
-                <div>
-                  <p className="text-muted-foreground">Customer</p>
-                  <p className="font-medium">{customerMap.get(selectedInvoice.customerId)?.company || customerMap.get(selectedInvoice.customerId)?.name || "—"}</p>
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-md bg-muted/40" data-testid="detail-customer">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Customer</p>
+                  <p className="text-sm font-medium truncate">{selectedInvoice.customerName || customerMap.get(selectedInvoice.customerId)?.company || customerMap.get(selectedInvoice.customerId)?.name || "—"}</p>
                 </div>
-                <Badge variant="secondary" className={`text-xs ${getStatusColor(selectedInvoice.status)}`}>
+                {selectedInvoice.projectName && (
+                  <div className="p-3 rounded-md bg-muted/40" data-testid="detail-project">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Project</p>
+                    <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                      <FolderOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      {selectedInvoice.projectName}
+                    </p>
+                  </div>
+                )}
+                <div className="p-3 rounded-md bg-muted/40" data-testid="detail-issued">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Issued</p>
+                  <p className="text-sm font-medium">{formatDate(selectedInvoice.issuedAt)}</p>
+                </div>
+                <div className="p-3 rounded-md bg-muted/40" data-testid="detail-due">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Due</p>
+                  <p className="text-sm font-medium">{formatDate(selectedInvoice.dueDate)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 px-1">
+                <Badge variant="secondary" className={`text-xs ${getStatusColor(selectedInvoice.status)}`} data-testid="detail-status">
                   {selectedInvoice.status}
                 </Badge>
+                <span className="text-lg font-bold" data-testid="detail-total">
+                  {formatCurrency(selectedInvoice.totalAmountCents)}
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Issued</p>
-                  <p className="font-medium">{formatDate(selectedInvoice.issuedAt)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Due</p>
-                  <p className="font-medium">{formatDate(selectedInvoice.dueDate)}</p>
-                </div>
-              </div>
+
               {selectedInvoice.lineItems && selectedInvoice.lineItems.length > 0 && (
-                <div className="border rounded-md overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-muted/30 border-b">
-                        <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Item</th>
-                        <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Qty</th>
-                        <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Rate</th>
-                        <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedInvoice.lineItems.map((item) => (
-                        <tr key={item.id} className="border-b last:border-b-0">
-                          <td className="py-2 px-3">{item.description}</td>
-                          <td className="py-2 px-3 text-right">{Number(item.quantity)}</td>
-                          <td className="py-2 px-3 text-right text-muted-foreground">{formatCurrency(item.unitPrice)}</td>
-                          <td className="py-2 px-3 text-right font-medium">{formatCurrency(item.totalCents)}</td>
+                <div>
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-1">Line Items</h4>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30 border-b">
+                          <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Item</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Qty</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Rate</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Total</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {selectedInvoice.lineItems.map((item) => (
+                          <tr key={item.id} className="border-b last:border-b-0" data-testid={`detail-line-item-${item.id}`}>
+                            <td className="py-2 px-3">{item.description}</td>
+                            <td className="py-2 px-3 text-right">{Number(item.quantity)}</td>
+                            <td className="py-2 px-3 text-right text-muted-foreground">{formatCurrency(item.unitPrice)}</td>
+                            <td className="py-2 px-3 text-right font-medium">{formatCurrency(item.totalCents)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-muted/20">
+                          <td colSpan={3} className="py-2 px-3 text-right font-semibold text-xs uppercase tracking-wider">Total</td>
+                          <td className="py-2 px-3 text-right font-bold">{formatCurrency(selectedInvoice.totalAmountCents)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
               )}
-              <div className="space-y-1 text-sm pt-2 border-t">
-                <div className="flex justify-between gap-3 font-semibold">
-                  <span>Total</span>
-                  <span>{formatCurrency(selectedInvoice.totalAmountCents)}</span>
+
+              {selectedInvoice.workEntries && selectedInvoice.workEntries.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-1">Work Breakdown</h4>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/30 border-b">
+                          <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Type</th>
+                          <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Description</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Qty</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedInvoice.workEntries.map((entry) => (
+                          <tr key={entry.id} className="border-b last:border-b-0" data-testid={`detail-work-entry-${entry.id}`}>
+                            <td className="py-2 px-3">
+                              <span className="font-medium">{entry.rateName || "—"}</span>
+                              {entry.unitLabel && (
+                                <span className="text-muted-foreground text-xs ml-1">({formatCurrency(entry.rateCents)}/{entry.unitLabel})</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-muted-foreground max-w-[180px] truncate">{entry.description || "—"}</td>
+                            <td className="py-2 px-3 text-right">{Number(entry.quantity)}</td>
+                            <td className="py-2 px-3 text-right text-muted-foreground text-xs">{entry.recordedAt ? formatDate(entry.recordedAt) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              )}
               {(() => {
                 const existingPlan = paymentPlans?.find(p => p.invoiceId === selectedInvoice.id && (p.status === "pending" || p.status === "active"));
                 if (existingPlan) {

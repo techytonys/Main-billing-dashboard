@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
-  conversations, conversationMessages,
+  conversations, conversationMessages, apiKeys,
   type User, type InsertUser,
   type Customer, type InsertCustomer,
   type Project, type InsertProject,
@@ -26,6 +26,7 @@ import {
   type AgentCostEntry, type InsertAgentCostEntry,
   type Conversation, type InsertConversation,
   type ConversationMessage, type InsertConversationMessage,
+  type ApiKey, type InsertApiKey,
   pushSubscriptions,
   type PushSubscription, type InsertPushSubscription,
   agentCostEntries,
@@ -55,6 +56,7 @@ export interface IStorage {
   deleteBillingRate(id: string): Promise<boolean>;
 
   getWorkEntries(filters?: { projectId?: string; customerId?: string; unbilledOnly?: boolean }): Promise<WorkEntry[]>;
+  getWorkEntriesByInvoice(invoiceId: string): Promise<WorkEntry[]>;
   createWorkEntry(entry: InsertWorkEntry): Promise<WorkEntry>;
   deleteWorkEntry(id: string): Promise<boolean>;
 
@@ -152,6 +154,14 @@ export interface IStorage {
   getPushSubscriptions(customerId: string): Promise<PushSubscription[]>;
   createPushSubscription(sub: InsertPushSubscription): Promise<PushSubscription>;
   deletePushSubscription(endpoint: string): Promise<boolean>;
+
+  getApiKeys(): Promise<ApiKey[]>;
+  getApiKey(id: string): Promise<ApiKey | undefined>;
+  getApiKeyByKey(key: string): Promise<ApiKey | undefined>;
+  createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
+  updateApiKey(id: string, updates: Partial<{ name: string; isActive: boolean; scopes: string; customerId: string | null }>): Promise<ApiKey | undefined>;
+  deleteApiKey(id: string): Promise<boolean>;
+  touchApiKeyLastUsed(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -261,6 +271,10 @@ export class DatabaseStorage implements IStorage {
       return db.select().from(workEntries).where(and(...conditions)).orderBy(desc(workEntries.recordedAt));
     }
     return db.select().from(workEntries).orderBy(desc(workEntries.recordedAt));
+  }
+
+  async getWorkEntriesByInvoice(invoiceId: string): Promise<WorkEntry[]> {
+    return db.select().from(workEntries).where(eq(workEntries.invoiceId, invoiceId)).orderBy(desc(workEntries.recordedAt));
   }
 
   async createWorkEntry(entry: InsertWorkEntry): Promise<WorkEntry> {
@@ -856,6 +870,39 @@ export class DatabaseStorage implements IStorage {
   async deletePushSubscription(endpoint: string): Promise<boolean> {
     const result = await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).returning();
     return result.length > 0;
+  }
+
+  async getApiKeys(): Promise<ApiKey[]> {
+    return db.select().from(apiKeys).orderBy(desc(apiKeys.createdAt));
+  }
+
+  async getApiKey(id: string): Promise<ApiKey | undefined> {
+    const [key] = await db.select().from(apiKeys).where(eq(apiKeys.id, id));
+    return key;
+  }
+
+  async getApiKeyByKey(key: string): Promise<ApiKey | undefined> {
+    const [found] = await db.select().from(apiKeys).where(eq(apiKeys.key, key));
+    return found;
+  }
+
+  async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
+    const [created] = await db.insert(apiKeys).values(apiKey).returning();
+    return created;
+  }
+
+  async updateApiKey(id: string, updates: Partial<{ name: string; isActive: boolean; scopes: string; customerId: string | null }>): Promise<ApiKey | undefined> {
+    const [updated] = await db.update(apiKeys).set(updates).where(eq(apiKeys.id, id)).returning();
+    return updated;
+  }
+
+  async deleteApiKey(id: string): Promise<boolean> {
+    const result = await db.delete(apiKeys).where(eq(apiKeys.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async touchApiKeyLastUsed(id: string): Promise<void> {
+    await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
   }
 }
 

@@ -6,7 +6,7 @@ import {
   FolderOpen, User, Mail, Phone, Pencil, Save, Loader2, LifeBuoy, Plus, Send,
   ArrowLeft, CircleDot, MessageSquare, CreditCard, Download, Trash2, ShieldAlert, Star,
   CalendarClock, ExternalLink, ImageIcon, Receipt, Wallet, LayoutDashboard, Bell, Check,
-  Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff,
+  Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1930,10 +1930,79 @@ export default function ClientPortal() {
                             data-testid={`link-portal-preview-${project.id}`}
                           >
                             <Button variant="outline" size="sm">
-                              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                              View Site Preview
+                              <Maximize2 className="w-3.5 h-3.5 mr-1.5" />
+                              Open Full Screen
                             </Button>
                           </a>
+                        )}
+                      </div>
+
+                      <div className="mt-4" data-testid={`preview-section-${project.id}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Preview</span>
+                          </div>
+                          {project.previewUrl && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => {
+                                  const iframe = document.getElementById(`preview-iframe-${project.id}`) as HTMLIFrameElement;
+                                  if (iframe) iframe.src = project.previewUrl!;
+                                }}
+                                data-testid={`button-refresh-preview-${project.id}`}
+                              >
+                                <RefreshCw className="w-3 h-3 mr-1" />
+                                Refresh
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {project.previewUrl ? (
+                          <div className="rounded-lg border overflow-hidden bg-background shadow-sm">
+                            <div className="bg-muted/50 px-3 py-1.5 flex items-center gap-2 border-b">
+                              <div className="flex gap-1.5">
+                                <div className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
+                                <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
+                                <div className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
+                              </div>
+                              <div className="flex-1 flex items-center justify-center">
+                                <div className="bg-background rounded px-3 py-0.5 text-[10px] text-muted-foreground truncate max-w-[300px] border">
+                                  {project.previewUrl}
+                                </div>
+                              </div>
+                              <a href={project.previewUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors" />
+                              </a>
+                            </div>
+                            <iframe
+                              id={`preview-iframe-${project.id}`}
+                              src={project.previewUrl}
+                              className="w-full border-0"
+                              style={{ height: "500px" }}
+                              title={`Preview of ${project.name}`}
+                              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                              loading="lazy"
+                              data-testid={`iframe-preview-${project.id}`}
+                            />
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border bg-gradient-to-br from-muted/30 via-muted/20 to-background p-8 text-center" data-testid={`preview-placeholder-${project.id}`}>
+                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
+                              <Monitor className="w-7 h-7 text-primary/60" />
+                            </div>
+                            <h4 className="font-semibold mb-1">Your site is being prepared</h4>
+                            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                              A live preview of your website will appear here once development begins. You'll be able to watch it come to life in real time.
+                            </p>
+                            <div className="flex items-center justify-center gap-1.5 mt-4">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-pulse" />
+                              <span className="text-xs text-muted-foreground">Coming soon</span>
+                            </div>
+                          </div>
                         )}
                       </div>
                       <PortalScreenshots token={params.token!} projectId={project.id} />

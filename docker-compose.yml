@@ -14,6 +14,7 @@ services:
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_AUDIENCE_ID=${RESEND_AUDIENCE_ID:-}
+      - SITE_URL=${SITE_URL:-https://aipoweredsites.com}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:hello@aipoweredsites.com}
@@ -29,7 +30,7 @@ services:
   db:
     image: postgres:16-alpine
     container_name: aipoweredsites-db
-    restart: unless-stopped
+    restart: always
     volumes:
       - pgdata:/var/lib/postgresql/data
     environment:

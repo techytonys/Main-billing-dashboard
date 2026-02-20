@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Calculator,
   MessagesSquare,
+  Key,
 } from "lucide-react";
 import {
   Sidebar,
@@ -36,6 +37,7 @@ const mainItems = [
   { title: "Conversations", url: "/admin/conversations", icon: MessagesSquare },
   { title: "Support Tickets", url: "/admin/support", icon: LifeBuoy },
   { title: "Q&A", url: "/admin/qa", icon: MessageSquare },
+  { title: "API Keys", url: "/admin/api-keys", icon: Key },
 ];
 
 const settingsItems = [

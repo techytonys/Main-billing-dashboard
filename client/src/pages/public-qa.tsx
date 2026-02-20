@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "wouter";
+import DOMPurify from "dompurify";
 import {
   MessageSquare, Send, ChevronDown, ChevronUp, CheckCircle2,
   CircleDot, Clock, Loader2, Zap, ArrowLeft, Search,
@@ -82,7 +83,7 @@ function QuestionItem({ question }: { question: QaQuestion }) {
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Answered {question.answeredAt ? formatDate(question.answeredAt) : ""}</span>
               </div>
-              <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{question.answer}</p>
+              <div className="rich-content rich-content-dark text-white/70 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(question.answer || "", { ALLOWED_TAGS: ["h1", "h2", "h3", "p", "br", "strong", "em", "u", "s", "a", "ul", "ol", "li", "blockquote", "pre", "code", "span"], ALLOWED_ATTR: ["href", "target", "rel", "class", "style"] }) }} />
             </div>
           ) : (
             <p className="text-white/40 text-sm italic" data-testid={`text-pending-${question.id}`}>

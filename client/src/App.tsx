@@ -32,6 +32,8 @@ import QuoteBuilder from "@/pages/quote-builder";
 import QuoteView from "@/pages/quote-view";
 import ConversationPage from "@/pages/conversation";
 import AdminConversations from "@/pages/admin-conversations";
+import ApiKeys from "@/pages/api-keys";
+import ApiDocs from "@/pages/api-docs";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -48,6 +50,7 @@ function DashboardRouter() {
       <Route path="/admin/qa" component={QaAdmin} />
       <Route path="/admin/quote-builder" component={QuoteBuilder} />
       <Route path="/admin/conversations" component={AdminConversations} />
+      <Route path="/admin/api-keys" component={ApiKeys} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
@@ -127,6 +130,7 @@ function AppRouter() {
       <Route path="/progress/:projectId" component={ProjectProgress} />
       <Route path="/quote/:token" component={QuoteView} />
       <Route path="/conversation/:token" component={ConversationPage} />
+      <Route path="/api/docs" component={ApiDocs} />
       <Route path="/login" component={LoginPage} />
       <Route path="/admin/:rest*">
         <DashboardLayout />

@@ -361,3 +361,159 @@
 .animate-hero-glow-3 {
   animation: hero-glow-3 10s ease-in-out infinite;
 }
+
+/* Quill Editor Overrides */
+.quill-wrapper .ql-toolbar {
+  border-color: hsl(var(--border)) !important;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: hsl(var(--muted) / 0.3);
+}
+
+.quill-wrapper .ql-container {
+  border-color: hsl(var(--border)) !important;
+  border-radius: 0 0 var(--radius) var(--radius);
+  font-family: var(--font-poppins, "Poppins", sans-serif);
+  font-size: 0.875rem;
+  min-height: 200px;
+}
+
+.quill-wrapper .ql-editor {
+  min-height: 200px;
+  color: hsl(var(--foreground));
+}
+
+.quill-wrapper .ql-editor.ql-blank::before {
+  color: hsl(var(--muted-foreground));
+  font-style: normal;
+}
+
+.quill-wrapper .ql-toolbar button {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.quill-wrapper .ql-toolbar button:hover,
+.quill-wrapper .ql-toolbar button.ql-active {
+  color: hsl(var(--primary)) !important;
+}
+
+.quill-wrapper .ql-toolbar .ql-stroke {
+  stroke: hsl(var(--muted-foreground)) !important;
+}
+
+.quill-wrapper .ql-toolbar button:hover .ql-stroke,
+.quill-wrapper .ql-toolbar button.ql-active .ql-stroke {
+  stroke: hsl(var(--primary)) !important;
+}
+
+.quill-wrapper .ql-toolbar .ql-fill {
+  fill: hsl(var(--muted-foreground)) !important;
+}
+
+.quill-wrapper .ql-toolbar button:hover .ql-fill,
+.quill-wrapper .ql-toolbar button.ql-active .ql-fill {
+  fill: hsl(var(--primary)) !important;
+}
+
+.quill-wrapper .ql-toolbar .ql-picker-label {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.quill-wrapper .ql-toolbar .ql-picker-options {
+  background: hsl(var(--popover)) !important;
+  border-color: hsl(var(--border)) !important;
+  border-radius: var(--radius);
+}
+
+.quill-wrapper .ql-editor blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  background: hsl(var(--primary) / 0.05);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: hsl(var(--foreground));
+}
+
+.quill-wrapper .ql-editor pre.ql-syntax {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  overflow-x: auto;
+}
+
+/* Rich Content Display (for rendered answers) */
+.rich-content h1 { font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+.rich-content h2 { font-size: 1.25rem; font-weight: 600; margin: 0.875rem 0 0.375rem; }
+.rich-content h3 { font-size: 1.1rem; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+.rich-content p { margin: 0.375rem 0; line-height: 1.7; }
+.rich-content strong { font-weight: 600; }
+.rich-content em { font-style: italic; }
+.rich-content s { text-decoration: line-through; }
+.rich-content ul, .rich-content ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+.rich-content li { margin: 0.25rem 0; line-height: 1.6; }
+.rich-content ul { list-style: disc; }
+.rich-content ol { list-style: decimal; }
+
+.rich-content blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  background: hsl(var(--primary) / 0.05);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-style: normal;
+}
+
+.rich-content pre {
+  background: hsl(var(--muted));
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  font-family: "Fira Code", "Consolas", monospace;
+}
+
+.rich-content code {
+  background: hsl(var(--muted));
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: "Fira Code", "Consolas", monospace;
+}
+
+.rich-content a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rich-content a:hover {
+  opacity: 0.8;
+}
+
+/* Dark mode overrides for rich content on public pages */
+.rich-content-dark blockquote {
+  border-left-color: rgba(139, 92, 246, 0.7);
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.rich-content-dark pre {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.rich-content-dark code {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.rich-content-dark a {
+  color: rgba(139, 92, 246, 0.9);
+}
+
+.rich-content-dark h1,
+.rich-content-dark h2,
+.rich-content-dark h3 {
+  color: rgba(255, 255, 255, 0.9);
+}

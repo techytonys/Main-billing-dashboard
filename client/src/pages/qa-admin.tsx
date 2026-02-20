@@ -8,8 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QuillEditor } from "@/components/quill-editor";
 import {
   Select,
   SelectContent,
@@ -102,13 +102,10 @@ function AnswerEditor({
 
       <div className="space-y-2">
         <label className="text-sm font-medium text-muted-foreground">Your Answer</label>
-        <Textarea
+        <QuillEditor
           value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          placeholder="Write your answer here..."
-          rows={10}
-          className="text-sm"
-          data-testid="input-answer-content"
+          onChange={setAnswer}
+          placeholder="Write your answer here... Use the toolbar to format text, add headings, code blocks, callouts (blockquotes), and more."
         />
       </div>
     </div>

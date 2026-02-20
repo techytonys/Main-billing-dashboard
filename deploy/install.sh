@@ -122,25 +122,71 @@ step_header 6 8 "Setting up environment" "%"
 STRIPE_SK=""
 STRIPE_PK=""
 RESEND_KEY=""
+RESEND_AUD=""
+SITE_DOMAIN=""
 
 if [ -f "$APP_DIR/.env" ]; then
   STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   RESEND_KEY=$(grep "^RESEND_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  RESEND_AUD=$(grep "^RESEND_AUDIENCE_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  SITE_DOMAIN=$(grep "^DOMAIN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
 fi
 
-if [ -z "$STRIPE_SK" ] || [ -z "$STRIPE_PK" ] || [ -z "$RESEND_KEY" ]; then
-  echo ""
-  echo -e "  ${YELLOW}${BOLD}Paste your 3 API keys (Stripe & Resend):${RESET}"
-  echo ""
-  [ -z "$STRIPE_SK" ] && read -p "$(echo -e "  ${MAGENTA}")Stripe Secret Key (sk_...): $(echo -e "${RESET}")" STRIPE_SK
-  [ -z "$STRIPE_PK" ] && read -p "$(echo -e "  ${MAGENTA}")Stripe Publishable Key (pk_...): $(echo -e "${RESET}")" STRIPE_PK
-  [ -z "$RESEND_KEY" ] && read -p "$(echo -e "  ${MAGENTA}")Resend API Key (re_...): $(echo -e "${RESET}")" RESEND_KEY
-  echo ""
+echo ""
+echo -e "  ${YELLOW}${BOLD}Enter your API keys (press Enter to keep existing):${RESET}"
+echo ""
+
+if [ -z "$STRIPE_SK" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")Stripe Secret Key (sk_...): $(echo -e "${RESET}")" STRIPE_SK
+else
+  echo -e "  ${DIM}Stripe Secret Key: ${GREEN}set${RESET} (${DIM}${STRIPE_SK:0:7}...${RESET})"
+  read -p "$(echo -e "  ${MAGENTA}")  Press Enter to keep, or paste new key: $(echo -e "${RESET}")" NEW_SK
+  [ -n "$NEW_SK" ] && STRIPE_SK="$NEW_SK"
+fi
+
+if [ -z "$STRIPE_PK" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")Stripe Publishable Key (pk_...): $(echo -e "${RESET}")" STRIPE_PK
+else
+  echo -e "  ${DIM}Stripe Publishable Key: ${GREEN}set${RESET} (${DIM}${STRIPE_PK:0:7}...${RESET})"
+  read -p "$(echo -e "  ${MAGENTA}")  Press Enter to keep, or paste new key: $(echo -e "${RESET}")" NEW_PK
+  [ -n "$NEW_PK" ] && STRIPE_PK="$NEW_PK"
+fi
+
+if [ -z "$RESEND_KEY" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")Resend API Key (re_...): $(echo -e "${RESET}")" RESEND_KEY
+else
+  echo -e "  ${DIM}Resend API Key: ${GREEN}set${RESET} (${DIM}${RESEND_KEY:0:7}...${RESET})"
+  read -p "$(echo -e "  ${MAGENTA}")  Press Enter to keep, or paste new key: $(echo -e "${RESET}")" NEW_RK
+  [ -n "$NEW_RK" ] && RESEND_KEY="$NEW_RK"
+fi
+
+if [ -z "$RESEND_AUD" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")Resend Audience ID (optional, press Enter to skip): $(echo -e "${RESET}")" RESEND_AUD
+fi
+
+if [ -z "$SITE_DOMAIN" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")Your domain (e.g. aipoweredsites.com): $(echo -e "${RESET}")" SITE_DOMAIN
+  SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
+fi
+echo ""
+
+# Validate required keys
+MISSING=""
+[ -z "$STRIPE_SK" ] && MISSING="${MISSING}  - Stripe Secret Key\n"
+[ -z "$STRIPE_PK" ] && MISSING="${MISSING}  - Stripe Publishable Key\n"
+[ -z "$RESEND_KEY" ] && MISSING="${MISSING}  - Resend API Key\n"
+
+if [ -n "$MISSING" ]; then
+  echo -e "  ${RED}${BOLD}Missing required keys:${RESET}"
+  echo -e "${RED}${MISSING}${RESET}"
+  echo -e "  ${RED}Cannot continue without these keys. Re-run the script.${RESET}"
+  exit 1
 fi
 
 cat > "$APP_DIR/.env" << ENVFILE
-DOMAIN=aipoweredsites.com
+DOMAIN=${SITE_DOMAIN}
+SITE_URL=https://${SITE_DOMAIN}
 POSTGRES_USER=aips
 POSTGRES_PASSWORD=84de28bcec055938a4b83637def758be
 POSTGRES_DB=aipoweredsites
@@ -150,7 +196,7 @@ ADMIN_PASSWORD=Aipowered2025!
 STRIPE_SECRET_KEY=${STRIPE_SK}
 STRIPE_PUBLISHABLE_KEY=${STRIPE_PK}
 RESEND_API_KEY=${RESEND_KEY}
-RESEND_AUDIENCE_ID=f2598d50-ee09-40eb-9939-163ea6e7f938
+RESEND_AUDIENCE_ID=${RESEND_AUD}
 VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
 VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com
@@ -188,10 +234,24 @@ echo -e "${RESET}"
 echo ""
 echo -e "  ${WHITE}${BOLD}Your site is LIVE!${RESET}"
 echo ""
+echo -e "  ${CYAN}Login:${RESET}         anthonyjacksonverizon@gmail.com / Aipowered2025!"
+echo -e "  ${CYAN}Site:${RESET}          https://${SITE_DOMAIN}"
+echo ""
 echo -e "  ${CYAN}Useful commands:${RESET}"
 echo -e "    ${DIM}Check status:${RESET}  docker compose ps"
 echo -e "    ${DIM}View logs:${RESET}     docker compose logs -f app"
 echo -e "    ${DIM}Update later:${RESET}  bash $APP_DIR/deploy/update.sh"
+echo -e "    ${DIM}Secure SSH:${RESET}    sudo bash $APP_DIR/deploy/secure.sh"
+echo ""
+echo -e "  ${CYAN}Keys set:${RESET}"
+echo -e "    ${GREEN}✔${RESET} Stripe Secret Key     (${DIM}${STRIPE_SK:0:7}...${RESET})"
+echo -e "    ${GREEN}✔${RESET} Stripe Publishable Key (${DIM}${STRIPE_PK:0:7}...${RESET})"
+echo -e "    ${GREEN}✔${RESET} Resend API Key         (${DIM}${RESEND_KEY:0:7}...${RESET})"
+[ -n "$RESEND_AUD" ] && echo -e "    ${GREEN}✔${RESET} Resend Audience ID     (${DIM}${RESEND_AUD:0:8}...${RESET})"
+echo -e "    ${GREEN}✔${RESET} VAPID Keys             (push notifications)"
+echo -e "    ${GREEN}✔${RESET} Session Secret"
+echo -e "    ${GREEN}✔${RESET} Database Credentials"
+echo -e "    ${GREEN}✔${RESET} Admin Password"
 echo ""
 echo -e "  ${MAGENTA}${BOLD}Congrats on the milestone!${RESET}"
 echo ""

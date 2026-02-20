@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema } from "@shared/schema";
+import crypto from "crypto";
 import { z } from "zod";
 import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor } from "./email";
 import { isAuthenticated } from "./replit_integrations/auth";
@@ -16,6 +17,13 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY,
   );
+}
+
+function getSiteBaseUrl(req: any): string {
+  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, "");
+  const protocol = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers.host || "localhost:5000";
+  return `${protocol}://${host}`;
 }
 
 async function sendPushToCustomer(customerId: string, payload: { title: string; body: string; url?: string; tag?: string }) {
@@ -56,11 +64,10 @@ async function createNotificationAndEmail(
     });
     const customer = await storage.getCustomer(customerId);
     if (customer?.email && customer.portalToken) {
-      const portalBase = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : "https://localhost:5000";
+      const portalBase = process.env.SITE_URL
+        || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+        || (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : null)
+        || "https://aipoweredsites.com";
       const portalUrl = `${portalBase}/portal/${customer.portalToken}`;
       sendNotificationEmail({
         customerName: customer.name,
@@ -156,9 +163,7 @@ export async function registerRoutes(
       if (!customer.email) return res.status(400).json({ message: "Customer has no email address" });
       if (!customer.portalToken) return res.status(400).json({ message: "Customer has no portal token" });
 
-      const host = req.headers.host || "localhost:5000";
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const portalUrl = `${protocol}://${host}/portal/${customer.portalToken}`;
+      const portalUrl = `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`;
 
       const result = await sendPortalWelcomeEmail({
         customerName: customer.name,
@@ -394,7 +399,28 @@ export async function registerRoutes(
       const invoice = await storage.getInvoice(req.params.id);
       if (!invoice) return res.status(404).json({ message: "Invoice not found" });
       const lineItems = await storage.getInvoiceLineItems(invoice.id);
-      res.json({ ...invoice, lineItems });
+      const customer = await storage.getCustomer(invoice.customerId);
+      let projectName: string | null = null;
+      if (invoice.projectId) {
+        const project = await storage.getProject(invoice.projectId);
+        if (project) projectName = project.name;
+      }
+      const workEntries = await storage.getWorkEntriesByInvoice(invoice.id);
+      const rates = await storage.getBillingRates();
+      const rateMap = new Map(rates.map(r => [r.id, r]));
+      const enrichedWorkEntries = workEntries.map(e => ({
+        ...e,
+        rateName: rateMap.get(e.rateId)?.name ?? null,
+        unitLabel: rateMap.get(e.rateId)?.unitLabel ?? null,
+        rateCents: rateMap.get(e.rateId)?.rateCents ?? 0,
+      }));
+      res.json({
+        ...invoice,
+        lineItems,
+        projectName,
+        customerName: customer?.company || customer?.name || null,
+        workEntries: enrichedWorkEntries,
+      });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch invoice" });
     }
@@ -604,9 +630,7 @@ export async function registerRoutes(
       if (!customer) return res.status(404).json({ message: "Customer not found" });
       if (!customer.email) return res.status(400).json({ message: "Customer has no email address" });
 
-      const host = req.headers.host || "localhost:5000";
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const portalUrl = customer.portalToken ? `${protocol}://${host}/portal/${customer.portalToken}` : undefined;
+      const portalUrl = customer.portalToken ? `${getSiteBaseUrl(req)}/portal/${customer.portalToken}` : undefined;
 
       let issuedAt = invoice.issuedAt;
       let dueDate = invoice.dueDate;
@@ -727,10 +751,8 @@ export async function registerRoutes(
           message: messageBody,
         });
 
-        const host = req.headers.host || "localhost:5000";
-        const protocol = req.headers["x-forwarded-proto"] || "https";
         const portalUrl = customer.portalToken
-          ? `${protocol}://${host}/portal/${customer.portalToken}`
+          ? `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`
           : undefined;
 
         await sendTicketNotification({
@@ -817,10 +839,8 @@ export async function registerRoutes(
         message: emailBody,
       });
 
-      const host = req.headers.host || "localhost:5000";
-      const protocol = req.headers["x-forwarded-proto"] || "https";
       const portalUrl = customer.portalToken
-        ? `${protocol}://${host}/portal/${customer.portalToken}`
+        ? `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`
         : undefined;
 
       await sendTicketNotification({
@@ -923,9 +943,7 @@ export async function registerRoutes(
 
       const customer = await storage.getCustomer(ticket.customerId);
       if (customer?.email) {
-        const host = req.headers.host || "localhost:5000";
-        const protocol = req.headers["x-forwarded-proto"] || "https";
-        const portalUrl = customer.portalToken ? `${protocol}://${host}/portal/${customer.portalToken}` : undefined;
+        const portalUrl = customer.portalToken ? `${getSiteBaseUrl(req)}/portal/${customer.portalToken}` : undefined;
         sendTicketNotification({
           customerName: customer.name,
           customerEmail: customer.email,
@@ -995,9 +1013,7 @@ export async function registerRoutes(
       });
 
       if (customer.email) {
-        const host = req.headers.host || "localhost:5000";
-        const protocol = req.headers["x-forwarded-proto"] || "https";
-        const portalUrl = `${protocol}://${host}/portal/${customer.portalToken}`;
+        const portalUrl = `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`;
         sendTicketNotification({
           customerName: customer.name,
           customerEmail: customer.email,
@@ -1081,9 +1097,7 @@ export async function registerRoutes(
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
 
-      const host = req.headers.host || "localhost:5000";
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const portalUrl = `${protocol}://${host}/portal/${req.params.token}`;
+      const portalUrl = `${getSiteBaseUrl(req)}/portal/${req.params.token}`;
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
@@ -1705,9 +1719,7 @@ export async function registerRoutes(
         (Date.now() / 1000) + (frequencyDays[plan.frequency] * plan.numberOfInstallments * 86400)
       );
 
-      const host = req.headers.host || "localhost:5000";
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const portalUrl = `${protocol}://${host}/portal/${req.params.token}`;
+      const portalUrl = `${getSiteBaseUrl(req)}/portal/${req.params.token}`;
 
       const session = await stripe.checkout.sessions.create({
         customer: stripeCustomerId,
@@ -2315,6 +2327,232 @@ export async function registerRoutes(
       });
     } catch (err) {
       res.status(500).json({ message: "Failed to generate summary" });
+    }
+  });
+
+  // ==========================================
+  // Admin API Key Management
+  // ==========================================
+
+  app.get("/api/api-keys", isAuthenticated, async (_req, res) => {
+    try {
+      const keys = await storage.getApiKeys();
+      res.json(keys.map(k => ({ ...k, key: k.key.slice(0, 8) + "..." + k.key.slice(-4) })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch API keys" });
+    }
+  });
+
+  const createApiKeySchema = z.object({
+    name: z.string().min(1, "Name is required").max(100),
+    scopes: z.enum(["read", "read,write", "all"]).default("read"),
+    customerId: z.string().nullable().optional(),
+    expiresAt: z.string().datetime().nullable().optional(),
+  });
+
+  app.post("/api/api-keys", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = createApiKeySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      const key = `aips_${crypto.randomBytes(32).toString("hex")}`;
+      const apiKey = await storage.createApiKey({
+        name: parsed.data.name,
+        key,
+        scopes: parsed.data.scopes,
+        customerId: parsed.data.customerId || null,
+        expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+      });
+      res.json(apiKey);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create API key" });
+    }
+  });
+
+  app.patch("/api/api-keys/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { name, isActive, scopes, customerId } = req.body;
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (isActive !== undefined) updates.isActive = isActive;
+      if (scopes !== undefined) updates.scopes = scopes;
+      if (customerId !== undefined) updates.customerId = customerId;
+      const updated = await storage.updateApiKey(req.params.id, updates);
+      if (!updated) return res.status(404).json({ message: "API key not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update API key" });
+    }
+  });
+
+  app.delete("/api/api-keys/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteApiKey(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "API key not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete API key" });
+    }
+  });
+
+  // ==========================================
+  // Public API with API Key Authentication
+  // ==========================================
+
+  async function authenticateApiKey(req: any, res: any, next: any) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing or invalid API key. Include 'Authorization: Bearer YOUR_API_KEY' header." });
+    }
+    const key = authHeader.slice(7);
+    const apiKey = await storage.getApiKeyByKey(key);
+    if (!apiKey) return res.status(401).json({ error: "Invalid API key." });
+    if (!apiKey.isActive) return res.status(403).json({ error: "API key is disabled." });
+    if (apiKey.expiresAt && new Date(apiKey.expiresAt) < new Date()) {
+      return res.status(403).json({ error: "API key has expired." });
+    }
+    req.apiKey = apiKey;
+    storage.touchApiKeyLastUsed(apiKey.id);
+    next();
+  }
+
+  function requireScope(scope: string) {
+    return (req: any, res: any, next: any) => {
+      const scopes = (req.apiKey?.scopes || "").split(",").map((s: string) => s.trim());
+      if (scopes.includes("all") || scopes.includes(scope)) return next();
+      return res.status(403).json({ error: `Missing required scope: '${scope}'. Your key has: ${scopes.join(", ")}` });
+    };
+  }
+
+  // Public API: Get customers
+  app.get("/api/v1/customers", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      let customers = await storage.getCustomers();
+      if (req.apiKey.customerId) {
+        customers = customers.filter((c: any) => c.id === req.apiKey.customerId);
+      }
+      res.json({ data: customers.map((c: any) => ({ id: c.id, name: c.name, email: c.email, company: c.company, createdAt: c.createdAt })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch customers" });
+    }
+  });
+
+  // Public API: Get single customer
+  app.get("/api/v1/customers/:id", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+      if (req.apiKey.customerId && customer.id !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      res.json({ data: { id: customer.id, name: customer.name, email: customer.email, company: customer.company, createdAt: customer.createdAt } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch customer" });
+    }
+  });
+
+  // Public API: Get projects
+  app.get("/api/v1/projects", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const scopedCustomerId = req.apiKey.customerId;
+      if (scopedCustomerId && req.query.customerId && req.query.customerId !== scopedCustomerId) {
+        return res.status(403).json({ error: "Access denied. Your key is scoped to a specific customer." });
+      }
+      const customerId = scopedCustomerId || req.query.customerId;
+      let projects;
+      if (customerId) {
+        projects = await storage.getProjectsByCustomer(customerId);
+      } else {
+        projects = await storage.getProjects();
+      }
+      res.json({ data: projects.map((p: any) => ({ id: p.id, name: p.name, description: p.description, status: p.status, customerId: p.customerId, previewUrl: p.previewUrl, createdAt: p.createdAt })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch projects" });
+    }
+  });
+
+  // Public API: Get single project
+  app.get("/api/v1/projects/:id", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      if (req.apiKey.customerId && project.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      res.json({ data: { id: project.id, name: project.name, description: project.description, status: project.status, customerId: project.customerId, previewUrl: project.previewUrl, createdAt: project.createdAt } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch project" });
+    }
+  });
+
+  // Public API: Get invoices
+  app.get("/api/v1/invoices", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const invoices = await storage.getInvoices();
+      let filtered = invoices;
+      if (req.apiKey.customerId) {
+        filtered = invoices.filter((inv: any) => inv.customerId === req.apiKey.customerId);
+      }
+      if (req.query.status) {
+        filtered = filtered.filter((inv: any) => inv.status === req.query.status);
+      }
+      res.json({ data: filtered.map((inv: any) => ({ id: inv.id, invoiceNumber: inv.invoiceNumber, customerId: inv.customerId, projectId: inv.projectId, status: inv.status, totalCents: inv.totalCents, dueDate: inv.dueDate, createdAt: inv.createdAt })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch invoices" });
+    }
+  });
+
+  // Public API: Get single invoice with line items
+  app.get("/api/v1/invoices/:id", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const invoice = await storage.getInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+      if (req.apiKey.customerId && invoice.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const lineItems = await storage.getInvoiceLineItems(req.params.id);
+      res.json({
+        data: {
+          id: invoice.id, invoiceNumber: invoice.invoiceNumber, customerId: invoice.customerId,
+          projectId: invoice.projectId, status: invoice.status, totalCents: invoice.totalCents,
+          dueDate: invoice.dueDate, createdAt: invoice.createdAt,
+          lineItems: lineItems.map((li: any) => ({ description: li.description, quantity: li.quantity, unitPriceCents: li.unitPriceCents, totalCents: li.totalCents }))
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch invoice" });
+    }
+  });
+
+  // Public API: Create work entry
+  app.post("/api/v1/work-entries", authenticateApiKey, requireScope("write"), async (req: any, res) => {
+    try {
+      const parsed = insertWorkEntrySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      if (req.apiKey.customerId) {
+        const project = await storage.getProject(parsed.data.projectId);
+        if (!project || project.customerId !== req.apiKey.customerId) {
+          return res.status(403).json({ error: "Access denied to this project" });
+        }
+      }
+      const entry = await storage.createWorkEntry(parsed.data);
+      res.status(201).json({ data: entry });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create work entry" });
+    }
+  });
+
+  // Public API: Get project updates / progress
+  app.get("/api/v1/projects/:id/updates", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      if (req.apiKey.customerId && project.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const updates = await storage.getProjectUpdates(req.params.id);
+      res.json({ data: updates });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch project updates" });
     }
   });
 
