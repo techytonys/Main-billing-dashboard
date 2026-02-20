@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Add backup pricing display to client portal - rate banner, per-backup cost in logs, billing rate API for portal';
+const COMMIT_MESSAGE = 'Latest changes - backup pricing in client portal, deploy script updates, billing rate management';
 
 let connectionSettings: any;
 
