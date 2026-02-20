@@ -4,6 +4,7 @@
 A project-based billing dashboard for a website design business. Track customers, projects, work deliverables, and generate invoices based on configurable per-unit rates. Includes a client portal for customers to view their invoices and automatic overdue invoice tracking.
 
 ## Recent Changes
+- 2026-02-20: Added Git Code Backup system - admin enables backups per project, customer connects GitHub via OAuth from portal, admin selects repo/branch, manual push or autopilot (hourly/daily/weekly), backup history with commit SHAs, admin page at /admin/code-backups, client portal "Backups" tab
 - 2026-02-20: Enhanced work entry management - edit existing work entries (type, qty, description), date picker for backdating entries, payment terms selector (Net 7/14/15/30/45/60/90) on invoice generation with due date preview
 - 2026-02-20: Enhanced invoices page - status filter buttons (All/Draft/Pending/Paid/Overdue) with count badges, rich invoice detail dialog with project context, work breakdown table, line item totals
 - 2026-02-15: Added client onboarding conversation system - visitors start secure conversations from landing page, back-and-forth messaging with admin, email notifications both ways via Resend, admin dashboard at /admin/conversations with reply/close/reopen, public conversation page at /conversation/:token with 10s auto-refresh

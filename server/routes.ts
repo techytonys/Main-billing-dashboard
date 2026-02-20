@@ -2588,5 +2588,438 @@ export async function registerRoutes(
     }
   });
 
+  // ============ GIT BACKUP ROUTES ============
+
+  // GitHub OAuth: Start (customer clicks "Connect GitHub" in portal)
+  app.get("/api/portal/:token/github/connect", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const clientId = process.env.GITHUB_CLIENT_ID;
+      if (!clientId) return res.status(500).json({ message: "GitHub integration not configured" });
+
+      const redirectUri = `${getSiteBaseUrl(req)}/api/github/callback`;
+      const state = Buffer.from(JSON.stringify({ portalToken: req.params.token })).toString("base64");
+      const scope = "repo";
+
+      const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
+      res.redirect(authUrl);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to start GitHub connection" });
+    }
+  });
+
+  // GitHub OAuth: Callback
+  app.get("/api/github/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      if (!code || !state) return res.status(400).send("Missing code or state");
+
+      const clientId = process.env.GITHUB_CLIENT_ID;
+      const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return res.status(500).send("GitHub not configured");
+
+      let stateData: { portalToken: string };
+      try {
+        stateData = JSON.parse(Buffer.from(state as string, "base64").toString());
+      } catch {
+        return res.status(400).send("Invalid state");
+      }
+
+      const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+      });
+      const tokenData = await tokenRes.json() as any;
+      if (!tokenData.access_token) return res.status(400).send("Failed to get GitHub token");
+
+      const userRes = await fetch("https://api.github.com/user", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}`, Accept: "application/json" },
+      });
+      const githubUser = await userRes.json() as any;
+
+      const customer = await storage.getCustomerByPortalToken(stateData.portalToken);
+      if (!customer) return res.status(400).send("Invalid portal token");
+
+      const existingConfigs = await storage.getGitBackupConfigByCustomer(customer.id);
+      if (existingConfigs.length > 0) {
+        for (const config of existingConfigs) {
+          await storage.updateGitBackupConfig(config.id, {
+            githubToken: tokenData.access_token,
+            githubUsername: githubUser.login,
+            isConnected: true,
+          });
+        }
+      }
+
+      const baseUrl = getSiteBaseUrl(req);
+      res.redirect(`${baseUrl}/portal/${stateData.portalToken}?github_connected=true&github_user=${githubUser.login}`);
+    } catch (err) {
+      console.error("GitHub callback error:", err);
+      res.status(500).send("GitHub connection failed");
+    }
+  });
+
+  app.get("/api/git-backups/billing-rate", isAuthenticated, async (req, res) => {
+    try {
+      let rate = await storage.getBillingRateByCode("code_backup");
+      if (!rate) {
+        rate = await storage.createBillingRate({
+          code: "code_backup",
+          name: "Code Backup",
+          description: "Automated code backup to GitHub repository",
+          unitLabel: "backup",
+          rateCents: 500,
+          isActive: true,
+        });
+      }
+      res.json(rate);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch backup billing rate" });
+    }
+  });
+
+  app.patch("/api/git-backups/billing-rate", isAuthenticated, async (req, res) => {
+    try {
+      let rate = await storage.getBillingRateByCode("code_backup");
+      if (!rate) return res.status(404).json({ message: "Rate not found" });
+      const updates: any = {};
+      if (req.body.rateCents !== undefined) {
+        const cents = parseInt(req.body.rateCents, 10);
+        if (isNaN(cents) || cents < 0) return res.status(400).json({ message: "Rate must be a non-negative integer (cents)" });
+        updates.rateCents = cents;
+      }
+      if (req.body.isActive !== undefined) {
+        if (typeof req.body.isActive !== "boolean") return res.status(400).json({ message: "isActive must be a boolean" });
+        updates.isActive = req.body.isActive;
+      }
+      if (Object.keys(updates).length === 0) return res.status(400).json({ message: "No valid fields to update" });
+      const updated = await storage.updateBillingRate(rate.id, updates);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update rate" });
+    }
+  });
+
+  // Admin: Get git backup configs (all or by project)
+  app.get("/api/git-backups", isAuthenticated, async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string | undefined;
+      const configs = await storage.getGitBackupConfigs(projectId);
+      res.json(configs.map(c => ({ ...c, githubToken: undefined })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch git backup configs" });
+    }
+  });
+
+  // Admin: Get git backup config for a project
+  app.get("/api/git-backups/project/:projectId", isAuthenticated, async (req, res) => {
+    try {
+      const config = await storage.getGitBackupConfigByProject(req.params.projectId);
+      res.json(config ? { ...config, githubToken: undefined } : null);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch config" });
+    }
+  });
+
+  // Admin: Create or update git backup config
+  app.post("/api/git-backups", isAuthenticated, async (req, res) => {
+    try {
+      const { projectId, customerId, githubRepo, githubBranch, autopilotEnabled, autopilotFrequency } = req.body;
+      if (!projectId || !customerId) return res.status(400).json({ message: "projectId and customerId required" });
+
+      const existing = await storage.getGitBackupConfigByProject(projectId);
+      if (existing) {
+        const updates: any = {};
+        if (githubRepo !== undefined) updates.githubRepo = githubRepo;
+        if (githubBranch !== undefined) updates.githubBranch = githubBranch;
+        if (autopilotEnabled !== undefined) updates.autopilotEnabled = autopilotEnabled;
+        if (autopilotFrequency !== undefined) updates.autopilotFrequency = autopilotFrequency;
+        if (autopilotEnabled && !existing.nextScheduledAt) {
+          updates.nextScheduledAt = getNextScheduledTime(autopilotFrequency || existing.autopilotFrequency || "daily");
+        }
+        const updated = await storage.updateGitBackupConfig(existing.id, updates);
+        return res.json(updated);
+      }
+
+      const config = await storage.createGitBackupConfig({
+        projectId,
+        customerId,
+        githubRepo: githubRepo || null,
+        githubBranch: githubBranch || "main",
+        autopilotEnabled: autopilotEnabled || false,
+        autopilotFrequency: autopilotFrequency || "daily",
+        isConnected: false,
+        githubToken: null,
+        githubUsername: null,
+      });
+      res.status(201).json(config);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to create config" });
+    }
+  });
+
+  // Admin: Update git backup config
+  app.patch("/api/git-backups/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { githubRepo, githubBranch, autopilotEnabled, autopilotFrequency } = req.body;
+      const updates: any = {};
+      if (githubRepo !== undefined) updates.githubRepo = githubRepo;
+      if (githubBranch !== undefined) updates.githubBranch = githubBranch;
+      if (autopilotEnabled !== undefined) {
+        updates.autopilotEnabled = autopilotEnabled;
+        if (autopilotEnabled) {
+          updates.nextScheduledAt = getNextScheduledTime(autopilotFrequency || "daily");
+        }
+      }
+      if (autopilotFrequency !== undefined) updates.autopilotFrequency = autopilotFrequency;
+      const updated = await storage.updateGitBackupConfig(req.params.id, updates);
+      if (!updated) return res.status(404).json({ message: "Config not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update config" });
+    }
+  });
+
+  // Admin: Delete git backup config
+  app.delete("/api/git-backups/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteGitBackupConfig(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Config not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete config" });
+    }
+  });
+
+  // Admin: Get backup logs for a project
+  app.get("/api/git-backups/logs/:projectId", isAuthenticated, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const logs = await storage.getGitBackupLogsByProject(req.params.projectId, limit);
+      res.json(logs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch backup logs" });
+    }
+  });
+
+  // Admin: Trigger manual backup push
+  app.post("/api/git-backups/:id/push", isAuthenticated, async (req, res) => {
+    try {
+      const config = await storage.getGitBackupConfig(req.params.id);
+      if (!config) return res.status(404).json({ message: "Config not found" });
+      if (!config.isConnected || !config.githubToken) {
+        return res.status(400).json({ message: "GitHub not connected for this project" });
+      }
+      if (!config.githubRepo) {
+        return res.status(400).json({ message: "No repository configured" });
+      }
+
+      const log = await storage.createGitBackupLog({
+        configId: config.id,
+        projectId: config.projectId,
+        status: "pending",
+        triggeredBy: "manual",
+        commitMessage: req.body.message || `Backup ${new Date().toISOString().split("T")[0]}`,
+        commitSha: null,
+        filesCount: null,
+        errorMessage: null,
+      });
+
+      performGitBackup(config, log.id).catch(err => console.error("Backup failed:", err));
+
+      res.json({ message: "Backup started", logId: log.id });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to trigger backup" });
+    }
+  });
+
+  // Admin: Get list of customer's GitHub repos
+  app.get("/api/git-backups/:id/repos", isAuthenticated, async (req, res) => {
+    try {
+      const config = await storage.getGitBackupConfig(req.params.id);
+      if (!config) return res.status(404).json({ message: "Config not found" });
+      if (!config.githubToken) return res.status(400).json({ message: "GitHub not connected" });
+
+      const reposRes = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner", {
+        headers: { Authorization: `Bearer ${config.githubToken}`, Accept: "application/json" },
+      });
+      const repos = await reposRes.json() as any[];
+      res.json(repos.map((r: any) => ({
+        fullName: r.full_name,
+        name: r.name,
+        private: r.private,
+        defaultBranch: r.default_branch,
+        updatedAt: r.updated_at,
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch repos" });
+    }
+  });
+
+  // Portal: Get git backup status for customer's projects
+  app.get("/api/portal/:token/git-backups", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const configs = await storage.getGitBackupConfigByCustomer(customer.id);
+      const result = [];
+      for (const config of configs) {
+        const logs = await storage.getGitBackupLogs(config.id, 10);
+        const project = await storage.getProject(config.projectId);
+        result.push({
+          ...config,
+          githubToken: undefined,
+          projectName: project?.name || "Unknown",
+          recentLogs: logs,
+        });
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch backups" });
+    }
+  });
+
+  // Helper: Get next scheduled time based on frequency
+  function getNextScheduledTime(frequency: string): Date {
+    const now = new Date();
+    switch (frequency) {
+      case "hourly": return new Date(now.getTime() + 60 * 60 * 1000);
+      case "daily": return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      case "weekly": return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      default: return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    }
+  }
+
+  // Helper: Perform actual git backup via GitHub API
+  async function performGitBackup(config: any, logId: string) {
+    try {
+      const [owner, repo] = (config.githubRepo as string).split("/");
+      const token = config.githubToken as string;
+      const branch = config.githubBranch || "main";
+      const headers = { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" };
+
+      const project = await storage.getProject(config.projectId);
+      if (!project) throw new Error("Project not found");
+
+      const backupData = {
+        project: {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          status: project.status,
+          previewUrl: project.previewUrl,
+          createdAt: project.createdAt,
+        },
+        backupTimestamp: new Date().toISOString(),
+        workEntries: await storage.getWorkEntries({ projectId: project.id }),
+        updates: await storage.getProjectUpdates(project.id),
+      };
+
+      const content = Buffer.from(JSON.stringify(backupData, null, 2)).toString("base64");
+      const filePath = `backups/${project.name.replace(/[^a-zA-Z0-9-_]/g, "_")}/backup_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      const commitMessage = `Backup: ${project.name} - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
+      let sha: string | undefined;
+      try {
+        const existRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`, { headers });
+        if (existRes.ok) {
+          const existData = await existRes.json() as any;
+          sha = existData.sha;
+        }
+      } catch {}
+
+      const body: any = {
+        message: commitMessage,
+        content,
+        branch,
+      };
+      if (sha) body.sha = sha;
+
+      const pushRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!pushRes.ok) {
+        const errBody = await pushRes.text();
+        throw new Error(`GitHub API error: ${pushRes.status} - ${errBody}`);
+      }
+
+      const pushData = await pushRes.json() as any;
+
+      await storage.updateGitBackupLog(logId, {
+        status: "success",
+        commitSha: pushData.commit?.sha || null,
+        filesCount: 1,
+        commitMessage,
+      });
+
+      await storage.updateGitBackupConfig(config.id, {
+        lastPushAt: new Date(),
+        nextScheduledAt: config.autopilotEnabled ? getNextScheduledTime(config.autopilotFrequency || "daily") : null,
+      });
+
+      try {
+        let backupRate = await storage.getBillingRateByCode("code_backup");
+        if (!backupRate) {
+          backupRate = await storage.createBillingRate({
+            code: "code_backup",
+            name: "Code Backup",
+            description: "Automated code backup to GitHub repository",
+            unitLabel: "backup",
+            rateCents: 500,
+            isActive: true,
+          });
+        }
+        if (backupRate.isActive) {
+          await storage.createWorkEntry({
+            projectId: config.projectId,
+            customerId: config.customerId,
+            rateId: backupRate.id,
+            quantity: "1",
+            description: `Code backup to ${config.githubRepo} (${pushData.commit?.sha?.substring(0, 7) || "success"})`,
+          });
+        }
+      } catch (billingErr) {
+        console.error("Failed to create billing entry for backup:", billingErr);
+      }
+
+    } catch (err: any) {
+      console.error("Git backup failed:", err);
+      await storage.updateGitBackupLog(logId, {
+        status: "failed",
+        errorMessage: err.message || "Unknown error",
+      });
+    }
+  }
+
+  // Autopilot scheduler - runs every 5 minutes
+  setInterval(async () => {
+    try {
+      const dueConfigs = await storage.getAutopilotDueConfigs();
+      for (const config of dueConfigs) {
+        if (!config.githubToken || !config.githubRepo) continue;
+        const log = await storage.createGitBackupLog({
+          configId: config.id,
+          projectId: config.projectId,
+          status: "pending",
+          triggeredBy: "autopilot",
+          commitMessage: `Auto-backup ${new Date().toISOString().split("T")[0]}`,
+          commitSha: null,
+          filesCount: null,
+          errorMessage: null,
+        });
+        performGitBackup(config, log.id).catch(err => console.error("Autopilot backup failed:", err));
+      }
+    } catch (err) {
+      console.error("Autopilot scheduler error:", err);
+    }
+  }, 5 * 60 * 1000);
+
   return httpServer;
 }

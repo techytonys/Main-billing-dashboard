@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
-  conversations, conversationMessages, apiKeys,
+  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs,
   type User, type InsertUser,
   type Customer, type InsertCustomer,
   type Project, type InsertProject,
@@ -27,6 +27,8 @@ import {
   type Conversation, type InsertConversation,
   type ConversationMessage, type InsertConversationMessage,
   type ApiKey, type InsertApiKey,
+  type GitBackupConfig, type InsertGitBackupConfig,
+  type GitBackupLog, type InsertGitBackupLog,
   pushSubscriptions,
   type PushSubscription, type InsertPushSubscription,
   agentCostEntries,
@@ -51,6 +53,7 @@ export interface IStorage {
 
   getBillingRates(): Promise<BillingRate[]>;
   getBillingRate(id: string): Promise<BillingRate | undefined>;
+  getBillingRateByCode(code: string): Promise<BillingRate | undefined>;
   createBillingRate(rate: InsertBillingRate): Promise<BillingRate>;
   updateBillingRate(id: string, rate: Partial<InsertBillingRate>): Promise<BillingRate | undefined>;
   deleteBillingRate(id: string): Promise<boolean>;
@@ -163,6 +166,20 @@ export interface IStorage {
   updateApiKey(id: string, updates: Partial<{ name: string; isActive: boolean; scopes: string; customerId: string | null }>): Promise<ApiKey | undefined>;
   deleteApiKey(id: string): Promise<boolean>;
   touchApiKeyLastUsed(id: string): Promise<void>;
+
+  getGitBackupConfigs(projectId?: string): Promise<GitBackupConfig[]>;
+  getGitBackupConfig(id: string): Promise<GitBackupConfig | undefined>;
+  getGitBackupConfigByProject(projectId: string): Promise<GitBackupConfig | undefined>;
+  getGitBackupConfigByCustomer(customerId: string): Promise<GitBackupConfig[]>;
+  createGitBackupConfig(config: InsertGitBackupConfig): Promise<GitBackupConfig>;
+  updateGitBackupConfig(id: string, updates: Partial<GitBackupConfig>): Promise<GitBackupConfig | undefined>;
+  deleteGitBackupConfig(id: string): Promise<boolean>;
+
+  getGitBackupLogs(configId: string, limit?: number): Promise<GitBackupLog[]>;
+  getGitBackupLogsByProject(projectId: string, limit?: number): Promise<GitBackupLog[]>;
+  createGitBackupLog(log: InsertGitBackupLog): Promise<GitBackupLog>;
+  updateGitBackupLog(id: string, updates: Partial<GitBackupLog>): Promise<GitBackupLog | undefined>;
+  getAutopilotDueConfigs(): Promise<GitBackupConfig[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -244,6 +261,11 @@ export class DatabaseStorage implements IStorage {
 
   async getBillingRate(id: string): Promise<BillingRate | undefined> {
     const [rate] = await db.select().from(billingRates).where(eq(billingRates.id, id));
+    return rate;
+  }
+
+  async getBillingRateByCode(code: string): Promise<BillingRate | undefined> {
+    const [rate] = await db.select().from(billingRates).where(eq(billingRates.code, code));
     return rate;
   }
 
@@ -909,6 +931,74 @@ export class DatabaseStorage implements IStorage {
 
   async touchApiKeyLastUsed(id: string): Promise<void> {
     await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
+  }
+
+  async getGitBackupConfigs(projectId?: string): Promise<GitBackupConfig[]> {
+    if (projectId) {
+      return db.select().from(gitBackupConfigs).where(eq(gitBackupConfigs.projectId, projectId)).orderBy(desc(gitBackupConfigs.createdAt));
+    }
+    return db.select().from(gitBackupConfigs).orderBy(desc(gitBackupConfigs.createdAt));
+  }
+
+  async getGitBackupConfig(id: string): Promise<GitBackupConfig | undefined> {
+    const [config] = await db.select().from(gitBackupConfigs).where(eq(gitBackupConfigs.id, id));
+    return config;
+  }
+
+  async getGitBackupConfigByProject(projectId: string): Promise<GitBackupConfig | undefined> {
+    const [config] = await db.select().from(gitBackupConfigs).where(eq(gitBackupConfigs.projectId, projectId));
+    return config;
+  }
+
+  async getGitBackupConfigByCustomer(customerId: string): Promise<GitBackupConfig[]> {
+    return db.select().from(gitBackupConfigs).where(eq(gitBackupConfigs.customerId, customerId)).orderBy(desc(gitBackupConfigs.createdAt));
+  }
+
+  async createGitBackupConfig(config: InsertGitBackupConfig): Promise<GitBackupConfig> {
+    const [created] = await db.insert(gitBackupConfigs).values(config).returning();
+    return created;
+  }
+
+  async updateGitBackupConfig(id: string, updates: Partial<GitBackupConfig>): Promise<GitBackupConfig | undefined> {
+    const [updated] = await db.update(gitBackupConfigs).set(updates).where(eq(gitBackupConfigs.id, id)).returning();
+    return updated;
+  }
+
+  async deleteGitBackupConfig(id: string): Promise<boolean> {
+    const result = await db.delete(gitBackupConfigs).where(eq(gitBackupConfigs.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getGitBackupLogs(configId: string, limit?: number): Promise<GitBackupLog[]> {
+    const q = db.select().from(gitBackupLogs).where(eq(gitBackupLogs.configId, configId)).orderBy(desc(gitBackupLogs.createdAt));
+    if (limit) return q.limit(limit);
+    return q;
+  }
+
+  async getGitBackupLogsByProject(projectId: string, limit?: number): Promise<GitBackupLog[]> {
+    const q = db.select().from(gitBackupLogs).where(eq(gitBackupLogs.projectId, projectId)).orderBy(desc(gitBackupLogs.createdAt));
+    if (limit) return q.limit(limit);
+    return q;
+  }
+
+  async createGitBackupLog(log: InsertGitBackupLog): Promise<GitBackupLog> {
+    const [created] = await db.insert(gitBackupLogs).values(log).returning();
+    return created;
+  }
+
+  async updateGitBackupLog(id: string, updates: Partial<GitBackupLog>): Promise<GitBackupLog | undefined> {
+    const [updated] = await db.update(gitBackupLogs).set(updates).where(eq(gitBackupLogs.id, id)).returning();
+    return updated;
+  }
+
+  async getAutopilotDueConfigs(): Promise<GitBackupConfig[]> {
+    return db.select().from(gitBackupConfigs).where(
+      and(
+        eq(gitBackupConfigs.autopilotEnabled, true),
+        eq(gitBackupConfigs.isConnected, true),
+        lt(gitBackupConfigs.nextScheduledAt, new Date()),
+      )
+    );
   }
 }
 

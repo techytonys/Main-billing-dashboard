@@ -83,6 +83,16 @@ check_key "SESSION_SECRET" "Session Secret"
 check_key "ADMIN_PASSWORD" "Admin Password"
 check_key "POSTGRES_PASSWORD" "Database Password"
 
+# Optional keys (info only)
+GH_CID=$(grep "^GITHUB_CLIENT_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+GH_CSEC=$(grep "^GITHUB_CLIENT_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+if [ -n "$GH_CID" ] && [ -n "$GH_CSEC" ]; then
+  echo -e "  ${GREEN}✔${RESET} GitHub OAuth (code backups)"
+else
+  echo -e "  ${DIM}ℹ GitHub OAuth not configured (code backups disabled)${RESET}"
+  echo -e "  ${DIM}  Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to .env to enable${RESET}"
+fi
+
 # Ensure SITE_URL exists
 if ! grep -q "^SITE_URL=" "$APP_DIR/.env" 2>/dev/null; then
   DOMAIN_VAL=$(grep "^DOMAIN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)

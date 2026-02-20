@@ -7,6 +7,7 @@ import {
   ArrowLeft, CircleDot, MessageSquare, CreditCard, Download, Trash2, ShieldAlert, Star,
   CalendarClock, ExternalLink, ImageIcon, Receipt, Wallet, LayoutDashboard, Bell, Check,
   Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
+  FolderGit2, Github, GitBranch, Zap, Play, HelpCircle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -689,7 +690,7 @@ function PortalScreenshots({ token, projectId }: { token: string; projectId: str
   );
 }
 
-type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support";
+type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups";
 
 interface PortalNotification {
   id: string;
@@ -1190,6 +1191,13 @@ export default function ClientPortal() {
     } else if (paymentPlan === "cancelled") {
       toast({ title: "Plan Not Started", description: "You can accept the payment plan at any time.", variant: "destructive" });
     }
+    const githubConnected = urlParams.get("github_connected");
+    const githubUser = urlParams.get("github_user");
+    if (githubConnected === "true") {
+      toast({ title: "GitHub Connected!", description: `Your GitHub account (${githubUser || ""}) has been linked successfully.` });
+      setActiveTab("backups");
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", params.token, "git-backups"] });
+    }
   }, [searchString]);
 
   const payInvoice = useMutation({
@@ -1229,6 +1237,16 @@ export default function ClientPortal() {
     queryFn: async () => {
       const res = await fetch(`/api/portal/${params.token}/payment-plans`);
       if (!res.ok) throw new Error("Failed to load payment plans");
+      return res.json();
+    },
+    enabled: !!params.token,
+  });
+
+  const { data: gitBackups } = useQuery<any[]>({
+    queryKey: ["/api/portal", params.token, "git-backups"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${params.token}/git-backups`);
+      if (!res.ok) throw new Error("Failed to load backups");
       return res.json();
     },
     enabled: !!params.token,
@@ -1374,6 +1392,7 @@ export default function ClientPortal() {
     { id: "projects", label: "Projects", icon: FolderOpen, count: projects.filter(p => p.status === "active" || p.status === "in_progress").length },
     { id: "billing", label: "Billing", icon: Wallet },
     { id: "support", label: "Support", icon: LifeBuoy, count: activeTicketCount },
+    { id: "backups", label: "Backups", icon: FolderGit2 },
   ];
 
   return (
@@ -2401,6 +2420,150 @@ export default function ClientPortal() {
                 </DialogContent>
               </Dialog>
             </>
+          )}
+
+          {activeTab === "backups" && (
+            <div className="space-y-6" data-testid="section-backups">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                  <FolderGit2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold" data-testid="text-backups-title">Code Backups</h2>
+                  <p className="text-xs text-muted-foreground">Your project code is backed up to your GitHub account</p>
+                </div>
+              </div>
+
+              {!gitBackups || gitBackups.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <Github className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="font-semibold mb-2">No Backups Configured Yet</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Connect your GitHub account to enable automatic code backups for your projects.
+                  </p>
+                  <Button
+                    onClick={() => window.location.href = `/api/portal/${params.token}/github/connect`}
+                    className="bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black"
+                    data-testid="button-connect-github"
+                  >
+                    <Github className="w-4 h-4 mr-2" />
+                    Connect GitHub
+                  </Button>
+                  <div className="mt-6 p-4 rounded-lg bg-muted/50 text-left max-w-md mx-auto">
+                    <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4 text-muted-foreground" />
+                      Don't have a GitHub account?
+                    </h4>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      GitHub is a free platform where your project code is securely stored. You'll need an account to enable backups.
+                    </p>
+                    <a
+                      href="https://github.com/signup"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                      data-testid="link-github-signup"
+                    >
+                      Create a free GitHub account
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Once you've signed up, come back here and click "Connect GitHub" above — you'll be redirected to authorize the connection and then brought right back.
+                    </p>
+                  </div>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {gitBackups.map((backup: any) => (
+                    <Card key={backup.id} className="overflow-hidden" data-testid={`card-backup-${backup.id}`}>
+                      <div className="p-4 border-b bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <FolderGit2 className="w-5 h-5 text-violet-500" />
+                            <div>
+                              <h3 className="font-semibold text-sm">{backup.projectName}</h3>
+                              {backup.githubRepo && (
+                                <p className="text-xs text-muted-foreground font-mono">{backup.githubRepo}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {backup.isConnected ? (
+                              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                <Github className="w-3 h-3 mr-1" />
+                                {backup.githubUsername}
+                              </Badge>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => window.location.href = `/api/portal/${params.token}/github/connect`}
+                                data-testid={`button-connect-github-${backup.id}`}
+                              >
+                                <Github className="w-3 h-3 mr-1" />
+                                Connect
+                              </Button>
+                            )}
+                            {backup.autopilotEnabled && (
+                              <Badge variant="secondary" className="text-xs">
+                                <Zap className="w-3 h-3 mr-1 text-amber-500" />
+                                Autopilot
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 space-y-3">
+                        {backup.lastPushAt && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span>Last backup: {new Date(backup.lastPushAt).toLocaleString()}</span>
+                          </div>
+                        )}
+
+                        {backup.recentLogs && backup.recentLogs.length > 0 ? (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent Backups</h4>
+                            {backup.recentLogs.map((log: any) => (
+                              <div key={log.id} className="flex items-center justify-between py-1.5 px-3 rounded-md bg-muted/50 text-xs" data-testid={`log-${log.id}`}>
+                                <div className="flex items-center gap-2">
+                                  {log.status === "success" ? (
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                  ) : log.status === "failed" ? (
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                  ) : (
+                                    <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+                                  )}
+                                  <span>{log.commitMessage || "Backup"}</span>
+                                  {log.triggeredBy === "autopilot" && (
+                                    <span title="Autopilot"><Zap className="w-3 h-3 text-amber-500" /></span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <span>{new Date(log.createdAt).toLocaleString()}</span>
+                                  {log.commitSha && (
+                                    <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{log.commitSha.substring(0, 7)}</code>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-2">No backups yet</p>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+
+                  {gitBackups.every((b: any) => b.isConnected) && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Your admin manages backup schedules and pushes. Contact support if you need to update your GitHub connection.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

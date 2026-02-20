@@ -34,6 +34,7 @@ import ConversationPage from "@/pages/conversation";
 import AdminConversations from "@/pages/admin-conversations";
 import ApiKeys from "@/pages/api-keys";
 import ApiDocs from "@/pages/api-docs";
+import CodeBackups from "@/pages/code-backups";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -51,6 +52,7 @@ function DashboardRouter() {
       <Route path="/admin/quote-builder" component={QuoteBuilder} />
       <Route path="/admin/conversations" component={AdminConversations} />
       <Route path="/admin/api-keys" component={ApiKeys} />
+      <Route path="/admin/code-backups" component={CodeBackups} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

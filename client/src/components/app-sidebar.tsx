@@ -11,6 +11,7 @@ import {
   Calculator,
   MessagesSquare,
   Key,
+  FolderGit2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -38,6 +39,7 @@ const mainItems = [
   { title: "Support Tickets", url: "/admin/support", icon: LifeBuoy },
   { title: "Q&A", url: "/admin/qa", icon: MessageSquare },
   { title: "API Keys", url: "/admin/api-keys", icon: Key },
+  { title: "Code Backups", url: "/admin/code-backups", icon: FolderGit2 },
 ];
 
 const settingsItems = [

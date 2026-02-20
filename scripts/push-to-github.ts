@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Enhanced invoices with status filters, rich detail dialog, work breakdown, and deployment script update';
+const COMMIT_MESSAGE = 'Full backup - Git backup auto-billing, billing rate management, deploy script GitHub OAuth support, price on backup buttons';
 
 let connectionSettings: any;
 

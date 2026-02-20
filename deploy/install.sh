@@ -124,6 +124,8 @@ STRIPE_PK=""
 RESEND_KEY=""
 RESEND_AUD=""
 SITE_DOMAIN=""
+GITHUB_CID=""
+GITHUB_CSEC=""
 
 if [ -f "$APP_DIR/.env" ]; then
   STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
@@ -131,6 +133,8 @@ if [ -f "$APP_DIR/.env" ]; then
   RESEND_KEY=$(grep "^RESEND_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   RESEND_AUD=$(grep "^RESEND_AUDIENCE_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   SITE_DOMAIN=$(grep "^DOMAIN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  GITHUB_CID=$(grep "^GITHUB_CLIENT_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  GITHUB_CSEC=$(grep "^GITHUB_CLIENT_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
 fi
 
 echo ""
@@ -163,6 +167,26 @@ fi
 
 if [ -z "$RESEND_AUD" ]; then
   read -p "$(echo -e "  ${MAGENTA}")Resend Audience ID (optional, press Enter to skip): $(echo -e "${RESET}")" RESEND_AUD
+fi
+
+echo ""
+echo -e "  ${YELLOW}${BOLD}GitHub OAuth (for Git Code Backups):${RESET}"
+echo ""
+
+if [ -z "$GITHUB_CID" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")GitHub Client ID (optional, press Enter to skip): $(echo -e "${RESET}")" GITHUB_CID
+else
+  echo -e "  ${DIM}GitHub Client ID: ${GREEN}set${RESET} (${DIM}${GITHUB_CID:0:7}...${RESET})"
+  read -p "$(echo -e "  ${MAGENTA}")  Press Enter to keep, or paste new: $(echo -e "${RESET}")" NEW_GID
+  [ -n "$NEW_GID" ] && GITHUB_CID="$NEW_GID"
+fi
+
+if [ -z "$GITHUB_CSEC" ]; then
+  read -p "$(echo -e "  ${MAGENTA}")GitHub Client Secret (optional, press Enter to skip): $(echo -e "${RESET}")" GITHUB_CSEC
+else
+  echo -e "  ${DIM}GitHub Client Secret: ${GREEN}set${RESET} (${DIM}${GITHUB_CSEC:0:7}...${RESET})"
+  read -p "$(echo -e "  ${MAGENTA}")  Press Enter to keep, or paste new: $(echo -e "${RESET}")" NEW_GSEC
+  [ -n "$NEW_GSEC" ] && GITHUB_CSEC="$NEW_GSEC"
 fi
 
 if [ -z "$SITE_DOMAIN" ]; then
@@ -200,6 +224,8 @@ RESEND_AUDIENCE_ID=${RESEND_AUD}
 VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
 VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com
+GITHUB_CLIENT_ID=${GITHUB_CID}
+GITHUB_CLIENT_SECRET=${GITHUB_CSEC}
 ENVFILE
 
 echo -e "  ${GREEN}Environment locked and loaded${RESET}"
@@ -248,6 +274,7 @@ echo -e "    ${GREEN}✔${RESET} Stripe Secret Key     (${DIM}${STRIPE_SK:0:7}..
 echo -e "    ${GREEN}✔${RESET} Stripe Publishable Key (${DIM}${STRIPE_PK:0:7}...${RESET})"
 echo -e "    ${GREEN}✔${RESET} Resend API Key         (${DIM}${RESEND_KEY:0:7}...${RESET})"
 [ -n "$RESEND_AUD" ] && echo -e "    ${GREEN}✔${RESET} Resend Audience ID     (${DIM}${RESEND_AUD:0:8}...${RESET})"
+[ -n "$GITHUB_CID" ] && echo -e "    ${GREEN}✔${RESET} GitHub OAuth           (code backups)"
 echo -e "    ${GREEN}✔${RESET} VAPID Keys             (push notifications)"
 echo -e "    ${GREEN}✔${RESET} Session Secret"
 echo -e "    ${GREEN}✔${RESET} Database Credentials"

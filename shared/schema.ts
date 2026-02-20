@@ -373,6 +373,43 @@ export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true, c
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 
+export const gitBackupConfigs = pgTable("git_backup_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  customerId: varchar("customer_id").notNull(),
+  githubToken: text("github_token"),
+  githubUsername: text("github_username"),
+  githubRepo: text("github_repo"),
+  githubBranch: text("github_branch").default("main"),
+  autopilotEnabled: boolean("autopilot_enabled").default(false),
+  autopilotFrequency: text("autopilot_frequency").default("daily"),
+  lastPushAt: timestamp("last_push_at"),
+  nextScheduledAt: timestamp("next_scheduled_at"),
+  isConnected: boolean("is_connected").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const gitBackupLogs = pgTable("git_backup_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").notNull(),
+  projectId: varchar("project_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  commitSha: text("commit_sha"),
+  commitMessage: text("commit_message"),
+  filesCount: integer("files_count"),
+  errorMessage: text("error_message"),
+  triggeredBy: text("triggered_by").notNull().default("manual"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGitBackupConfigSchema = createInsertSchema(gitBackupConfigs).omit({ id: true, createdAt: true, lastPushAt: true, nextScheduledAt: true });
+export const insertGitBackupLogSchema = createInsertSchema(gitBackupLogs).omit({ id: true, createdAt: true });
+
+export type GitBackupConfig = typeof gitBackupConfigs.$inferSelect;
+export type InsertGitBackupConfig = z.infer<typeof insertGitBackupConfigSchema>;
+export type GitBackupLog = typeof gitBackupLogs.$inferSelect;
+export type InsertGitBackupLog = z.infer<typeof insertGitBackupLogSchema>;
+
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerId: varchar("customer_id").notNull(),
