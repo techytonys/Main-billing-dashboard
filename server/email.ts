@@ -751,33 +751,61 @@ export async function sendAuditReportEmail(to: string, url: string, score: numbe
     const { client, fromEmail } = await getResendClient();
     const siteUrl = getSiteUrl();
 
+    const gradeColor = score >= 75 ? '#22c55e' : score >= 50 ? '#eab308' : '#ef4444';
+    const gradeBg = score >= 75 ? '#0f291a' : score >= 50 ? '#291f0a' : '#2d0f0f';
+    const issueCount = score < 75 ? `${Math.round((100 - score) / 5)}+` : 'a few';
+    const urgency = score < 50
+      ? 'Your site has critical issues that are likely costing you customers right now.'
+      : score < 75
+      ? 'We found several opportunities that could significantly improve your results.'
+      : 'Your site is in good shape — a few tweaks could make it even stronger.';
+
     const html = `
-      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; border-radius: 12px; overflow: hidden;">
-        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 40px 30px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0 0 8px; font-size: 24px;">Your Website Audit Report</h1>
-          <p style="color: #94a3b8; margin: 0; font-size: 14px;">Powered by AI Powered Sites</p>
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0;">
+        <div style="background: #3b82f6; height: 4px;"></div>
+        <div style="padding: 40px 30px 20px; text-align: center;">
+          <p style="color: #3b82f6; font-weight: 700; font-size: 11px; letter-spacing: 2px; margin: 0 0 20px;">AI POWERED SITES</p>
+          <h1 style="color: #ffffff; margin: 0 0 6px; font-size: 26px; font-weight: 700;">Your Website Audit Report</h1>
+          <p style="color: #64748b; margin: 0; font-size: 13px;">for <strong style="color: #3b82f6;">${url}</strong></p>
         </div>
-        <div style="padding: 30px;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <div style="display: inline-block; width: 80px; height: 80px; line-height: 80px; border-radius: 12px; background: ${score >= 75 ? '#22c55e' : score >= 50 ? '#eab308' : '#ef4444'}; color: white; font-size: 32px; font-weight: bold;">${grade}</div>
-            <p style="color: #94a3b8; margin-top: 8px; font-size: 14px;">Overall Score: ${score}/100</p>
+
+        <div style="padding: 0 30px 30px; text-align: center;">
+          <div style="display: inline-block; background: ${gradeBg}; border: 2px solid ${gradeColor}; border-radius: 16px; padding: 20px 40px; margin: 10px 0 20px;">
+            <div style="font-size: 48px; font-weight: 800; color: ${gradeColor}; line-height: 1;">${grade}</div>
+            <div style="font-size: 14px; color: #94a3b8; margin-top: 4px;">${score} out of 100</div>
           </div>
-          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
-            We've analyzed <strong style="color: #3b82f6;">${url}</strong> and found opportunities to improve your website's performance, SEO, and user experience.
+
+          <p style="color: #cbd5e1; font-size: 15px; line-height: 1.7; margin: 0 0 8px;">
+            ${urgency}
           </p>
-          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
-            Your detailed report is attached as a PDF. Open it to see specific recommendations for each category.
-          </p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${siteUrl}" style="display: inline-block; padding: 12px 32px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Want Us to Fix These Issues?</a>
-          </div>
-          <p style="color: #64748b; font-size: 12px; text-align: center;">
-            Our AI-powered team can implement every recommendation in your report — fast.
+          <p style="color: #94a3b8; font-size: 13px; line-height: 1.6;">
+            We found <strong style="color: #ffffff;">${issueCount} areas for improvement</strong> across SEO, performance, security, and more. Your full report is attached as a PDF.
           </p>
         </div>
+
+        <div style="padding: 0 30px 20px;">
+          <div style="background: #1e293b; border-radius: 12px; padding: 20px 24px;">
+            <p style="color: #ffffff; font-weight: 700; font-size: 14px; margin: 0 0 12px;">What's inside your report:</p>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr><td style="padding: 6px 0; color: #22c55e; font-size: 13px; width: 20px;">✓</td><td style="padding: 6px 0; color: #cbd5e1; font-size: 13px;">Detailed scoring across 9 categories</td></tr>
+              <tr><td style="padding: 6px 0; color: #22c55e; font-size: 13px;">✓</td><td style="padding: 6px 0; color: #cbd5e1; font-size: 13px;">"Why This Matters" business impact for each issue</td></tr>
+              <tr><td style="padding: 6px 0; color: #22c55e; font-size: 13px;">✓</td><td style="padding: 6px 0; color: #cbd5e1; font-size: 13px;">Step-by-step recommendations to fix problems</td></tr>
+              <tr><td style="padding: 6px 0; color: #22c55e; font-size: 13px;">✓</td><td style="padding: 6px 0; color: #cbd5e1; font-size: 13px;">Keyword analysis & search visibility insights</td></tr>
+              <tr><td style="padding: 6px 0; color: #22c55e; font-size: 13px;">✓</td><td style="padding: 6px 0; color: #cbd5e1; font-size: 13px;">Priority action items ranked by impact</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div style="padding: 10px 30px 30px; text-align: center;">
+          <p style="color: #ffffff; font-weight: 600; font-size: 16px; margin: 0 0 8px;">Need help implementing the fixes?</p>
+          <p style="color: #94a3b8; font-size: 13px; margin: 0 0 20px;">Most clients see measurable improvements within the first week.</p>
+          <a href="${siteUrl}" style="display: inline-block; padding: 14px 36px; background: #3b82f6; color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 15px;">Get a Free Consultation</a>
+          <p style="color: #475569; font-size: 11px; margin-top: 12px;">No obligation · Fixed pricing · Results guaranteed</p>
+        </div>
+
         <div style="background: #1e293b; padding: 20px 30px; text-align: center;">
-          <p style="color: #64748b; font-size: 11px; margin: 0;">
-            AI Powered Sites — <a href="${siteUrl}" style="color: #3b82f6; text-decoration: none;">aipoweredsites.com</a>
+          <p style="color: #475569; font-size: 11px; margin: 0;">
+            © AI Powered Sites · <a href="${siteUrl}" style="color: #3b82f6; text-decoration: none;">aipoweredsites.com</a> · hello@aipoweredsites.com
           </p>
         </div>
       </div>

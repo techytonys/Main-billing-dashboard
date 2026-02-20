@@ -305,6 +305,8 @@ export default function LandingPage() {
   const [auditProgress, setAuditProgress] = useState(0);
   const [auditStage, setAuditStage] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
 
@@ -347,7 +349,7 @@ export default function LandingPage() {
       const fetchPromise = fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: auditUrl, email: auditEmail }),
+        body: JSON.stringify({ url: auditUrl }),
       });
 
       let stageIndex = 0;
@@ -384,7 +386,7 @@ export default function LandingPage() {
     onSuccess: (data) => {
       setAuditLoading(false);
       setAuditResult(data);
-      toast({ title: "Report sent!", description: "Check your email for the full PDF report." });
+      setEmailDialogOpen(true);
       setTimeout(() => {
         document.getElementById("audit-results")?.scrollIntoView({ behavior: "smooth" });
       }, 300);
@@ -395,6 +397,28 @@ export default function LandingPage() {
       toast({ title: "Audit failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const sendReport = async () => {
+    if (!auditEmail.trim() || !auditResult) return;
+    setSendingEmail(true);
+    try {
+      const res = await fetch("/api/audit/send-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: auditEmail, auditData: auditResult }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed to send report" }));
+        throw new Error(err.message || "Failed to send report");
+      }
+      toast({ title: "Report sent!", description: "Check your email for the full PDF report." });
+      setEmailDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: "Send failed", description: err.message || "Could not send the report. You can still download it below.", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
 
   const downloadPdf = () => {
     if (!auditResult?.pdfBase64) return;
@@ -596,31 +620,21 @@ export default function LandingPage() {
                 <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/40 via-violet-500/30 to-blue-500/40 opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
                 <div className="relative bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.4),0_1px_4px_rgba(59,130,246,0.1)]">
                   <div className="flex items-center h-[52px]">
-                    <div className="flex items-center gap-2 pl-5 pr-3 border-r border-white/[0.06] flex-1 min-w-0">
-                      <Mail className="w-4 h-4 text-violet-400 shrink-0" />
-                      <input
-                        type="email"
-                        placeholder="your@email.com"
-                        value={auditEmail}
-                        onChange={(e) => setAuditEmail(e.target.value)}
-                        className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none min-w-0"
-                        data-testid="input-audit-email"
-                      />
-                    </div>
-                    <div className="hidden sm:flex items-center gap-2 px-3 border-r border-white/[0.06] flex-1 min-w-0">
+                    <div className="flex items-center gap-2 pl-5 pr-3 flex-1 min-w-0">
                       <Globe className="w-4 h-4 text-blue-400 shrink-0" />
                       <input
-                        placeholder="yourwebsite.com"
+                        placeholder="Enter your website URL..."
                         value={auditUrl}
                         onChange={(e) => setAuditUrl(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && auditUrl.trim() && !runAudit.isPending) runAudit.mutate(); }}
                         className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none min-w-0"
                         data-testid="input-audit-url"
                       />
                     </div>
                     <button
                       onClick={() => runAudit.mutate()}
-                      disabled={!auditUrl.trim() || !auditEmail.trim() || runAudit.isPending}
-                      className="flex items-center justify-center gap-1.5 px-5 h-[42px] mx-[5px] bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full transition-all duration-300 shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_28px_rgba(99,102,241,0.5)] hover:brightness-110"
+                      disabled={!auditUrl.trim() || runAudit.isPending}
+                      className="flex items-center justify-center gap-1.5 px-6 h-[42px] mx-[5px] bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full transition-all duration-300 shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_28px_rgba(99,102,241,0.5)] hover:brightness-110"
                       data-testid="button-audit-submit"
                     >
                       {runAudit.isPending ? (
@@ -629,21 +643,6 @@ export default function LandingPage() {
                         <><Search className="w-4 h-4" /><span className="hidden sm:inline">Free Audit</span><ArrowRight className="w-3.5 h-3.5 sm:hidden" /></>
                       )}
                     </button>
-                  </div>
-                </div>
-              </div>
-              <div className="sm:hidden mt-3 px-2">
-                <div className="relative group">
-                  <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/20 to-violet-500/20 opacity-60 blur-[1px]" />
-                  <div className="relative flex items-center gap-2 bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] h-[44px] px-4">
-                    <Globe className="w-4 h-4 text-blue-400 shrink-0" />
-                    <input
-                      placeholder="yourwebsite.com"
-                      value={auditUrl}
-                      onChange={(e) => setAuditUrl(e.target.value)}
-                      className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none"
-                      data-testid="input-audit-url-mobile"
-                    />
                   </div>
                 </div>
               </div>
@@ -1408,6 +1407,64 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="sm:max-w-md bg-[#12121a] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Mail className="w-5 h-5 text-violet-400" />
+              Get Your Full Report
+            </DialogTitle>
+            <DialogDescription className="text-white/50">
+              Enter your email to receive the detailed PDF report with all recommendations.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="text-center">
+              <div className="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+                <span className="text-2xl font-bold" style={{ color: auditResult?.overallScore >= 75 ? '#22c55e' : auditResult?.overallScore >= 50 ? '#eab308' : '#ef4444' }}>
+                  {auditResult?.grade}
+                </span>
+                <span className="text-white/50 text-sm">{auditResult?.overallScore}/100</span>
+              </div>
+            </div>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
+              <input
+                type="email"
+                placeholder="your@email.com"
+                value={auditEmail}
+                onChange={(e) => setAuditEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && auditEmail.trim()) sendReport(); }}
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white text-sm placeholder:text-white/25 outline-none focus:border-violet-500/50 transition-colors"
+                data-testid="input-audit-email-dialog"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={sendReport}
+                disabled={!auditEmail.trim() || sendingEmail}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all"
+                data-testid="button-send-report"
+              >
+                {sendingEmail ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {sendingEmail ? "Sending..." : "Email My Report"}
+              </button>
+              <button
+                onClick={() => { downloadPdf(); setEmailDialogOpen(false); }}
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white text-sm rounded-lg hover:bg-white/10 transition-colors"
+                data-testid="button-download-report-dialog"
+              >
+                <FileDown className="w-4 h-4" />
+                Download
+              </button>
+            </div>
+            <p className="text-[11px] text-white/30 text-center">
+              We'll include actionable tips to improve your score
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={chatOpen} onOpenChange={setChatOpen}>
         <DialogContent className="sm:max-w-lg bg-[#12121a] border-white/10 text-white">

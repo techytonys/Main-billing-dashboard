@@ -2253,16 +2253,12 @@ export async function registerRoutes(
     }
   });
 
-  // Website audit endpoint (public)
+  // Website audit endpoint (public) - email is now optional
   app.post("/api/audit", async (req, res) => {
     try {
       const { url, email } = req.body;
       if (!url) {
         return res.status(400).json({ message: "URL is required" });
-      }
-
-      if (!email) {
-        return res.status(400).json({ message: "Email is required" });
       }
 
       const { runAudit } = await import("./audit");
@@ -2274,16 +2270,45 @@ export async function registerRoutes(
 
       const pdfBase64 = pdfBuffer.toString('base64');
 
-      sendAuditReportEmail(email, auditResult.url, auditResult.overallScore, auditResult.grade, pdfBuffer)
-        .catch(err => console.error("Failed to send audit email:", err));
+      if (email) {
+        sendAuditReportEmail(email, auditResult.url, auditResult.overallScore, auditResult.grade, pdfBuffer)
+          .catch(err => console.error("Failed to send audit email:", err));
 
-      addNewsletterContact({ email })
-        .catch(err => console.error("Failed to add audit contact to audience:", err));
+        addNewsletterContact({ email })
+          .catch(err => console.error("Failed to add audit contact to audience:", err));
+      }
 
       res.json({ ...auditResult, pdfBase64 });
     } catch (err: any) {
       console.error("Audit error:", err);
       res.status(400).json({ message: err.message || "Failed to audit website" });
+    }
+  });
+
+  // Send audit report to email (separate endpoint for post-audit email capture)
+  app.post("/api/audit/send-report", async (req, res) => {
+    try {
+      const { email, auditData } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+      if (!auditData || !auditData.url || !auditData.categories || !auditData.overallScore) {
+        return res.status(400).json({ message: "Valid audit data is required" });
+      }
+
+      const { generateAuditPDF } = await import("./auditPdf");
+      const { addNewsletterContact } = await import("./email");
+
+      const pdfBuffer = await generateAuditPDF(auditData);
+
+      sendAuditReportEmail(email, auditData.url, auditData.overallScore, auditData.grade, pdfBuffer)
+        .catch(err => console.error("Failed to send audit email:", err));
+
+      addNewsletterContact({ email })
+        .catch(err => console.error("Failed to add audit contact to audience:", err));
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Send report error:", err);
+      res.status(500).json({ message: "Failed to send report" });
     }
   });
 
