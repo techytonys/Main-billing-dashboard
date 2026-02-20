@@ -731,18 +731,14 @@ export default function LandingPage() {
               </div>
               <div className="sm:col-span-2 p-5 rounded-xl border border-white/5 bg-white/[0.02]">
                 <p className="text-sm text-white/60 leading-relaxed mb-3" data-testid="text-audit-summary">{auditResult.summary}</p>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-3">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-xs text-emerald-300">Your detailed PDF report has been emailed to you</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 mb-3">
                   <Button onClick={downloadPdf} size="sm" className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-xs" data-testid="button-download-pdf">
                     <FileDown className="w-3.5 h-3.5 mr-1.5" />
                     Download PDF Report
                   </Button>
-                  <Button onClick={() => setChatOpen(true)} size="sm" variant="outline" className="border-white/15 text-white/80 bg-white/5 text-xs" data-testid="button-audit-get-help">
-                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                    Get Help Fixing These
+                  <Button onClick={() => setEmailDialogOpen(true)} size="sm" variant="outline" className="border-white/15 text-white/80 bg-white/5 text-xs" data-testid="button-email-report">
+                    <Mail className="w-3.5 h-3.5 mr-1.5" />
+                    Email Report
                   </Button>
                 </div>
               </div>
@@ -832,8 +828,56 @@ export default function LandingPage() {
               })}
             </div>
 
+            <div className="mt-8 relative overflow-hidden rounded-2xl border border-blue-500/20" data-testid="audit-cta-banner">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-violet-600/15 to-blue-600/10" />
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-violet-500" />
+              <div className="relative p-6 sm:p-8 text-center">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 mb-4">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-300" />
+                  <span className="text-xs font-semibold text-blue-300 tracking-wide uppercase">Free Consultation</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
+                  Get Your Free Website Strategy Session
+                </h3>
+                <p className="text-white/50 text-sm sm:text-base max-w-xl mx-auto mb-5 leading-relaxed">
+                  {auditResult.overallScore < 60
+                    ? `Your site is losing visitors and revenue. We'll show you exactly how to fix these issues and start growing your business online — at no cost.`
+                    : auditResult.overallScore < 80
+                    ? `Your site has real potential. Let us show you the quick wins that could boost your traffic by 50% or more — completely free.`
+                    : `Your site is performing well! Let's fine-tune it to unlock even more traffic and conversions — on us.`
+                  }
+                </p>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-5">
+                  <div className="flex items-center gap-2 text-xs text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>100% free, no strings attached</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Custom growth plan for your business</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>See results within days</span>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setChatOpen(true)}
+                  size="lg"
+                  className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-semibold px-8 shadow-[0_0_24px_rgba(99,102,241,0.4)] hover:shadow-[0_0_32px_rgba(99,102,241,0.6)] hover:brightness-110 transition-all"
+                  data-testid="button-audit-free-consult"
+                >
+                  <Rocket className="w-4 h-4 mr-2" />
+                  Claim Your Free Consultation
+                </Button>
+                <p className="text-[11px] text-white/25 mt-3">
+                  Limited availability · Respond within 24 hours
+                </p>
+              </div>
+            </div>
+
             {auditResult.topRecommendations?.length > 0 && (
-              <div className="mt-8 p-5 sm:p-6 rounded-xl border border-blue-500/20 bg-blue-500/5">
+              <div className="mt-6 p-5 sm:p-6 rounded-xl border border-white/5 bg-white/[0.02]">
                 <h3 className="text-sm font-semibold text-white/90 mb-4 flex items-center gap-2">
                   <Rocket className="w-4 h-4 text-blue-400" />
                   Top Recommendations
@@ -845,13 +889,6 @@ export default function LandingPage() {
                       <span>{rec}</span>
                     </div>
                   ))}
-                </div>
-                <div className="mt-5 pt-4 border-t border-white/5 flex flex-col sm:flex-row gap-3 items-center justify-between">
-                  <p className="text-xs text-white/40">Want our team to fix all of these?</p>
-                  <Button onClick={() => setChatOpen(true)} size="sm" className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-xs" data-testid="button-audit-cta">
-                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                    Let's Talk
-                  </Button>
                 </div>
               </div>
             )}
