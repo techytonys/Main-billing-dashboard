@@ -591,52 +591,65 @@ export default function LandingPage() {
               Custom web development services for startups and small businesses — AI-powered websites, apps, and portals designed to help you grow. No templates. No compromises.
             </p>
 
-            <div className="max-w-2xl mx-auto mb-8" data-testid="audit-form">
+            <div className="max-w-3xl mx-auto mb-8" data-testid="audit-form">
               <div className="relative group">
-                <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-blue-500/50 via-violet-500/40 to-blue-500/50 opacity-70 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
-                <div className="relative bg-[#0a0f1e] rounded-2xl p-1.5 border-2 border-black shadow-[0_8px_32px_rgba(0,0,0,0.5),0_2px_8px_rgba(59,130,246,0.15)]">
-                  <div className="flex flex-col sm:flex-row items-stretch">
-                    <div className="flex-1 flex flex-col sm:flex-row">
-                      <div className="flex-1 flex items-center gap-2.5 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.06]">
-                        <Globe className="w-[18px] h-[18px] text-blue-400 shrink-0" />
-                        <input
-                          placeholder="yourwebsite.com"
-                          value={auditUrl}
-                          onChange={(e) => setAuditUrl(e.target.value)}
-                          className="w-full bg-transparent text-white text-[15px] placeholder:text-white/25 outline-none"
-                          data-testid="input-audit-url"
-                        />
-                      </div>
-                      <div className="flex-1 flex items-center gap-2.5 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.06]">
-                        <Mail className="w-[18px] h-[18px] text-violet-400 shrink-0" />
-                        <input
-                          type="email"
-                          placeholder="your@email.com"
-                          value={auditEmail}
-                          onChange={(e) => setAuditEmail(e.target.value)}
-                          className="w-full bg-transparent text-white text-[15px] placeholder:text-white/25 outline-none"
-                          data-testid="input-audit-email"
-                        />
-                      </div>
+                <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/40 via-violet-500/30 to-blue-500/40 opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
+                <div className="relative bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.4),0_1px_4px_rgba(59,130,246,0.1)]">
+                  <div className="flex items-center h-[52px]">
+                    <div className="flex items-center gap-2 pl-5 pr-3 border-r border-white/[0.06] flex-1 min-w-0">
+                      <Mail className="w-4 h-4 text-violet-400 shrink-0" />
+                      <input
+                        type="email"
+                        placeholder="your@email.com"
+                        value={auditEmail}
+                        onChange={(e) => setAuditEmail(e.target.value)}
+                        className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none min-w-0"
+                        data-testid="input-audit-email"
+                      />
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2 px-3 border-r border-white/[0.06] flex-1 min-w-0">
+                      <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                      <input
+                        placeholder="yourwebsite.com"
+                        value={auditUrl}
+                        onChange={(e) => setAuditUrl(e.target.value)}
+                        className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none min-w-0"
+                        data-testid="input-audit-url"
+                      />
                     </div>
                     <button
                       onClick={() => runAudit.mutate()}
                       disabled={!auditUrl.trim() || !auditEmail.trim() || runAudit.isPending}
-                      className="flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-500 via-blue-400 to-violet-500 disabled:from-blue-600 disabled:via-blue-500 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-[15px] font-semibold rounded-xl sm:rounded-l-none sm:rounded-r-xl transition-all duration-300 shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_0_rgba(0,0,0,0.2),0_0_24px_rgba(99,102,241,0.4)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2),0_0_32px_rgba(99,102,241,0.5)] hover:brightness-110"
+                      className="flex items-center justify-center gap-1.5 px-5 h-[42px] mx-[5px] bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full transition-all duration-300 shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_28px_rgba(99,102,241,0.5)] hover:brightness-110"
                       data-testid="button-audit-submit"
                     >
                       {runAudit.isPending ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /><span>Analyzing...</span></>
+                        <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <><Search className="w-4 h-4" /><span>Free Audit</span><ArrowRight className="w-3.5 h-3.5" /></>
+                        <><Search className="w-4 h-4" /><span className="hidden sm:inline">Free Audit</span><ArrowRight className="w-3.5 h-3.5 sm:hidden" /></>
                       )}
                     </button>
                   </div>
                 </div>
               </div>
+              <div className="sm:hidden mt-3 px-2">
+                <div className="relative group">
+                  <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/20 to-violet-500/20 opacity-60 blur-[1px]" />
+                  <div className="relative flex items-center gap-2 bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] h-[44px] px-4">
+                    <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                    <input
+                      placeholder="yourwebsite.com"
+                      value={auditUrl}
+                      onChange={(e) => setAuditUrl(e.target.value)}
+                      className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none"
+                      data-testid="input-audit-url-mobile"
+                    />
+                  </div>
+                </div>
+              </div>
               {!auditLoading && (
                 <p className="text-[11px] text-white/25 mt-3 text-center tracking-wide">
-                  Get your detailed PDF report emailed instantly — no sign-up required
+                  Free detailed PDF report emailed instantly
                 </p>
               )}
             </div>
@@ -674,23 +687,12 @@ export default function LandingPage() {
               <Button
                 size="lg"
                 onClick={() => setChatOpen(true)}
-                className="bg-white/5 border border-white/10 text-white text-sm font-medium px-6"
+                className="bg-white/5 border border-white/10 text-white text-sm font-medium rounded-full w-full sm:w-[200px] h-[44px]"
                 data-testid="button-hero-message"
               >
                 <MessageSquare className="w-4 h-4 mr-2" />
                 Send Us a Message
               </Button>
-              <a href="#services">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-white/20 text-white bg-white/5 text-sm"
-                  data-testid="button-hero-services"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  See Our Work
-                </Button>
-              </a>
             </div>
           </div>
         </div>

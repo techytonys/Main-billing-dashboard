@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Fix: Dockerfile build, update script speed, container stability';
+const COMMIT_MESSAGE = 'Fix: simplified update script, prevent container hang';
 
 let connectionSettings: any;
 
