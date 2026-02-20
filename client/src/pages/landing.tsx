@@ -605,7 +605,7 @@ export default function LandingPage() {
               <Bot className="w-4 h-4 text-blue-400" />
               <span className="text-xs sm:text-sm text-white/70">AI-Powered Solutions</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-light leading-tight tracking-tight mb-4 sm:mb-6" data-testid="text-hero-title">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold leading-tight tracking-tight mb-4 sm:mb-6" data-testid="text-hero-title">
               AI Web Design Agency{" "}
               <span className="bg-gradient-to-r from-blue-400 via-violet-400 to-purple-400 bg-clip-text text-transparent">
                 Built For Your Business.
