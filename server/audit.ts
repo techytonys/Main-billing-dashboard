@@ -15,14 +15,35 @@ export interface AuditItem {
   recommendation?: string;
 }
 
+export interface KeywordSuggestion {
+  keyword: string;
+  reason: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface BacklinkInsight {
+  label: string;
+  status: 'pass' | 'warning' | 'fail';
+  detail: string;
+  recommendation?: string;
+}
+
 export interface AuditResult {
   url: string;
   timestamp: string;
   overallScore: number;
   grade: string;
+  gradeLabel: string;
+  gradeSummary: string;
   categories: AuditCategory[];
   summary: string;
   topRecommendations: string[];
+  keywordAnalysis: {
+    foundKeywords: string[];
+    suggestedKeywords: KeywordSuggestion[];
+    density: string;
+  };
+  backlinkInsights: BacklinkInsight[];
 }
 
 function getGrade(score: number): string {
@@ -113,14 +134,23 @@ export async function runAudit(url: string): Promise<AuditResult> {
     summary = `Your website scores ${overallScore}/100. There are critical issues that are likely hurting your search rankings and user experience. Let's fix them.`;
   }
 
+  const grade = getGrade(overallScore);
+  const { gradeLabel, gradeSummary } = getGradeContext(grade, overallScore, passCount, failCount);
+  const keywordAnalysis = analyzeKeywords($, finalUrl);
+  const backlinkInsights = analyzeBacklinks($, finalUrl, html);
+
   return {
     url: finalUrl,
     timestamp: new Date().toISOString(),
     overallScore,
-    grade: getGrade(overallScore),
+    grade,
+    gradeLabel,
+    gradeSummary,
     categories,
     summary,
     topRecommendations,
+    keywordAnalysis,
+    backlinkInsights,
   };
 }
 
@@ -622,4 +652,234 @@ function auditContent($: cheerio.CheerioAPI, html: string): AuditCategory {
   }
 
   return { name: 'Content Quality', icon: 'fileText', score, maxScore, items };
+}
+
+function getGradeContext(grade: string, score: number, passCount: number, failCount: number): { gradeLabel: string; gradeSummary: string } {
+  if (grade === 'A+' || grade === 'A') {
+    return {
+      gradeLabel: 'Excellent',
+      gradeSummary: `Outstanding work! Your site passes ${passCount} checks and is well-optimized. Here are a few refinements to maintain your edge and stay ahead of competitors.`,
+    };
+  }
+  if (grade === 'A-' || grade === 'B+') {
+    return {
+      gradeLabel: 'Very Good',
+      gradeSummary: `Your site is performing well with ${passCount} checks passing. A few targeted improvements could push you into the top tier and give you a real competitive advantage.`,
+    };
+  }
+  if (grade === 'B' || grade === 'B-') {
+    return {
+      gradeLabel: 'Good — Room to Grow',
+      gradeSummary: `Solid foundation with ${passCount} checks passing, but ${failCount} issues are holding you back. Fixing these will noticeably improve your search rankings and user experience.`,
+    };
+  }
+  if (grade === 'C+' || grade === 'C' || grade === 'C-') {
+    return {
+      gradeLabel: 'Needs Improvement',
+      gradeSummary: `Your site has potential but ${failCount} critical issues need attention. These problems are likely costing you visitors and search rankings. The good news: most are straightforward fixes.`,
+    };
+  }
+  if (grade === 'D') {
+    return {
+      gradeLabel: 'Below Average',
+      gradeSummary: `Your site has significant issues with ${failCount} failing checks. These are actively hurting your online presence. Prioritize the critical fixes below to see immediate improvement.`,
+    };
+  }
+  return {
+    gradeLabel: 'Critical — Needs Urgent Attention',
+    gradeSummary: `Your site has major problems across multiple areas with ${failCount} failing checks. Visitors and search engines are being turned away. Immediate action on the recommendations below is essential.`,
+  };
+}
+
+function analyzeKeywords($: cheerio.CheerioAPI, url: string): { foundKeywords: string[]; suggestedKeywords: KeywordSuggestion[]; density: string } {
+  const title = $('title').text().toLowerCase();
+  const metaDesc = ($('meta[name="description"]').attr('content') || '').toLowerCase();
+  const h1Text = $('h1').map((_, el) => $(el).text().toLowerCase()).get().join(' ');
+  const h2Text = $('h2').map((_, el) => $(el).text().toLowerCase()).get().join(' ');
+  const bodyText = $('body').text().toLowerCase().replace(/\s+/g, ' ');
+
+  const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'has', 'have', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'its', 'our', 'their', 'what', 'which', 'who', 'whom', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'about', 'above', 'after', 'again', 'also', 'am', 'as', 'because', 'before', 'between', 'from', 'get', 'got', 'here', 'if', 'into', 'new', 'now', 'off', 'out', 'over', 'then', 'up', 'use', 'way']);
+
+  const words = bodyText.split(/[\s,.;:!?()[\]{}"']+/).filter(w => w.length > 3 && !stopWords.has(w) && !/^\d+$/.test(w));
+  const freq: Record<string, number> = {};
+  words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+
+  const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+  const topWords = sorted.slice(0, 15).map(([w]) => w);
+
+  const twoGrams: Record<string, number> = {};
+  for (let i = 0; i < words.length - 1; i++) {
+    if (!stopWords.has(words[i]) && !stopWords.has(words[i + 1])) {
+      const gram = `${words[i]} ${words[i + 1]}`;
+      twoGrams[gram] = (twoGrams[gram] || 0) + 1;
+    }
+  }
+  const topPhrases = Object.entries(twoGrams).filter(([_, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([p]) => p);
+
+  const foundKeywords = [...topPhrases.slice(0, 5), ...topWords.slice(0, 5)].slice(0, 8);
+
+  const totalWords = words.length;
+  const topKeywordCount = sorted[0]?.[1] || 0;
+  const density = totalWords > 0 ? `${((topKeywordCount / totalWords) * 100).toFixed(1)}% for "${sorted[0]?.[0] || 'n/a'}"` : 'Unable to calculate';
+
+  const domain = new URL(url).hostname.replace('www.', '');
+
+  const industryKeywords: Record<string, KeywordSuggestion[]> = {
+    default: [
+      { keyword: `${domain.split('.')[0]} services`, reason: 'Brand + service keyword for branded search visibility', priority: 'high' },
+      { keyword: 'near me', reason: 'Location-based searches drive 76% of local visits within 24 hours', priority: 'high' },
+      { keyword: 'best practices', reason: 'Educational intent keywords build authority and attract backlinks', priority: 'medium' },
+      { keyword: 'how to', reason: 'Question-based keywords capture informational search intent', priority: 'medium' },
+      { keyword: 'affordable', reason: 'Price-intent modifier that captures high-converting commercial searches', priority: 'medium' },
+      { keyword: 'reviews', reason: 'Social proof keywords attract users in the decision-making stage', priority: 'low' },
+      { keyword: `${new Date().getFullYear()} guide`, reason: 'Year-specific content signals freshness to search engines', priority: 'low' },
+    ],
+  };
+
+  const suggestedKeywords: KeywordSuggestion[] = [];
+  const allText = `${title} ${metaDesc} ${h1Text} ${h2Text}`;
+
+  const suggestions = industryKeywords.default;
+  for (const suggestion of suggestions) {
+    if (!allText.includes(suggestion.keyword.toLowerCase()) && !bodyText.includes(suggestion.keyword.toLowerCase())) {
+      suggestedKeywords.push(suggestion);
+    }
+  }
+
+  if (!allText.includes('free') && !bodyText.slice(0, 2000).includes('free')) {
+    suggestedKeywords.push({ keyword: 'free consultation', reason: 'High-converting CTA keyword — "free" triggers 2x more clicks in search results', priority: 'high' });
+  }
+  if (!allText.includes('professional')) {
+    suggestedKeywords.push({ keyword: 'professional', reason: 'Trust-building modifier that improves click-through rates from search results', priority: 'medium' });
+  }
+  if (!allText.includes('custom') && !allText.includes('tailored')) {
+    suggestedKeywords.push({ keyword: 'custom solutions', reason: 'Differentiation keyword that sets you apart from template-based competitors', priority: 'medium' });
+  }
+
+  return {
+    foundKeywords,
+    suggestedKeywords: suggestedKeywords.slice(0, 8),
+    density,
+  };
+}
+
+function analyzeBacklinks($: cheerio.CheerioAPI, url: string, html: string): BacklinkInsight[] {
+  const insights: BacklinkInsight[] = [];
+  const domain = new URL(url).hostname.replace('www.', '');
+
+  const externalLinks = $('a[href^="http"]').filter((_, el) => {
+    const href = $(el).attr('href') || '';
+    try { return new URL(href).hostname.replace('www.', '') !== domain; } catch { return false; }
+  });
+  const nofollowLinks = $('a[rel*="nofollow"]');
+  const internalLinks = $('a').not(externalLinks).filter((_, el) => {
+    const href = $(el).attr('href') || '';
+    return href.startsWith('/') || href.startsWith('#') || href.includes(domain);
+  });
+
+  if (externalLinks.length >= 3) {
+    insights.push({
+      label: 'Outbound Links',
+      status: 'pass',
+      detail: `${externalLinks.length} external links found — linking to quality sources builds trust with search engines`,
+    });
+  } else if (externalLinks.length > 0) {
+    insights.push({
+      label: 'Outbound Links',
+      status: 'warning',
+      detail: `Only ${externalLinks.length} outbound link(s) found`,
+      recommendation: 'Link to 3-5 authoritative, relevant sources. This signals to Google that you\'re part of a trusted content neighborhood.',
+    });
+  } else {
+    insights.push({
+      label: 'Outbound Links',
+      status: 'fail',
+      detail: 'No outbound links to external sites',
+      recommendation: 'Add links to authoritative sources in your industry. Pages that link out to quality content rank higher because Google sees them as more informative.',
+    });
+  }
+
+  if (internalLinks.length >= 10) {
+    insights.push({
+      label: 'Internal Link Structure',
+      status: 'pass',
+      detail: `${internalLinks.length} internal links — strong site structure for search engine crawling`,
+    });
+  } else if (internalLinks.length >= 3) {
+    insights.push({
+      label: 'Internal Link Structure',
+      status: 'warning',
+      detail: `${internalLinks.length} internal links — could be stronger`,
+      recommendation: 'Aim for 10+ internal links per page. Every page should link to related content, creating a web that search engines can easily crawl and understand.',
+    });
+  } else {
+    insights.push({
+      label: 'Internal Link Structure',
+      status: 'fail',
+      detail: `Only ${internalLinks.length} internal link(s)`,
+      recommendation: 'Your internal linking is too thin. Add contextual links between related pages — this is one of the easiest ways to boost rankings for free.',
+    });
+  }
+
+  const linksWithAnchors = $('a').filter((_, el) => {
+    const text = $(el).text().trim();
+    return text.length > 0 && text !== 'click here' && text !== 'read more' && text !== 'learn more' && text.length < 60;
+  });
+  const totalAnchors = $('a').filter((_, el) => $(el).text().trim().length > 0);
+  if (totalAnchors.length > 0 && linksWithAnchors.length >= totalAnchors.length * 0.7) {
+    insights.push({
+      label: 'Anchor Text Quality',
+      status: 'pass',
+      detail: 'Most links use descriptive anchor text — helps search engines understand link context',
+    });
+  } else {
+    insights.push({
+      label: 'Anchor Text Quality',
+      status: 'warning',
+      detail: 'Some links use generic text like "click here" or "read more"',
+      recommendation: 'Replace generic anchor text with descriptive keywords. Instead of "click here," use "view our web design portfolio." This gives search engines context about the linked page.',
+    });
+  }
+
+  if (nofollowLinks.length > 0) {
+    insights.push({
+      label: 'Nofollow Usage',
+      status: 'pass',
+      detail: `${nofollowLinks.length} nofollow link(s) — properly managing link equity flow`,
+    });
+  }
+
+  const hasShareButtons = html.includes('share') || html.includes('social') || $('[class*="share"], [class*="social"], [data-share]').length > 0;
+  if (hasShareButtons) {
+    insights.push({
+      label: 'Social Sharing',
+      status: 'pass',
+      detail: 'Social sharing elements detected — encourages organic backlink growth',
+    });
+  } else {
+    insights.push({
+      label: 'Social Sharing',
+      status: 'warning',
+      detail: 'No social sharing buttons found',
+      recommendation: 'Add social share buttons to your content. Shared content gets more visibility, which leads to natural backlinks from other websites.',
+    });
+  }
+
+  const hasBlog = $('a[href*="blog"], a[href*="article"], a[href*="news"], a[href*="post"]').length > 0;
+  if (hasBlog) {
+    insights.push({
+      label: 'Content Hub',
+      status: 'pass',
+      detail: 'Blog or content section detected — great for attracting organic backlinks',
+    });
+  } else {
+    insights.push({
+      label: 'Content Hub',
+      status: 'warning',
+      detail: 'No blog or content section found',
+      recommendation: 'Start a blog or resource section. Regular, valuable content is the #1 way to attract natural backlinks. Even 2 posts per month can significantly impact rankings over time.',
+    });
+  }
+
+  return insights;
 }

@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import type { AuditResult, AuditCategory, AuditItem } from './audit';
+import type { AuditResult, AuditCategory, AuditItem, KeywordSuggestion, BacklinkInsight } from './audit';
 
 const BRAND_BLUE = '#3b82f6';
 const BRAND_VIOLET = '#8b5cf6';
@@ -98,24 +98,27 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
 
     // Grade circle
     const gradeX = pw - 160;
-    const gradeY = coverY + 30;
+    const gradeY = coverY + 20;
     const gc = gradeColor(audit.grade);
-    doc.circle(gradeX + 40, gradeY + 40, 48).fill(gc);
-    doc.circle(gradeX + 40, gradeY + 40, 42).fill(DARK_BG);
+    doc.circle(gradeX + 40, gradeY + 40, 50).fill(gc);
+    doc.circle(gradeX + 40, gradeY + 40, 44).fill(DARK_BG);
     doc.fontSize(36).fillColor(gc).font('Helvetica-Bold')
-      .text(audit.grade, gradeX, gradeY + 14, { width: 80, align: 'center' });
-    doc.fontSize(11).fillColor(GRAY).font('Helvetica')
-      .text(`${audit.overallScore}/100`, gradeX, gradeY + 56, { width: 80, align: 'center' });
+      .text(audit.grade, gradeX, gradeY + 12, { width: 80, align: 'center' });
+    doc.fontSize(10).fillColor(GRAY).font('Helvetica')
+      .text(`${audit.overallScore}/100`, gradeX, gradeY + 54, { width: 80, align: 'center' });
+    doc.fontSize(8).fillColor(gc).font('Helvetica-Bold')
+      .text(audit.gradeLabel.toUpperCase(), gradeX - 10, gradeY + 96, { width: 100, align: 'center' });
 
-    // Summary box
+    // Grade summary box
     const summaryY = coverY + 180;
-    doc.roundedRect(50, summaryY, pageWidth, 55, 6).fill(DARK_CARD);
-    doc.roundedRect(50, summaryY, 4, 55, 2).fill(BRAND_BLUE);
+    const gradeSummaryH = Math.max(60, (doc as any).heightOfString(audit.gradeSummary, { width: pageWidth - 40, fontSize: 10 }) + 30);
+    doc.roundedRect(50, summaryY, pageWidth, gradeSummaryH, 6).fill(DARK_CARD);
+    doc.roundedRect(50, summaryY, 4, gradeSummaryH, 2).fill(gc);
     doc.fontSize(10).fillColor(LIGHT_GRAY).font('Helvetica')
-      .text(audit.summary, 66, summaryY + 15, { width: pageWidth - 32 });
+      .text(audit.gradeSummary, 66, summaryY + 15, { width: pageWidth - 32 });
 
     // Quick stats
-    const statsY = summaryY + 75;
+    const statsY = summaryY + gradeSummaryH + 15;
     const passCount = audit.categories.reduce((sum, c) => sum + c.items.filter(i => i.status === 'pass').length, 0);
     const warnCount = audit.categories.reduce((sum, c) => sum + c.items.filter(i => i.status === 'warning').length, 0);
     const failCount = audit.categories.reduce((sum, c) => sum + c.items.filter(i => i.status === 'fail').length, 0);
@@ -284,6 +287,138 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
         }
 
         y += totalH + 8;
+      }
+    }
+
+    // ========== KEYWORD ANALYSIS PAGE ==========
+    if (audit.keywordAnalysis) {
+      doc.addPage();
+      doc.rect(0, 0, pw, doc.page.height).fill(DARK_BG);
+      doc.rect(0, 0, pw, 4).fill(BRAND_BLUE);
+
+      doc.fontSize(20).fillColor(WHITE).font('Helvetica-Bold')
+        .text('Keyword Analysis', 50, 40, { width: pageWidth });
+      doc.fontSize(10).fillColor(GRAY).font('Helvetica')
+        .text('Keywords found on your page and strategic recommendations for improvement', 50, 66);
+
+      let ky = 100;
+
+      // Found keywords
+      doc.fontSize(12).fillColor(BRAND_BLUE).font('Helvetica-Bold')
+        .text('Keywords Detected on Your Page', 50, ky);
+      ky += 20;
+
+      doc.fontSize(9).fillColor(GRAY).font('Helvetica')
+        .text(`Top keyword density: ${audit.keywordAnalysis.density}`, 50, ky);
+      ky += 20;
+
+      const kwPerRow = 3;
+      const kwBoxW = (pageWidth - (kwPerRow - 1) * 8) / kwPerRow;
+      const foundKws = audit.keywordAnalysis.foundKeywords;
+      for (let i = 0; i < foundKws.length; i++) {
+        const col = i % kwPerRow;
+        const row = Math.floor(i / kwPerRow);
+        const kx = 50 + col * (kwBoxW + 8);
+        const rowY = ky + row * 32;
+        doc.roundedRect(kx, rowY, kwBoxW, 26, 4).fill(DARK_CARD);
+        doc.fontSize(9).fillColor(LIGHT_GRAY).font('Helvetica')
+          .text(foundKws[i], kx + 10, rowY + 7, { width: kwBoxW - 20 });
+      }
+      ky += Math.ceil(foundKws.length / kwPerRow) * 32 + 20;
+
+      // Suggested keywords
+      doc.fontSize(12).fillColor(BRAND_BLUE).font('Helvetica-Bold')
+        .text('Recommended Keywords to Add', 50, ky);
+      ky += 8;
+      doc.fontSize(8).fillColor(GRAY).font('Helvetica')
+        .text('Adding these keywords naturally to your content can improve search visibility', 50, ky);
+      ky += 20;
+
+      const priorityColors: Record<string, string> = { high: RED, medium: YELLOW, low: GREEN };
+      const priorityBgs: Record<string, string> = { high: '#2d0f0f', medium: '#291f0a', low: '#0f291a' };
+
+      for (const kw of audit.keywordAnalysis.suggestedKeywords) {
+        ky = ensureSpace(doc, ky, 55);
+
+        const reasonH = (doc as any).heightOfString(kw.reason, { width: pageWidth - 75, fontSize: 8 }) || 10;
+        const cardH = Math.max(44, reasonH + 32);
+
+        doc.roundedRect(50, ky, pageWidth, cardH, 6).fill(DARK_CARD);
+        doc.roundedRect(50, ky, 4, cardH, 2).fill(priorityColors[kw.priority] || YELLOW);
+
+        // Priority badge
+        const pLabel = kw.priority.toUpperCase();
+        const pBadgeW = doc.fontSize(7).widthOfString(pLabel) + 12;
+        doc.roundedRect(pw - 50 - pBadgeW, ky + 8, pBadgeW, 14, 3).fill(priorityBgs[kw.priority] || '#291f0a');
+        doc.fontSize(7).fillColor(priorityColors[kw.priority] || YELLOW).font('Helvetica-Bold')
+          .text(pLabel, pw - 50 - pBadgeW + 6, ky + 11);
+
+        doc.fontSize(10).fillColor(WHITE).font('Helvetica-Bold')
+          .text(`"${kw.keyword}"`, 65, ky + 9, { width: pageWidth - 100 });
+        doc.fontSize(8).fillColor(GRAY).font('Helvetica')
+          .text(kw.reason, 65, ky + 24, { width: pageWidth - 75 });
+
+        ky += cardH + 8;
+      }
+    }
+
+    // ========== BACKLINK INSIGHTS PAGE ==========
+    if (audit.backlinkInsights && audit.backlinkInsights.length > 0) {
+      doc.addPage();
+      doc.rect(0, 0, pw, doc.page.height).fill(DARK_BG);
+      doc.rect(0, 0, pw, 4).fill(BRAND_BLUE);
+
+      doc.fontSize(20).fillColor(WHITE).font('Helvetica-Bold')
+        .text('Backlink & Link Profile', 50, 40, { width: pageWidth });
+      doc.fontSize(10).fillColor(GRAY).font('Helvetica')
+        .text('How your link structure impacts search engine rankings and authority', 50, 66);
+
+      let bly = 100;
+
+      for (const insight of audit.backlinkInsights) {
+        bly = ensureSpace(doc, bly, 60);
+
+        const detailH = (doc as any).heightOfString(insight.detail, { width: pageWidth - 55, fontSize: 9 }) || 12;
+        let cardH = 30 + detailH;
+        if (insight.recommendation) {
+          const recH = (doc as any).heightOfString(insight.recommendation, { width: pageWidth - 55, fontSize: 8 }) || 10;
+          cardH += recH + 22;
+        }
+        cardH = Math.max(48, cardH + 8);
+
+        doc.roundedRect(50, bly, pageWidth, cardH, 6).fill(DARK_CARD);
+        doc.roundedRect(50, bly, 4, cardH, 2).fill(statusColor(insight.status));
+
+        // Status icon
+        const iconY = bly + 10;
+        if (insight.status === 'pass') {
+          doc.circle(72, iconY + 6, 8).fill('#0f291a');
+          doc.fontSize(11).fillColor(GREEN).font('Helvetica-Bold')
+            .text('✓', 66, iconY, { width: 12, align: 'center' });
+        } else if (insight.status === 'warning') {
+          doc.circle(72, iconY + 6, 8).fill('#291f0a');
+          doc.fontSize(11).fillColor(YELLOW).font('Helvetica-Bold')
+            .text('!', 67, iconY, { width: 12, align: 'center' });
+        } else {
+          doc.circle(72, iconY + 6, 8).fill('#2d0f0f');
+          doc.fontSize(11).fillColor(RED).font('Helvetica-Bold')
+            .text('✗', 66, iconY, { width: 12, align: 'center' });
+        }
+
+        doc.fontSize(10).fillColor(WHITE).font('Helvetica-Bold')
+          .text(insight.label, 88, bly + 10, { width: pageWidth - 100 });
+        doc.fontSize(9).fillColor(GRAY).font('Helvetica')
+          .text(insight.detail, 88, bly + 26, { width: pageWidth - 55 });
+
+        if (insight.recommendation) {
+          const recStartY = bly + 28 + detailH + 4;
+          doc.fontSize(8).fillColor(statusColor(insight.status)).font('Helvetica-Bold')
+            .text('RECOMMENDATION:', 88, recStartY);
+          doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica')
+            .text(insight.recommendation, 88, recStartY + 12, { width: pageWidth - 55 });
+        }
+
+        bly += cardH + 8;
       }
     }
 

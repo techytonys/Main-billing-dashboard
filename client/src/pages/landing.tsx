@@ -302,6 +302,9 @@ export default function LandingPage() {
   const [auditEmail, setAuditEmail] = useState("");
   const [auditResult, setAuditResult] = useState<any>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [auditProgress, setAuditProgress] = useState(0);
+  const [auditStage, setAuditStage] = useState("");
+  const [auditLoading, setAuditLoading] = useState(false);
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
 
@@ -310,29 +313,85 @@ export default function LandingPage() {
     return () => { document.title = "AI Powered Sites"; };
   }, []);
 
+  const auditStages = [
+    { pct: 4, label: "Connecting to website..." },
+    { pct: 9, label: "Fetching page content..." },
+    { pct: 14, label: "Analyzing page structure..." },
+    { pct: 19, label: "Checking title tags & meta data..." },
+    { pct: 24, label: "Scanning structured data (JSON-LD)..." },
+    { pct: 29, label: "Evaluating heading hierarchy..." },
+    { pct: 34, label: "Measuring server response time..." },
+    { pct: 39, label: "Checking image optimization..." },
+    { pct: 44, label: "Testing mobile responsiveness..." },
+    { pct: 49, label: "Inspecting security headers..." },
+    { pct: 54, label: "Auditing accessibility (ARIA, alt text)..." },
+    { pct: 59, label: "Reviewing Open Graph & social tags..." },
+    { pct: 64, label: "Analyzing content quality & readability..." },
+    { pct: 69, label: "Running keyword analysis..." },
+    { pct: 74, label: "Extracting keyword density..." },
+    { pct: 79, label: "Generating keyword recommendations..." },
+    { pct: 84, label: "Analyzing backlink profile..." },
+    { pct: 88, label: "Evaluating link structure..." },
+    { pct: 92, label: "Compiling priority recommendations..." },
+    { pct: 95, label: "Building your PDF report..." },
+    { pct: 98, label: "Finalizing results..." },
+  ];
+
   const runAudit = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/audit", {
+      setAuditLoading(true);
+      setAuditProgress(0);
+      setAuditStage("Initializing audit...");
+      setAuditResult(null);
+
+      const fetchPromise = fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: auditUrl, email: auditEmail }),
       });
+
+      let stageIndex = 0;
+      const minDuration = 8000;
+      const stageInterval = minDuration / auditStages.length;
+
+      const progressPromise = new Promise<void>((resolve) => {
+        const tick = () => {
+          if (stageIndex < auditStages.length) {
+            setAuditProgress(auditStages[stageIndex].pct);
+            setAuditStage(auditStages[stageIndex].label);
+            stageIndex++;
+            setTimeout(tick, stageInterval + Math.random() * 200);
+          } else {
+            resolve();
+          }
+        };
+        setTimeout(tick, 300);
+      });
+
+      const [res] = await Promise.all([fetchPromise, progressPromise]);
+
+      setAuditProgress(100);
+      setAuditStage("Audit complete!");
+
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || "Failed to audit website");
       }
+
+      await new Promise(r => setTimeout(r, 600));
       return res.json();
     },
     onSuccess: (data) => {
+      setAuditLoading(false);
       setAuditResult(data);
-      if (auditEmail) {
-        toast({ title: "Report sent!", description: "Check your email for the full PDF report." });
-      }
+      toast({ title: "Report sent!", description: "Check your email for the full PDF report." });
       setTimeout(() => {
         document.getElementById("audit-results")?.scrollIntoView({ behavior: "smooth" });
-      }, 200);
+      }, 300);
     },
     onError: (err: any) => {
+      setAuditLoading(false);
+      setAuditProgress(0);
       toast({ title: "Audit failed", description: err.message, variant: "destructive" });
     },
   });
@@ -575,10 +634,41 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-              <p className="text-[11px] text-white/25 mt-3 text-center tracking-wide">
-                Get your detailed PDF report emailed instantly — no sign-up required
-              </p>
+              {!auditLoading && (
+                <p className="text-[11px] text-white/25 mt-3 text-center tracking-wide">
+                  Get your detailed PDF report emailed instantly — no sign-up required
+                </p>
+              )}
             </div>
+
+            {auditLoading && (
+              <div className="max-w-2xl mx-auto mb-8 mt-4" data-testid="audit-progress">
+                <div className="relative p-[1px] rounded-xl bg-gradient-to-r from-blue-500/30 via-violet-500/30 to-blue-500/30">
+                  <div className="bg-[#0a0f1e] rounded-xl px-6 py-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                        <span className="text-sm text-white/70 font-medium">{auditStage}</span>
+                      </div>
+                      <span className="text-sm font-bold text-blue-400">{auditProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-500 via-violet-500 to-blue-400 transition-all duration-500 ease-out"
+                        style={{ width: `${auditProgress}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex items-center justify-center gap-4 text-[11px] text-white/30">
+                      <span>7 categories</span>
+                      <span className="w-1 h-1 rounded-full bg-white/20" />
+                      <span>50+ checks</span>
+                      <span className="w-1 h-1 rounded-full bg-white/20" />
+                      <span>Full PDF report</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
               <Button
@@ -632,6 +722,11 @@ export default function LandingPage() {
                   {auditResult.grade}
                 </div>
                 <div className="text-2xl font-bold text-white" data-testid="text-audit-score">{auditResult.overallScore}<span className="text-sm text-white/40">/100</span></div>
+                {auditResult.gradeLabel && (
+                  <div className={`text-xs font-medium mt-1 ${
+                    auditResult.overallScore >= 75 ? 'text-emerald-400' : auditResult.overallScore >= 50 ? 'text-yellow-400' : 'text-red-400'
+                  }`}>{auditResult.gradeLabel}</div>
+                )}
               </div>
               <div className="sm:col-span-2 p-5 rounded-xl border border-white/5 bg-white/[0.02]">
                 <p className="text-sm text-white/60 leading-relaxed mb-3" data-testid="text-audit-summary">{auditResult.summary}</p>
