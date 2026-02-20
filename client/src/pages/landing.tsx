@@ -616,7 +616,7 @@ export default function LandingPage() {
             </p>
 
             <div className="max-w-2xl mx-auto mb-8" data-testid="audit-form">
-              <p className="text-sm font-light text-white/40 mb-4 max-w-md mx-auto leading-relaxed">
+              <p className="text-sm font-medium text-white/70 mb-4 max-w-md mx-auto leading-relaxed">
                 Free instant website audit — SEO, speed, mobile, security & more with a detailed PDF report.
               </p>
               <div className="relative group">
