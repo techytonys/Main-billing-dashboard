@@ -7,7 +7,7 @@ import {
   ArrowLeft, CircleDot, MessageSquare, CreditCard, Download, Trash2, ShieldAlert, Star,
   CalendarClock, ExternalLink, ImageIcon, Receipt, Wallet, LayoutDashboard, Bell, Check,
   Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
-  FolderGit2, Github, GitBranch, Zap, Play, HelpCircle,
+  FolderGit2, Github, GitBranch, Zap, Play, HelpCircle, DollarSign,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1242,15 +1242,19 @@ export default function ClientPortal() {
     enabled: !!params.token,
   });
 
-  const { data: gitBackups } = useQuery<any[]>({
+  const { data: gitBackupData } = useQuery<{ configs: any[]; billingRate: { rateCents: number; unitLabel: string } | null }>({
     queryKey: ["/api/portal", params.token, "git-backups"],
     queryFn: async () => {
       const res = await fetch(`/api/portal/${params.token}/git-backups`);
       if (!res.ok) throw new Error("Failed to load backups");
-      return res.json();
+      const data = await res.json();
+      if (Array.isArray(data)) return { configs: data, billingRate: null };
+      return data;
     },
     enabled: !!params.token,
   });
+  const gitBackups = gitBackupData?.configs;
+  const backupBillingRate = gitBackupData?.billingRate;
 
   const acceptPlanMutation = useMutation({
     mutationFn: async (planId: string) => {
@@ -2434,6 +2438,24 @@ export default function ClientPortal() {
                 </div>
               </div>
 
+              {backupBillingRate && (
+                <Card className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800" data-testid="card-backup-pricing">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                      <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
+                        ${(backupBillingRate.rateCents / 100).toFixed(2)} per {backupBillingRate.unitLabel}
+                      </p>
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                        Each backup is automatically added to your project billing and will appear on your next invoice.
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               {!gitBackups || gitBackups.length === 0 ? (
                 <Card className="p-8 text-center">
                   <Github className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -2541,6 +2563,11 @@ export default function ClientPortal() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 text-muted-foreground">
+                                  {log.status === "success" && backupBillingRate && (
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-medium" data-testid={`text-backup-cost-${log.id}`}>
+                                      ${(backupBillingRate.rateCents / 100).toFixed(2)}
+                                    </span>
+                                  )}
                                   <span>{new Date(log.createdAt).toLocaleString()}</span>
                                   {log.commitSha && (
                                     <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{log.commitSha.substring(0, 7)}</code>

@@ -2877,7 +2877,13 @@ export async function registerRoutes(
           recentLogs: logs,
         });
       }
-      res.json(result);
+
+      let backupRate = await storage.getBillingRateByCode("code_backup");
+      const rateInfo = backupRate && backupRate.isActive
+        ? { rateCents: backupRate.rateCents, unitLabel: backupRate.unitLabel || "backup" }
+        : null;
+
+      res.json({ configs: result, billingRate: rateInfo });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch backups" });
     }

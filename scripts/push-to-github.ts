@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Full backup - Git backup auto-billing, billing rate management, deploy script GitHub OAuth support, price on backup buttons';
+const COMMIT_MESSAGE = 'Add backup pricing display to client portal - rate banner, per-backup cost in logs, billing rate API for portal';
 
 let connectionSettings: any;
 
