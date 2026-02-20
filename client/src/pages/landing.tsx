@@ -307,8 +307,21 @@ export default function LandingPage() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [exitIntentOpen, setExitIntentOpen] = useState(false);
+  const [exitIntentShown, setExitIntentShown] = useState(false);
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
+
+  useEffect(() => {
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (e.clientY <= 0 && !exitIntentShown && !auditResult && !auditLoading) {
+        setExitIntentOpen(true);
+        setExitIntentShown(true);
+      }
+    };
+    document.addEventListener("mouseleave", handleMouseLeave);
+    return () => document.removeEventListener("mouseleave", handleMouseLeave);
+  }, [exitIntentShown, auditResult, auditLoading]);
 
   useEffect(() => {
     document.title = "AI Web Design Agency — Custom AI-Powered Websites & Web Development | AI Powered Sites";
@@ -611,7 +624,7 @@ export default function LandingPage() {
                 Built For Your Business.
               </span>
             </h1>
-            <p className="text-base sm:text-lg md:text-xl text-white/60 leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto" data-testid="text-hero-description">
+            <p className="text-base sm:text-lg md:text-xl text-white font-medium leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto" data-testid="text-hero-description">
               Custom web development services for startups and small businesses — AI-powered websites, apps, and portals designed to help you grow. No templates. No compromises.
             </p>
 
@@ -1456,6 +1469,61 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <Dialog open={exitIntentOpen} onOpenChange={setExitIntentOpen}>
+        <DialogContent className="sm:max-w-lg bg-[#0c0c16] border-white/10 text-white p-0 overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-violet-500 to-purple-500" />
+          <div className="p-6 sm:p-8">
+            <DialogHeader className="mb-5">
+              <div className="flex justify-center mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-violet-600/20 border border-blue-500/30 flex items-center justify-center">
+                  <Search className="w-7 h-7 text-blue-400" />
+                </div>
+              </div>
+              <DialogTitle className="text-xl sm:text-2xl font-bold text-center">
+                Wait — Before You Go!
+              </DialogTitle>
+              <DialogDescription className="text-white/50 text-center text-sm sm:text-base mt-2">
+                Find out if your website is losing you customers. Get a free instant audit with a detailed PDF report.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="relative group mb-4">
+              <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/40 via-violet-500/30 to-blue-500/40 opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
+              <div className="relative bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+                <div className="flex items-center h-[48px]">
+                  <div className="flex items-center gap-2 pl-4 pr-3 flex-1 min-w-0">
+                    <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                    <input
+                      placeholder="Enter your website URL..."
+                      value={auditUrl}
+                      onChange={(e) => setAuditUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && auditUrl.trim() && !runAudit.isPending) { setExitIntentOpen(false); runAudit.mutate(); } }}
+                      className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none min-w-0"
+                      data-testid="input-exit-intent-url"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { setExitIntentOpen(false); runAudit.mutate(); }}
+                    disabled={!auditUrl.trim() || runAudit.isPending}
+                    className="flex items-center justify-center gap-1.5 px-5 h-[38px] mx-[5px] bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full transition-all duration-300 shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+                    data-testid="button-exit-intent-audit"
+                  >
+                    {runAudit.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Search className="w-4 h-4" /><span className="ml-1">Audit</span></>}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-4">
+              <span className="flex items-center gap-1 text-[11px] text-white/35"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />100% Free</span>
+              <span className="flex items-center gap-1 text-[11px] text-white/35"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Instant Results</span>
+              <span className="flex items-center gap-1 text-[11px] text-white/35"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />PDF Report</span>
+            </div>
+            <p className="text-[11px] text-white/25 text-center">
+              Takes 10 seconds · No signup required
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
         <DialogContent className="sm:max-w-md bg-[#12121a] border-white/10 text-white">
