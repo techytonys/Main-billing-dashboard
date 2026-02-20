@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Latest changes - backup pricing in client portal, deploy script updates, billing rate management';
+const COMMIT_MESSAGE = 'SEO: keyword optimization, structured data (HowTo, ItemList, BreadcrumbList, ContactPoint), visible FAQ section';
 
 let connectionSettings: any;
 

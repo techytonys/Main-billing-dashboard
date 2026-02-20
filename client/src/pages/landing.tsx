@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -293,6 +293,11 @@ export default function LandingPage() {
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
 
+  useEffect(() => {
+    document.title = "AI Web Design Agency — Custom AI-Powered Websites & Web Development | AI Powered Sites";
+    return () => { document.title = "AI Powered Sites"; };
+  }, []);
+
   const startConversation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/public/conversations", {
@@ -315,7 +320,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden" style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5" style={{ backdropFilter: "blur(20px)", backgroundColor: "rgba(10,10,15,0.8)" }}>
+      <nav aria-label="Main navigation" className="fixed top-0 left-0 right-0 z-50 border-b border-white/5" style={{ backdropFilter: "blur(20px)", backgroundColor: "rgba(10,10,15,0.8)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 shrink-0">
             <img src="/images/logo.png" alt="AI Powered Sites" className="w-8 h-8 rounded-md object-cover" />
@@ -419,11 +424,12 @@ export default function LandingPage() {
         )}
       </nav>
 
+      <main>
       <section id="hero" className="relative pt-14 sm:pt-16 min-h-[100svh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
           <img
             src={heroImage}
-            alt="AI Solutions"
+            alt="AI-powered web design and development solutions by AI Powered Sites"
             className="w-full h-full object-cover animate-hero-zoom"
             data-testid="img-hero"
           />
@@ -442,13 +448,13 @@ export default function LandingPage() {
               <span className="text-xs sm:text-sm text-white/70">AI-Powered Solutions</span>
             </div>
             <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold leading-tight tracking-tight mb-4 sm:mb-6" data-testid="text-hero-title">
-              AI-Powered Solutions{" "}
+              AI Web Design Agency{" "}
               <span className="bg-gradient-to-r from-blue-400 via-violet-400 to-purple-400 bg-clip-text text-transparent">
                 Built For Your Business.
               </span>
             </h1>
             <p className="text-base sm:text-lg md:text-xl text-white/60 leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto" data-testid="text-hero-description">
-              Custom websites, apps, and portals — designed and built with AI to help your business grow. No templates. No compromises.
+              Custom web development services for startups and small businesses — AI-powered websites, apps, and portals designed to help you grow. No templates. No compromises.
             </p>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
               <Button
@@ -503,11 +509,11 @@ export default function LandingPage() {
               <span className="text-sm text-white/70">What We Build</span>
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight mb-3 sm:mb-4" data-testid="text-services-title">
-              Solutions That{" "}
-              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Work</span>
+              Custom Web Development{" "}
+              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Services</span>
             </h2>
             <p className="text-white/50 text-sm sm:text-lg max-w-2xl mx-auto">
-              From concept to launch, we build digital experiences that drive results.
+              From concept to launch, our AI-driven web design delivers responsive, mobile-first solutions that drive results.
               Every project is crafted with AI precision and human creativity.
             </p>
           </div>
@@ -521,7 +527,8 @@ export default function LandingPage() {
                 <div className="relative h-48 overflow-hidden">
                   <img
                     src={service.image}
-                    alt={service.title}
+                    alt={`${service.title} — AI Powered Sites service`}
+                    loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/40 to-transparent" />
@@ -589,11 +596,11 @@ export default function LandingPage() {
               <span className="text-sm text-white/70">Why Choose Us</span>
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight mb-3 sm:mb-4" data-testid="text-features-title">
-              Built Different.{" "}
-              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Built Better.</span>
+              Why Hire Our{" "}
+              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">AI Web Design Agency</span>
             </h2>
             <p className="text-white/50 text-sm sm:text-lg max-w-2xl mx-auto">
-              We don't just build things. We engineer intelligent solutions that evolve with your business.
+              We don't just build things. We deliver affordable custom web development with AI-first engineering that evolves with your business.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -892,6 +899,39 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section id="faq" className="relative py-16 sm:py-24 md:py-32 border-t border-white/5">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-10 sm:mb-16">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4 sm:mb-6">
+              <MessageSquare className="w-4 h-4 text-blue-400" />
+              <span className="text-sm text-white/70">Common Questions</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight mb-3 sm:mb-4" data-testid="text-faq-title">
+              Frequently Asked{" "}
+              <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Questions</span>
+            </h2>
+            <p className="text-white/50 text-sm sm:text-lg max-w-2xl mx-auto">
+              Everything you need to know about our AI web design and custom web development services.
+            </p>
+          </div>
+          <div className="space-y-4" data-testid="faq-list">
+            {[
+              { q: "How long does it take to build a custom website?", a: "Most projects are delivered within 48 hours to 2 weeks depending on complexity. Our AI-accelerated workflow cuts development time dramatically compared to traditional web design agencies." },
+              { q: "What technologies do you use for web development?", a: "We use cutting-edge technologies including React, Node.js, PostgreSQL, Docker, and the latest AI models. Our custom React development services and Node.js web development ensure modern, scalable, responsive solutions." },
+              { q: "Do you offer affordable web development for small businesses?", a: "Absolutely. We bill per deliverable — per page designed, per feature built — so you only pay for what we create. No retainers, no subscriptions. Our pricing works for startups and small businesses of any size." },
+              { q: "How does your AI-powered web design process work?", a: "It's simple: contact us with your project details, we design a custom architecture, our AI-accelerated development brings it to life, then we deploy and hand over your polished product with full documentation and support." },
+              { q: "Do you offer ongoing support and maintenance?", a: "Yes, we provide 24/7 support with real humans and AI assistants. Every client gets access to a dedicated support portal with ticket tracking, real-time communication, and project progress updates." },
+              { q: "Can you build custom web applications and APIs?", a: "Yes. We build custom web applications, REST APIs, billing dashboards, support portals, community forums, and more. We also offer Docker deployment services for self-hosted infrastructure." },
+            ].map((faq, i) => (
+              <div key={i} className="p-5 sm:p-6 rounded-md border border-white/5 bg-white/[0.02]" data-testid={`faq-item-${i}`}>
+                <h3 className="text-sm sm:text-base font-semibold mb-2 text-white/90">{faq.q}</h3>
+                <p className="text-sm text-white/50 leading-relaxed">{faq.a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="relative py-16 sm:py-24 md:py-32 border-t border-white/5">
         <div className="absolute inset-0 bg-gradient-to-t from-blue-500/[0.03] to-transparent" />
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
@@ -902,7 +942,7 @@ export default function LandingPage() {
             </span>
           </h2>
           <p className="text-white/50 text-sm sm:text-lg max-w-2xl mx-auto mb-8 sm:mb-10">
-            Tell us about your project and we'll craft a custom AI-powered solution
+            Tell us about your project and we'll craft a custom AI-powered web development solution
             tailored to your specific business needs. No templates, no compromises.
           </p>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
@@ -919,7 +959,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-white/5 pt-10 sm:pt-16 pb-8">
+      </main>
+      <footer aria-label="Site footer" className="border-t border-white/5 pt-10 sm:pt-16 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-10 mb-8 sm:mb-12">
             <div className="col-span-2 md:col-span-1">
@@ -928,7 +969,7 @@ export default function LandingPage() {
                 <span className="text-lg font-semibold">AI Powered Sites</span>
               </div>
               <p className="text-sm text-white/40 leading-relaxed mb-6">
-                Crafting intelligent digital experiences powered by AI. Your vision, our expertise, limitless potential.
+                AI web design agency crafting custom websites, web applications, and digital experiences for startups and growing businesses.
               </p>
             </div>
             <div>
