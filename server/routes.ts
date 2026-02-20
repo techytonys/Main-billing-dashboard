@@ -365,11 +365,43 @@ export async function registerRoutes(
 
   app.post("/api/work-entries", isAuthenticated, async (req, res) => {
     try {
-      const parsed = insertWorkEntrySchema.parse(req.body);
-      const entry = await storage.createWorkEntry(parsed);
+      const { recordedAt, ...rest } = req.body;
+      const parsed = insertWorkEntrySchema.parse(rest);
+      const entryData: any = { ...parsed };
+      if (recordedAt) {
+        entryData.recordedAt = new Date(recordedAt);
+      }
+      const entry = await storage.createWorkEntry(entryData);
       res.status(201).json(entry);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Invalid work entry data" });
+    }
+  });
+
+  app.patch("/api/work-entries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { rateId, quantity, description, recordedAt } = req.body;
+      const updateData: any = {};
+      if (rateId !== undefined) {
+        if (typeof rateId !== "string" || !rateId.trim()) return res.status(400).json({ message: "Invalid rateId" });
+        updateData.rateId = rateId;
+      }
+      if (quantity !== undefined) {
+        const q = Number(quantity);
+        if (isNaN(q) || q <= 0) return res.status(400).json({ message: "Quantity must be a positive number" });
+        updateData.quantity = String(q);
+      }
+      if (description !== undefined) updateData.description = description;
+      if (recordedAt !== undefined) {
+        const d = new Date(recordedAt);
+        if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid date" });
+        updateData.recordedAt = d;
+      }
+      const updated = await storage.updateWorkEntry(req.params.id, updateData);
+      if (!updated) return res.status(404).json({ message: "Work entry not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update work entry" });
     }
   });
 
@@ -450,9 +482,9 @@ export async function registerRoutes(
 
   app.post("/api/invoices/generate", isAuthenticated, async (req, res) => {
     try {
-      const { projectId } = req.body;
+      const { projectId, dueDays } = req.body;
       if (!projectId) return res.status(400).json({ message: "projectId is required" });
-      const invoice = await storage.generateInvoiceFromWork(projectId, 0);
+      const invoice = await storage.generateInvoiceFromWork(projectId, 0, dueDays || 30);
       if (!invoice) return res.status(400).json({ message: "No unbilled work entries found for this project" });
 
       const project = await storage.getProject(projectId);

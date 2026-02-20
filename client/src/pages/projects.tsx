@@ -425,7 +425,11 @@ export default function Projects() {
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projectForm, setProjectForm] = useState({ customerId: "", name: "", description: "" });
-  const [workForm, setWorkForm] = useState({ rateId: "", quantity: "1", description: "" });
+  const [workForm, setWorkForm] = useState({ rateId: "", quantity: "1", description: "", recordedAt: "" });
+  const [editWorkDialogOpen, setEditWorkDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<WorkEntry | null>(null);
+  const [editWorkForm, setEditWorkForm] = useState({ rateId: "", quantity: "1", description: "", recordedAt: "" });
+  const [invoiceDueDays, setInvoiceDueDays] = useState("30");
   const [editingLinkKey, setEditingLinkKey] = useState<string | null>(null);
   const [linkUrlInput, setLinkUrlInput] = useState("");
   const [copiedLinkKey, setCopiedLinkKey] = useState<string | null>(null);
@@ -480,7 +484,7 @@ export default function Projects() {
   });
 
   const logWorkMutation = useMutation({
-    mutationFn: async (data: { projectId: string; customerId: string; rateId: string; quantity: string; description: string }) => {
+    mutationFn: async (data: { projectId: string; customerId: string; rateId: string; quantity: string; description: string; recordedAt?: string }) => {
       const res = await apiRequest("POST", "/api/work-entries", data);
       return res.json();
     },
@@ -490,6 +494,23 @@ export default function Projects() {
       setWorkDialogOpen(false);
       setWorkForm({ rateId: "", quantity: "1", description: "" });
       toast({ title: "Work logged", description: "Work entry has been recorded." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const editWorkMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { rateId?: string; quantity?: string; description?: string; recordedAt?: string } }) => {
+      const res = await apiRequest("PATCH", `/api/work-entries/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-entries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      setEditWorkDialogOpen(false);
+      setEditingEntry(null);
+      toast({ title: "Entry updated", description: "Work entry has been updated." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -524,7 +545,7 @@ export default function Projects() {
   });
 
   const generateInvoiceMutation = useMutation({
-    mutationFn: async (data: { projectId: string }) => {
+    mutationFn: async (data: { projectId: string; dueDays?: number }) => {
       const res = await apiRequest("POST", "/api/invoices/generate", { ...data, taxRate: 0 });
       return res.json();
     },
@@ -593,12 +614,24 @@ export default function Projects() {
 
   const openLogWork = (projectId: string) => {
     setSelectedProjectId(projectId);
-    setWorkForm({ rateId: "", quantity: "1", description: "" });
+    setWorkForm({ rateId: "", quantity: "1", description: "", recordedAt: new Date().toISOString().split("T")[0] });
     setWorkDialogOpen(true);
+  };
+
+  const openEditWork = (entry: WorkEntry) => {
+    setEditingEntry(entry);
+    setEditWorkForm({
+      rateId: entry.rateId,
+      quantity: String(Number(entry.quantity)),
+      description: entry.description || "",
+      recordedAt: entry.recordedAt ? new Date(entry.recordedAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+    });
+    setEditWorkDialogOpen(true);
   };
 
   const openGenerateInvoice = (projectId: string) => {
     setSelectedProjectId(projectId);
+    setInvoiceDueDays("30");
     setInvoiceDialogOpen(true);
   };
 
@@ -613,6 +646,21 @@ export default function Projects() {
       rateId: workForm.rateId,
       quantity: workForm.quantity,
       description: workForm.description,
+      recordedAt: workForm.recordedAt ? new Date(workForm.recordedAt + "T12:00:00").toISOString() : undefined,
+    } as any);
+  };
+
+  const handleEditWork = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEntry) return;
+    editWorkMutation.mutate({
+      id: editingEntry.id,
+      data: {
+        rateId: editWorkForm.rateId,
+        quantity: editWorkForm.quantity,
+        description: editWorkForm.description,
+        recordedAt: editWorkForm.recordedAt ? new Date(editWorkForm.recordedAt + "T12:00:00").toISOString() : undefined,
+      },
     });
   };
 
@@ -948,9 +996,14 @@ export default function Projects() {
                               <td className="py-2 pr-4 text-right font-medium">{formatCurrency(lineTotal)}</td>
                               <td className="py-2 pr-4 text-right text-muted-foreground text-xs">{formatDate(entry.recordedAt)}</td>
                               <td className="py-2">
-                                <Button size="icon" variant="ghost" onClick={() => deleteWorkMutation.mutate(entry.id)} data-testid={`button-delete-work-${entry.id}`}>
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
+                                <div className="flex items-center gap-0.5">
+                                  <Button size="icon" variant="ghost" onClick={() => openEditWork(entry)} data-testid={`button-edit-work-${entry.id}`}>
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" onClick={() => deleteWorkMutation.mutate(entry.id)} data-testid={`button-delete-work-${entry.id}`}>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1040,9 +1093,15 @@ export default function Projects() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="work-qty">Quantity *</Label>
-              <Input id="work-qty" type="number" min="0.1" step="0.1" value={workForm.quantity} onChange={(e) => setWorkForm(p => ({ ...p, quantity: e.target.value }))} required data-testid="input-work-quantity" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="work-qty">Quantity *</Label>
+                <Input id="work-qty" type="number" min="0.1" step="0.1" value={workForm.quantity} onChange={(e) => setWorkForm(p => ({ ...p, quantity: e.target.value }))} required data-testid="input-work-quantity" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="work-date">Date</Label>
+                <Input id="work-date" type="date" value={workForm.recordedAt} onChange={(e) => setWorkForm(p => ({ ...p, recordedAt: e.target.value }))} data-testid="input-work-date" />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="work-desc">Description</Label>
@@ -1077,6 +1136,8 @@ export default function Projects() {
             const m = getProjectMetrics(selectedProjectId);
             const unbilled = m.unbilledAmount;
             const count = m.unbilledCount;
+            const dueDatePreview = new Date();
+            dueDatePreview.setDate(dueDatePreview.getDate() + Number(invoiceDueDays));
             return (
               <div className="space-y-4">
                 <div className="space-y-2 p-3 rounded-md bg-muted/50 text-sm">
@@ -1089,9 +1150,29 @@ export default function Projects() {
                     <span>{formatCurrency(unbilled)}</span>
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label>Payment Terms</Label>
+                  <Select value={invoiceDueDays} onValueChange={setInvoiceDueDays}>
+                    <SelectTrigger data-testid="select-payment-terms">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">Net 7 (Due in 7 days)</SelectItem>
+                      <SelectItem value="14">Net 14 (Due in 14 days)</SelectItem>
+                      <SelectItem value="15">Net 15 (Due in 15 days)</SelectItem>
+                      <SelectItem value="30">Net 30 (Due in 30 days)</SelectItem>
+                      <SelectItem value="45">Net 45 (Due in 45 days)</SelectItem>
+                      <SelectItem value="60">Net 60 (Due in 60 days)</SelectItem>
+                      <SelectItem value="90">Net 90 (Due in 90 days)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground" data-testid="text-due-date-preview">
+                    Due date: {dueDatePreview.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="outline" onClick={() => setInvoiceDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={() => generateInvoiceMutation.mutate({ projectId: selectedProjectId })} disabled={generateInvoiceMutation.isPending} data-testid="button-confirm-generate-invoice">
+                  <Button onClick={() => generateInvoiceMutation.mutate({ projectId: selectedProjectId, dueDays: Number(invoiceDueDays) })} disabled={generateInvoiceMutation.isPending} data-testid="button-confirm-generate-invoice">
                     {generateInvoiceMutation.isPending ? "Generating..." : "Generate Invoice"}
                   </Button>
                 </div>
@@ -1148,6 +1229,61 @@ export default function Projects() {
               <Button type="button" variant="outline" onClick={() => setUpdateDialogOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={createUpdateMutation.isPending} data-testid="button-save-update">
                 {createUpdateMutation.isPending ? "Posting..." : "Post Update"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editWorkDialogOpen} onOpenChange={setEditWorkDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Work Entry</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditWork} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Work Type *</Label>
+              <Select value={editWorkForm.rateId} onValueChange={(v) => setEditWorkForm(p => ({ ...p, rateId: v }))}>
+                <SelectTrigger data-testid="select-edit-work-type">
+                  <SelectValue placeholder="Select work type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rates?.filter(r => r.isActive).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name} ({formatCurrency(r.rateCents)}/{r.unitLabel})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-work-qty">Quantity *</Label>
+                <Input id="edit-work-qty" type="number" min="0.1" step="0.1" value={editWorkForm.quantity} onChange={(e) => setEditWorkForm(p => ({ ...p, quantity: e.target.value }))} required data-testid="input-edit-work-quantity" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-work-date">Date</Label>
+                <Input id="edit-work-date" type="date" value={editWorkForm.recordedAt} onChange={(e) => setEditWorkForm(p => ({ ...p, recordedAt: e.target.value }))} data-testid="input-edit-work-date" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-work-desc">Description</Label>
+              <Textarea id="edit-work-desc" placeholder="Brief note about what was done" value={editWorkForm.description} onChange={(e) => setEditWorkForm(p => ({ ...p, description: e.target.value }))} data-testid="input-edit-work-description" />
+            </div>
+            {editWorkForm.rateId && (
+              <div className="p-3 rounded-md bg-muted/50 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Estimated charge:</span>
+                  <span className="font-semibold" data-testid="text-edit-work-estimate">
+                    {formatCurrency(Number(editWorkForm.quantity) * (rateMap.get(editWorkForm.rateId)?.rateCents ?? 0))}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditWorkDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={editWorkMutation.isPending || !editWorkForm.rateId} data-testid="button-save-edit-work">
+                {editWorkMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </form>

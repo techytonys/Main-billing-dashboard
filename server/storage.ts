@@ -58,6 +58,7 @@ export interface IStorage {
   getWorkEntries(filters?: { projectId?: string; customerId?: string; unbilledOnly?: boolean }): Promise<WorkEntry[]>;
   getWorkEntriesByInvoice(invoiceId: string): Promise<WorkEntry[]>;
   createWorkEntry(entry: InsertWorkEntry): Promise<WorkEntry>;
+  updateWorkEntry(id: string, data: Partial<Pick<InsertWorkEntry, 'rateId' | 'quantity' | 'description'> & { recordedAt: Date }>): Promise<WorkEntry | undefined>;
   deleteWorkEntry(id: string): Promise<boolean>;
 
   getInvoices(limit?: number): Promise<Invoice[]>;
@@ -79,7 +80,7 @@ export interface IStorage {
     overdueInvoices: number;
   }>;
 
-  generateInvoiceFromWork(projectId: string, taxRate?: number): Promise<Invoice | null>;
+  generateInvoiceFromWork(projectId: string, taxRate?: number, dueDays?: number): Promise<Invoice | null>;
 
   getCustomerByPortalToken(token: string): Promise<Customer | undefined>;
   getInvoicesByCustomerId(customerId: string): Promise<Invoice[]>;
@@ -282,6 +283,11 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async updateWorkEntry(id: string, data: Partial<Pick<InsertWorkEntry, 'rateId' | 'quantity' | 'description'> & { recordedAt: Date }>): Promise<WorkEntry | undefined> {
+    const [updated] = await db.update(workEntries).set(data).where(eq(workEntries.id, id)).returning();
+    return updated;
+  }
+
   async deleteWorkEntry(id: string): Promise<boolean> {
     const result = await db.delete(workEntries).where(eq(workEntries.id, id)).returning();
     return result.length > 0;
@@ -370,7 +376,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async generateInvoiceFromWork(projectId: string, taxRate: number = 0): Promise<Invoice | null> {
+  async generateInvoiceFromWork(projectId: string, taxRate: number = 0, dueDays: number = 30): Promise<Invoice | null> {
     const project = await this.getProject(projectId);
     if (!project) return null;
 
@@ -399,7 +405,7 @@ export class DatabaseStorage implements IStorage {
 
     const now = new Date();
     const dueDate = new Date(now);
-    dueDate.setDate(dueDate.getDate() + 30);
+    dueDate.setDate(dueDate.getDate() + dueDays);
 
     const invoice = await this.createInvoice({
       customerId: project.customerId,

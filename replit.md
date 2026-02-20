@@ -4,6 +4,8 @@
 A project-based billing dashboard for a website design business. Track customers, projects, work deliverables, and generate invoices based on configurable per-unit rates. Includes a client portal for customers to view their invoices and automatic overdue invoice tracking.
 
 ## Recent Changes
+- 2026-02-20: Enhanced work entry management - edit existing work entries (type, qty, description), date picker for backdating entries, payment terms selector (Net 7/14/15/30/45/60/90) on invoice generation with due date preview
+- 2026-02-20: Enhanced invoices page - status filter buttons (All/Draft/Pending/Paid/Overdue) with count badges, rich invoice detail dialog with project context, work breakdown table, line item totals
 - 2026-02-15: Added client onboarding conversation system - visitors start secure conversations from landing page, back-and-forth messaging with admin, email notifications both ways via Resend, admin dashboard at /admin/conversations with reply/close/reopen, public conversation page at /conversation/:token with 10s auto-refresh
 - 2026-02-14: Added Quote Proposal system - save quotes to DB, send via email with unique links (/quote/:token), customer approve/deny with comments, admin email notifications for responses, discussion thread on quotes
 - 2026-02-13: Added Quote Builder page (/admin/quote-builder) - quick project cost estimator using billing rates, 4 project templates with suggested quantities, copy-to-clipboard quotes, estimation tips sidebar
