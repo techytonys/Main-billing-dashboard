@@ -124,8 +124,8 @@ echo -e "        ${CHECK}"
 echo ""
 
 echo -e "  ${WHITE}[4/7]${RESET} ${BOLD}Rebuilding app${RESET}"
-echo -e "  ${DIM}(this may take a minute)${RESET}"
-docker compose build --no-cache app -q 2>&1
+echo -e "  ${DIM}(uses cached layers - should be fast)${RESET}"
+docker compose build app 2>&1
 echo -e "        ${CHECK}"
 echo ""
 

@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Enhanced audit: keyword analysis, backlink profile, grade context, PDF keyword/backlink pages, 21-stage progress loader';
+const COMMIT_MESSAGE = 'Fix: remove --no-cache from update script, optimize Dockerfile for faster deploys';
 
 let connectionSettings: any;
 
