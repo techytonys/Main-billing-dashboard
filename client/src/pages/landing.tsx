@@ -620,41 +620,44 @@ export default function LandingPage() {
                 Free instant website audit — SEO, speed, mobile, security & more with a detailed PDF report.
               </p>
               <div className="relative group">
-                <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/40 via-violet-500/30 to-blue-500/40 opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
-                <div className="relative bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.4),0_1px_4px_rgba(59,130,246,0.1)]">
-                  <div className="flex items-center h-[52px]">
-                    <div className="flex items-center gap-2 pl-5 pr-3 flex-1 min-w-0">
-                      <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-blue-500/20 via-violet-500/15 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-all duration-700" />
+                <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-b from-white/[0.08] to-white/[0.02]" />
+                <div className="relative bg-[#0c1121]/95 backdrop-blur-xl rounded-2xl border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.03),inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <div className="flex items-center h-[56px]">
+                    <div className="flex items-center gap-3 pl-5 pr-3 flex-1 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/15 to-violet-500/10 border border-white/[0.06] flex items-center justify-center shrink-0">
+                        <Globe className="w-4 h-4 text-blue-400" />
+                      </div>
                       <input
                         placeholder="Enter your website URL..."
                         value={auditUrl}
                         onChange={(e) => setAuditUrl(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && auditUrl.trim() && !runAudit.isPending) runAudit.mutate(); }}
-                        className="w-full bg-transparent text-white text-sm placeholder:text-white/25 outline-none min-w-0"
+                        className="w-full bg-transparent text-white text-[15px] font-light tracking-wide placeholder:text-white/20 outline-none min-w-0"
                         data-testid="input-audit-url"
                       />
                     </div>
                     <button
                       onClick={() => runAudit.mutate()}
                       disabled={!auditUrl.trim() || runAudit.isPending}
-                      className="flex items-center justify-center gap-1.5 px-6 h-[42px] mx-[5px] bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-full transition-all duration-300 shrink-0 shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_28px_rgba(99,102,241,0.5)] hover:brightness-110"
+                      className="flex items-center justify-center gap-2 px-7 h-[40px] mx-2 bg-white text-[#0a0f1e] text-sm font-semibold rounded-xl transition-all duration-300 shrink-0 hover:bg-white/90 hover:shadow-[0_0_24px_rgba(255,255,255,0.15)] disabled:opacity-40 disabled:cursor-not-allowed"
                       data-testid="button-audit-submit"
                     >
                       {runAudit.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <><Search className="w-4 h-4" /><span className="hidden sm:inline">Free Audit</span><ArrowRight className="w-3.5 h-3.5 sm:hidden" /></>
+                        <><Search className="w-3.5 h-3.5" /><span className="hidden sm:inline">Audit</span><ArrowRight className="w-3.5 h-3.5 sm:hidden" /></>
                       )}
                     </button>
                   </div>
                 </div>
               </div>
               {!auditLoading && (
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3">
-                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />SEO & Keywords</span>
-                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Speed & Performance</span>
-                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Mobile & Security</span>
-                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Free PDF Report</span>
+                <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-4">
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />SEO & Keywords</span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />Speed & Performance</span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />Mobile & Security</span>
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />Free PDF Report</span>
                 </div>
               )}
             </div>
