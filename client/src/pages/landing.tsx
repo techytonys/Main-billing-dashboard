@@ -57,6 +57,14 @@ import {
   Key,
   FileCode2,
   Workflow,
+  FileDown,
+  Eye,
+  Smartphone,
+  Share2,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import heroImage from "../assets/images/hero-ai.png";
@@ -290,6 +298,10 @@ export default function LandingPage() {
   const [chatEmail, setChatEmail] = useState("");
   const [chatSubject, setChatSubject] = useState("");
   const [chatMessage, setChatMessage] = useState("");
+  const [auditUrl, setAuditUrl] = useState("");
+  const [auditEmail, setAuditEmail] = useState("");
+  const [auditResult, setAuditResult] = useState<any>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
 
@@ -297,6 +309,69 @@ export default function LandingPage() {
     document.title = "AI Web Design Agency — Custom AI-Powered Websites & Web Development | AI Powered Sites";
     return () => { document.title = "AI Powered Sites"; };
   }, []);
+
+  const runAudit = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: auditUrl, email: auditEmail }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to audit website");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setAuditResult(data);
+      if (auditEmail) {
+        toast({ title: "Report sent!", description: "Check your email for the full PDF report." });
+      }
+      setTimeout(() => {
+        document.getElementById("audit-results")?.scrollIntoView({ behavior: "smooth" });
+      }, 200);
+    },
+    onError: (err: any) => {
+      toast({ title: "Audit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const downloadPdf = () => {
+    if (!auditResult?.pdfBase64) return;
+    const byteCharacters = atob(auditResult.pdfBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'website-audit-report.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleCategory = (name: string) => {
+    setExpandedCategories(prev => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const categoryIcon = (iconName: string) => {
+    const icons: Record<string, any> = {
+      search: Search, zap: Zap, smartphone: Smartphone,
+      shield: Shield, eye: Eye, share2: Share2, fileText: FileText,
+    };
+    const Icon = icons[iconName] || BarChart3;
+    return <Icon className="w-4 h-4" />;
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === 'pass') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3" /> Pass</span>;
+    if (status === 'warning') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">! Warning</span>;
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-500/15 text-red-400 border border-red-500/20"><X className="w-3 h-3" /> Fail</span>;
+  };
 
   const startConversation = useMutation({
     mutationFn: async () => {
@@ -456,11 +531,60 @@ export default function LandingPage() {
             <p className="text-base sm:text-lg md:text-xl text-white/60 leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto" data-testid="text-hero-description">
               Custom web development services for startups and small businesses — AI-powered websites, apps, and portals designed to help you grow. No templates. No compromises.
             </p>
+
+            <div className="max-w-2xl mx-auto mb-8" data-testid="audit-form">
+              <div className="relative group">
+                <div className="absolute -inset-[2px] rounded-2xl bg-gradient-to-r from-blue-500/50 via-violet-500/40 to-blue-500/50 opacity-70 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
+                <div className="relative bg-[#0a0f1e] rounded-2xl p-1.5 border-2 border-black shadow-[0_8px_32px_rgba(0,0,0,0.5),0_2px_8px_rgba(59,130,246,0.15)]">
+                  <div className="flex flex-col sm:flex-row items-stretch">
+                    <div className="flex-1 flex flex-col sm:flex-row">
+                      <div className="flex-1 flex items-center gap-2.5 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.06]">
+                        <Globe className="w-[18px] h-[18px] text-blue-400 shrink-0" />
+                        <input
+                          placeholder="yourwebsite.com"
+                          value={auditUrl}
+                          onChange={(e) => setAuditUrl(e.target.value)}
+                          className="w-full bg-transparent text-white text-[15px] placeholder:text-white/25 outline-none"
+                          data-testid="input-audit-url"
+                        />
+                      </div>
+                      <div className="flex-1 flex items-center gap-2.5 px-5 py-4 sm:border-r border-b sm:border-b-0 border-white/[0.06]">
+                        <Mail className="w-[18px] h-[18px] text-violet-400 shrink-0" />
+                        <input
+                          type="email"
+                          placeholder="your@email.com"
+                          value={auditEmail}
+                          onChange={(e) => setAuditEmail(e.target.value)}
+                          className="w-full bg-transparent text-white text-[15px] placeholder:text-white/25 outline-none"
+                          data-testid="input-audit-email"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => runAudit.mutate()}
+                      disabled={!auditUrl.trim() || !auditEmail.trim() || runAudit.isPending}
+                      className="flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-500 via-blue-400 to-violet-500 disabled:from-blue-600 disabled:via-blue-500 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-[15px] font-semibold rounded-xl sm:rounded-l-none sm:rounded-r-xl transition-all duration-300 shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_0_rgba(0,0,0,0.2),0_0_24px_rgba(99,102,241,0.4)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(0,0,0,0.2),0_0_32px_rgba(99,102,241,0.5)] hover:brightness-110"
+                      data-testid="button-audit-submit"
+                    >
+                      {runAudit.isPending ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /><span>Analyzing...</span></>
+                      ) : (
+                        <><Search className="w-4 h-4" /><span>Free Audit</span><ArrowRight className="w-3.5 h-3.5" /></>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-white/25 mt-3 text-center tracking-wide">
+                Get your detailed PDF report emailed instantly — no sign-up required
+              </p>
+            </div>
+
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
               <Button
                 size="lg"
                 onClick={() => setChatOpen(true)}
-                className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-base font-medium px-8"
+                className="bg-white/5 border border-white/10 text-white text-sm font-medium px-6"
                 data-testid="button-hero-message"
               >
                 <MessageSquare className="w-4 h-4 mr-2" />
@@ -470,7 +594,7 @@ export default function LandingPage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white/20 text-white bg-white/5"
+                  className="border-white/20 text-white bg-white/5 text-sm"
                   data-testid="button-hero-services"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
@@ -482,6 +606,162 @@ export default function LandingPage() {
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0a0f] to-transparent" />
       </section>
+
+      {auditResult && (
+        <section id="audit-results" className="relative py-12 sm:py-20 border-t border-white/5">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-8 sm:mb-12">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4">
+                <BarChart3 className="w-4 h-4 text-blue-400" />
+                <span className="text-sm text-white/70">Audit Results</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3" data-testid="text-audit-results-title">
+                Your Website{" "}
+                <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Score</span>
+              </h2>
+              <p className="text-white/40 text-sm max-w-lg mx-auto truncate">{auditResult.url}</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+              <div className="sm:col-span-1 flex flex-col items-center justify-center p-6 rounded-xl border border-white/5 bg-white/[0.02]">
+                <div className={`w-20 h-20 rounded-xl flex items-center justify-center text-3xl font-bold text-white mb-2 ${
+                  auditResult.overallScore >= 75 ? 'bg-emerald-500/20 border border-emerald-500/30' :
+                  auditResult.overallScore >= 50 ? 'bg-yellow-500/20 border border-yellow-500/30' :
+                  'bg-red-500/20 border border-red-500/30'
+                }`} data-testid="text-audit-grade">
+                  {auditResult.grade}
+                </div>
+                <div className="text-2xl font-bold text-white" data-testid="text-audit-score">{auditResult.overallScore}<span className="text-sm text-white/40">/100</span></div>
+              </div>
+              <div className="sm:col-span-2 p-5 rounded-xl border border-white/5 bg-white/[0.02]">
+                <p className="text-sm text-white/60 leading-relaxed mb-3" data-testid="text-audit-summary">{auditResult.summary}</p>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-3">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-xs text-emerald-300">Your detailed PDF report has been emailed to you</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={downloadPdf} size="sm" className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-xs" data-testid="button-download-pdf">
+                    <FileDown className="w-3.5 h-3.5 mr-1.5" />
+                    Download PDF Report
+                  </Button>
+                  <Button onClick={() => setChatOpen(true)} size="sm" variant="outline" className="border-white/15 text-white/80 bg-white/5 text-xs" data-testid="button-audit-get-help">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    Get Help Fixing These
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-8">
+              {auditResult.categories.map((cat: any) => {
+                const pct = Math.round((cat.score / cat.maxScore) * 100);
+                return (
+                  <button
+                    key={cat.name}
+                    onClick={() => toggleCategory(cat.name)}
+                    className={`p-3 rounded-lg border text-center transition-all ${
+                      expandedCategories[cat.name]
+                        ? 'border-blue-500/40 bg-blue-500/10'
+                        : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'
+                    }`}
+                    data-testid={`button-audit-category-${cat.name.toLowerCase().replace(/\s/g, '-')}`}
+                  >
+                    <div className={`text-lg font-bold mb-0.5 ${
+                      pct >= 75 ? 'text-emerald-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>{pct}%</div>
+                    <div className="text-[10px] text-white/50 leading-tight">{cat.name}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="space-y-3">
+              {auditResult.categories.map((cat: any) => {
+                const pct = Math.round((cat.score / cat.maxScore) * 100);
+                const isExpanded = expandedCategories[cat.name] !== false;
+                return (
+                  <div key={cat.name} className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden" data-testid={`audit-category-${cat.name.toLowerCase().replace(/\s/g, '-')}`}>
+                    <button
+                      onClick={() => toggleCategory(cat.name)}
+                      className="w-full flex items-center justify-between p-4 sm:p-5 hover:bg-white/[0.02] transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          pct >= 75 ? 'bg-emerald-500/15 text-emerald-400' :
+                          pct >= 50 ? 'bg-yellow-500/15 text-yellow-400' :
+                          'bg-red-500/15 text-red-400'
+                        }`}>
+                          {categoryIcon(cat.icon)}
+                        </div>
+                        <span className="font-medium text-sm text-white/90">{cat.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 sm:w-32 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                pct >= 75 ? 'bg-emerald-400' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400'
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-semibold min-w-[32px] text-right ${
+                            pct >= 75 ? 'text-emerald-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400'
+                          }`}>{pct}%</span>
+                        </div>
+                        {isExpanded ? <ChevronUp className="w-4 h-4 text-white/30" /> : <ChevronDown className="w-4 h-4 text-white/30" />}
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-2.5 border-t border-white/5 pt-3">
+                        {cat.items.map((item: any, j: number) => (
+                          <div key={j} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 p-3 rounded-lg bg-white/[0.02]">
+                            <div className="shrink-0">{statusBadge(item.status)}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium text-white/80 mb-0.5">{item.label}</div>
+                              <div className="text-[11px] text-white/40 break-words">{item.detail}</div>
+                              {item.recommendation && item.status !== 'pass' && (
+                                <div className="text-[11px] text-blue-400/70 mt-1 flex items-start gap-1">
+                                  <ArrowRight className="w-3 h-3 mt-0.5 shrink-0" />
+                                  <span>{item.recommendation}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {auditResult.topRecommendations?.length > 0 && (
+              <div className="mt-8 p-5 sm:p-6 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                <h3 className="text-sm font-semibold text-white/90 mb-4 flex items-center gap-2">
+                  <Rocket className="w-4 h-4 text-blue-400" />
+                  Top Recommendations
+                </h3>
+                <div className="space-y-2.5">
+                  {auditResult.topRecommendations.slice(0, 6).map((rec: string, i: number) => (
+                    <div key={i} className="flex items-start gap-2.5 text-xs text-white/60 leading-relaxed">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center text-[10px] font-bold mt-0.5">{i + 1}</span>
+                      <span>{rec}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/5 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                  <p className="text-xs text-white/40">Want our team to fix all of these?</p>
+                  <Button onClick={() => setChatOpen(true)} size="sm" className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-xs" data-testid="button-audit-cta">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    Let's Talk
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section id="stats" className="relative py-12 sm:py-20 border-y border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">

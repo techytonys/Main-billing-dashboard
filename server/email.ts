@@ -746,6 +746,63 @@ export async function sendConversationReplyToVisitor(data: {
   }
 }
 
+export async function sendAuditReportEmail(to: string, url: string, score: number, grade: string, pdfBuffer: Buffer): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { client, fromEmail } = await getResendClient();
+    const siteUrl = getSiteUrl();
+
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 40px 30px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0 0 8px; font-size: 24px;">Your Website Audit Report</h1>
+          <p style="color: #94a3b8; margin: 0; font-size: 14px;">Powered by AI Powered Sites</p>
+        </div>
+        <div style="padding: 30px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <div style="display: inline-block; width: 80px; height: 80px; line-height: 80px; border-radius: 12px; background: ${score >= 75 ? '#22c55e' : score >= 50 ? '#eab308' : '#ef4444'}; color: white; font-size: 32px; font-weight: bold;">${grade}</div>
+            <p style="color: #94a3b8; margin-top: 8px; font-size: 14px;">Overall Score: ${score}/100</p>
+          </div>
+          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+            We've analyzed <strong style="color: #3b82f6;">${url}</strong> and found opportunities to improve your website's performance, SEO, and user experience.
+          </p>
+          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+            Your detailed report is attached as a PDF. Open it to see specific recommendations for each category.
+          </p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${siteUrl}" style="display: inline-block; padding: 12px 32px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Want Us to Fix These Issues?</a>
+          </div>
+          <p style="color: #64748b; font-size: 12px; text-align: center;">
+            Our AI-powered team can implement every recommendation in your report — fast.
+          </p>
+        </div>
+        <div style="background: #1e293b; padding: 20px 30px; text-align: center;">
+          <p style="color: #64748b; font-size: 11px; margin: 0;">
+            AI Powered Sites — <a href="${siteUrl}" style="color: #3b82f6; text-decoration: none;">aipoweredsites.com</a>
+          </p>
+        </div>
+      </div>
+    `;
+
+    const result = await client.emails.send({
+      from: fromEmail,
+      to,
+      subject: `Your Website Audit Report — Score: ${score}/100 (${grade})`,
+      html,
+      attachments: [
+        {
+          filename: 'website-audit-report.pdf',
+          content: pdfBuffer.toString('base64'),
+        },
+      ],
+    });
+
+    if (result.error) return { success: false, error: result.error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to send audit email" };
+  }
+}
+
 export async function addNewsletterContact(data: { email: string; firstName?: string; lastName?: string }): Promise<{ success: boolean; contactId?: string; error?: string }> {
   try {
     const { client } = await getResendClient();

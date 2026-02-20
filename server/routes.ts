@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema } from "@shared/schema";
 import crypto from "crypto";
 import { z } from "zod";
-import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor } from "./email";
+import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor, sendAuditReportEmail } from "./email";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { generateInvoicePDF } from "./pdf";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -2250,6 +2250,40 @@ export async function registerRoutes(
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update conversation" });
+    }
+  });
+
+  // Website audit endpoint (public)
+  app.post("/api/audit", async (req, res) => {
+    try {
+      const { url, email } = req.body;
+      if (!url) {
+        return res.status(400).json({ message: "URL is required" });
+      }
+
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const { runAudit } = await import("./audit");
+      const { generateAuditPDF } = await import("./auditPdf");
+      const { addNewsletterContact } = await import("./email");
+
+      const auditResult = await runAudit(url);
+      const pdfBuffer = await generateAuditPDF(auditResult);
+
+      const pdfBase64 = pdfBuffer.toString('base64');
+
+      sendAuditReportEmail(email, auditResult.url, auditResult.overallScore, auditResult.grade, pdfBuffer)
+        .catch(err => console.error("Failed to send audit email:", err));
+
+      addNewsletterContact({ email })
+        .catch(err => console.error("Failed to add audit contact to audience:", err));
+
+      res.json({ ...auditResult, pdfBase64 });
+    } catch (err: any) {
+      console.error("Audit error:", err);
+      res.status(400).json({ message: err.message || "Failed to audit website" });
     }
   });
 
