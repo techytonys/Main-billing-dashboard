@@ -4,6 +4,7 @@
 A project-based billing dashboard for a website design business. Track customers, projects, work deliverables, and generate invoices based on configurable per-unit rates. Includes a client portal for customers to view their invoices and automatic overdue invoice tracking.
 
 ## Recent Changes
+- 2026-02-20: Added AI-powered PDF audit reports - OpenAI generates personalized "Why This Matters" business impact explanations, custom "What This Means for Your Business" summaries, and tailored quick wins/recommendations specific to the audited domain. Falls back to static content if AI unavailable. Uses server/auditAI.ts with gpt-4o-mini via Replit AI Integrations.
 - 2026-02-20: Added Git Code Backup system - admin enables backups per project, customer connects GitHub via OAuth from portal, admin selects repo/branch, manual push or autopilot (hourly/daily/weekly), backup history with commit SHAs, admin page at /admin/code-backups, client portal "Backups" tab
 - 2026-02-20: Enhanced work entry management - edit existing work entries (type, qty, description), date picker for backdating entries, payment terms selector (Net 7/14/15/30/45/60/90) on invoice generation with due date preview
 - 2026-02-20: Enhanced invoices page - status filter buttons (All/Draft/Pending/Paid/Overdue) with count badges, rich invoice detail dialog with project context, work breakdown table, line item totals

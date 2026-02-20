@@ -2263,10 +2263,17 @@ export async function registerRoutes(
 
       const { runAudit } = await import("./audit");
       const { generateAuditPDF } = await import("./auditPdf");
+      const { generateAIAuditInsights } = await import("./auditAI");
       const { addNewsletterContact } = await import("./email");
 
       const auditResult = await runAudit(url);
-      const pdfBuffer = await generateAuditPDF(auditResult);
+      let aiInsights;
+      try {
+        aiInsights = await generateAIAuditInsights(auditResult);
+      } catch (err) {
+        console.error("AI insights generation failed, using static fallback:", err);
+      }
+      const pdfBuffer = await generateAuditPDF(auditResult, aiInsights);
 
       const pdfBase64 = pdfBuffer.toString('base64');
 
@@ -2295,9 +2302,16 @@ export async function registerRoutes(
       }
 
       const { generateAuditPDF } = await import("./auditPdf");
+      const { generateAIAuditInsights } = await import("./auditAI");
       const { addNewsletterContact } = await import("./email");
 
-      const pdfBuffer = await generateAuditPDF(auditData);
+      let aiInsights;
+      try {
+        aiInsights = await generateAIAuditInsights(auditData);
+      } catch (err) {
+        console.error("AI insights generation failed for send-report:", err);
+      }
+      const pdfBuffer = await generateAuditPDF(auditData, aiInsights);
 
       sendAuditReportEmail(email, auditData.url, auditData.overallScore, auditData.grade, pdfBuffer)
         .catch(err => console.error("Failed to send audit email:", err));

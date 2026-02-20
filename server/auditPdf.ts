@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import type { AuditResult, AuditCategory, AuditItem, KeywordSuggestion, BacklinkInsight } from './audit';
+import type { AIAuditInsights } from './auditAI';
 
 const BRAND_BLUE = '#3b82f6';
 const BRAND_VIOLET = '#8b5cf6';
@@ -54,39 +55,7 @@ function ensureSpace(doc: PDFKit.PDFDocument, y: number, needed: number): number
   return y;
 }
 
-const businessImpact: Record<string, string> = {
-  'Page Title': 'A strong title tag is the #1 factor for click-through rates in search results. Businesses with optimized titles see 20-30% more organic traffic.',
-  'Meta Description': 'Your meta description is your "ad copy" in Google results. A compelling description can double your click-through rate from search.',
-  'H1 Heading': 'Search engines use H1 tags to understand your page topic. A clear H1 helps Google rank you for the right keywords, driving qualified leads.',
-  'Canonical URL': 'Without a canonical tag, search engines may split your ranking power across duplicate URLs, weakening your position in results.',
-  'Structured Data': 'Structured data enables rich snippets (stars, FAQs, prices) in Google results. Sites with rich snippets get up to 58% more clicks.',
-  'Meta Keywords': 'While Google ignores meta keywords, other search engines like Bing still consider them. Every bit of visibility helps.',
-  'Heading Hierarchy': 'A clear heading structure helps both users and search engines scan your content. Well-organized pages keep visitors 2-3x longer.',
-  'Internal Links': 'Internal linking spreads ranking power across your site and helps Google discover all your pages. Sites with strong internal linking rank significantly better.',
-  'Server Response Time': 'Every second of load time costs you 7% in conversions. Amazon found that every 100ms of latency cost them 1% in sales.',
-  'HTML Size': 'Lean HTML loads faster on mobile networks. Fast-loading pages rank higher and convert better — speed is a direct Google ranking factor.',
-  'Image Optimization': 'Unoptimized images are the #1 cause of slow websites. Properly optimized images can cut page load time by 50% or more.',
-  'Compression': 'Gzip/Brotli compression reduces file sizes by 70-90%. This means faster loads, happier users, and better search rankings.',
-  'Browser Caching': 'Without caching headers, returning visitors re-download everything. Good caching makes repeat visits nearly instant, boosting engagement.',
-  'Viewport Meta Tag': 'Without a viewport tag, your site looks broken on mobile. Google penalizes sites that aren\'t mobile-friendly in mobile search results.',
-  'Responsive Design': 'Over 60% of web traffic is mobile. A responsive design ensures you\'re not losing more than half your potential customers.',
-  'Touch-Friendly Elements': 'Mobile users need tap targets at least 44px. Small buttons cause frustration and abandonment — every tap matters for conversions.',
-  'Font Readability': 'If text is too small on mobile, users bounce immediately. Readable fonts keep visitors engaged and moving toward conversion.',
-  'HTTPS': 'Google marks non-HTTPS sites as "Not Secure" in Chrome, which scares away 85% of visitors. HTTPS is essential for trust and rankings.',
-  'Security Headers': 'Security headers protect your visitors from attacks. They also signal to Google that your site is trustworthy and well-maintained.',
-  'Mixed Content': 'Mixed content (HTTP resources on HTTPS pages) triggers browser warnings that destroy user trust and can block your content from loading.',
-  'Alt Text': 'Alt text makes images accessible to screen readers and helps Google understand your images. This opens up Google Image Search traffic.',
-  'Language Attribute': 'The lang attribute helps screen readers pronounce content correctly and helps search engines serve your site to the right audience.',
-  'ARIA Landmarks': 'ARIA landmarks improve navigation for assistive technology users. Accessible sites also tend to have better SEO structure.',
-  'Open Graph Tags': 'When someone shares your site on social media, OG tags control how it looks. Good previews get 2-3x more clicks than generic links.',
-  'Twitter Card Tags': 'Twitter Cards make your links stand out in feeds with images and descriptions, driving more traffic from social sharing.',
-  'Social Share Links': 'Making it easy to share your content amplifies your reach organically. Every share is free marketing to a new audience.',
-  'Content Length': 'Pages with 1,000+ words rank significantly better in Google. Comprehensive content establishes authority and answers more search queries.',
-  'Readability': 'Content written at an 8th-grade reading level converts best. Simple, clear writing keeps visitors engaged and drives action.',
-  'Link Quality': 'Quality links signal credibility. Every broken link or missing internal link is a missed opportunity to guide visitors and search engines.',
-};
-
-export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
+export function generateAuditPDF(audit: AuditResult, aiInsights?: AIAuditInsights): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -99,6 +68,7 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
+    const businessImpact: Record<string, string> = aiInsights?.businessImpact || {};
     const pageWidth = doc.page.width - 100;
     const pw = doc.page.width;
 
@@ -206,32 +176,51 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
 
     let impY = 100;
 
-    const impactItems = [
-      {
-        icon: failCount > 0 ? '!' : '✓',
-        color: failCount > 3 ? RED : failCount > 0 ? YELLOW : GREEN,
-        title: failCount > 3 ? 'You\'re Losing Potential Customers' : failCount > 0 ? 'Some Visitors May Be Leaving' : 'Your Site is Retaining Visitors Well',
-        detail: failCount > 3
-          ? `With ${failCount} critical issues, your website is likely turning away visitors before they convert. Each fix directly improves your bottom line.`
-          : failCount > 0
-          ? `You have ${failCount} issue(s) that could be costing you leads. Fixing these is often the fastest path to more conversions.`
-          : 'Your site has a solid foundation. Small optimizations can still yield meaningful improvements in traffic and engagement.',
-      },
-      {
-        icon: audit.overallScore >= 75 ? '✓' : '!',
-        color: audit.overallScore >= 75 ? GREEN : audit.overallScore >= 50 ? YELLOW : RED,
-        title: 'Search Engine Visibility',
-        detail: audit.overallScore >= 75
-          ? `With a score of ${audit.overallScore}/100, search engines can effectively crawl and rank your site. Focus on content and backlinks to climb higher.`
-          : `A score of ${audit.overallScore}/100 means search engines are having trouble understanding your site. You're likely invisible for many relevant searches. This is fixable.`,
-      },
-      {
-        icon: '→',
-        color: BRAND_BLUE,
-        title: 'Revenue Impact',
-        detail: 'Studies show that every 1-second improvement in page speed increases conversions by 7%. Proper SEO can increase organic traffic by 50-100% within 6 months. These aren\'t just numbers — they translate directly to more leads and sales for your business.',
-      },
+    const aiSummaryItems = aiInsights?.businessSummaryItems || [];
+    const defaultColors = [
+      failCount > 3 ? RED : failCount > 0 ? YELLOW : GREEN,
+      audit.overallScore >= 75 ? GREEN : audit.overallScore >= 50 ? YELLOW : RED,
+      BRAND_BLUE,
     ];
+    const defaultIcons = [
+      failCount > 0 ? '!' : '✓',
+      audit.overallScore >= 75 ? '✓' : '!',
+      '→',
+    ];
+
+    const impactItems = aiSummaryItems.length >= 3
+      ? aiSummaryItems.slice(0, 3).map((item, i) => ({
+          icon: defaultIcons[i],
+          color: defaultColors[i],
+          title: item.title,
+          detail: item.detail,
+        }))
+      : [
+          {
+            icon: failCount > 0 ? '!' : '✓',
+            color: failCount > 3 ? RED : failCount > 0 ? YELLOW : GREEN,
+            title: failCount > 3 ? 'You\'re Losing Potential Customers' : failCount > 0 ? 'Some Visitors May Be Leaving' : 'Your Site is Retaining Visitors Well',
+            detail: failCount > 3
+              ? `With ${failCount} critical issues, your website is likely turning away visitors before they convert. Each fix directly improves your bottom line.`
+              : failCount > 0
+              ? `You have ${failCount} issue(s) that could be costing you leads. Fixing these is often the fastest path to more conversions.`
+              : 'Your site has a solid foundation. Small optimizations can still yield meaningful improvements in traffic and engagement.',
+          },
+          {
+            icon: audit.overallScore >= 75 ? '✓' : '!',
+            color: audit.overallScore >= 75 ? GREEN : audit.overallScore >= 50 ? YELLOW : RED,
+            title: 'Search Engine Visibility',
+            detail: audit.overallScore >= 75
+              ? `With a score of ${audit.overallScore}/100, search engines can effectively crawl and rank your site. Focus on content and backlinks to climb higher.`
+              : `A score of ${audit.overallScore}/100 means search engines are having trouble understanding your site. You're likely invisible for many relevant searches. This is fixable.`,
+          },
+          {
+            icon: '→',
+            color: BRAND_BLUE,
+            title: 'Revenue Impact',
+            detail: 'Studies show that every 1-second improvement in page speed increases conversions by 7%. Proper SEO can increase organic traffic by 50-100% within 6 months.',
+          },
+        ];
 
     for (const item of impactItems) {
       impY = ensureSpace(doc, impY, 80);
@@ -259,8 +248,9 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
     doc.roundedRect(50, impY, pageWidth, 4, 2).fill(BRAND_BLUE);
     doc.fontSize(12).fillColor(BRAND_BLUE).font('Helvetica-Bold')
       .text('Quick Wins — Start Here', 65, impY + 14);
+    const quickWinsText = aiInsights?.quickWins || 'The items marked "Critical" in this report are your biggest opportunities. Fixing just the top 3 issues typically improves your overall score by 15-25 points and can noticeably increase traffic within weeks.';
     doc.fontSize(9).fillColor(LIGHT_GRAY).font('Helvetica')
-      .text('The items marked "Critical" in this report are your biggest opportunities. Fixing just the top 3 issues typically improves your overall score by 15-25 points and can noticeably increase traffic within weeks.', 65, impY + 32, { width: pageWidth - 30 });
+      .text(quickWinsText, 65, impY + 32, { width: pageWidth - 30 });
     doc.fontSize(9).fillColor(WHITE).font('Helvetica-Bold')
       .text('We can fix all of these for you — fast, affordable, and guaranteed.', 65, impY + 65, { width: pageWidth - 30 });
 
@@ -289,7 +279,7 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
       let y = 110;
 
       for (const item of cat.items) {
-        const cardHeight = calculateItemHeight(doc, item, pageWidth);
+        const cardHeight = calculateItemHeight(doc, item, pageWidth, businessImpact);
         y = ensureSpace(doc, y, cardHeight + 10);
 
         doc.roundedRect(50, y, pageWidth, cardHeight, 6).fill(DARK_CARD);
@@ -363,8 +353,9 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
 
       doc.fontSize(20).fillColor(WHITE).font('Helvetica-Bold')
         .text('Priority Action Items', 50, 40, { width: pageWidth });
+      const recsIntro = aiInsights?.topRecommendationsIntro || 'Fix these first for the biggest impact on your traffic and conversions';
       doc.fontSize(10).fillColor(GRAY).font('Helvetica')
-        .text('Fix these first for the biggest impact on your traffic and conversions', 50, 66);
+        .text(recsIntro, 50, 66);
 
       let y = 95;
 
@@ -579,7 +570,7 @@ export function generateAuditPDF(audit: AuditResult): Promise<Buffer> {
   });
 }
 
-function calculateItemHeight(doc: PDFKit.PDFDocument, item: AuditItem, pageWidth: number): number {
+function calculateItemHeight(doc: PDFKit.PDFDocument, item: AuditItem, pageWidth: number, businessImpact: Record<string, string> = {}): number {
   const detailH = (doc as any).heightOfString(item.detail, { width: pageWidth - 55, fontSize: 9 }) || 12;
   let height = 30 + detailH;
 
