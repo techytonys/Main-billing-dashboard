@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = 'Fix: simplified update script, prevent container hang';
+const COMMIT_MESSAGE = 'New audit bar design + short update script';
 
 let connectionSettings: any;
 
