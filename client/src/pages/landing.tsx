@@ -629,7 +629,7 @@ export default function LandingPage() {
                         <Globe className="w-4 h-4 text-blue-400" />
                       </div>
                       <input
-                        placeholder="Enter your website URL..."
+                        placeholder="example.com"
                         value={auditUrl}
                         onChange={(e) => setAuditUrl(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && auditUrl.trim() && !runAudit.isPending) runAudit.mutate(); }}
