@@ -655,7 +655,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="relative py-20 sm:py-28 md:py-36 border-t border-white/5 overflow-hidden">
+      <section id="pricing" className="relative py-16 sm:py-28 md:py-36 border-t border-white/5 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/[0.02] via-transparent to-blue-500/[0.03]" />
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full bg-emerald-500/[0.04] blur-[120px]" />
@@ -668,27 +668,27 @@ export default function LandingPage() {
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-sm font-medium text-emerald-300/90">Simple, Honest Pricing</span>
             </div>
-            <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tight mb-4 sm:mb-6" data-testid="text-pricing-title">
-              Pay for What You{" "}
-              <span className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">Actually Need</span>
+            <h2 className="text-[1.75rem] leading-[1.2] sm:text-4xl md:text-6xl font-bold tracking-tight mb-4 sm:mb-6" data-testid="text-pricing-title">
+              Pay As You Go.{" "}
+              <span className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">Only Pay for Results.</span>
             </h2>
-            <p className="text-white/50 text-base sm:text-xl max-w-2xl mx-auto leading-relaxed">
-              No monthly subscriptions. No surprise fees. No contracts.
+            <p className="text-white/50 text-sm sm:text-base md:text-xl max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
+              No subscriptions. No retainers. No surprise fees.
               <br className="hidden sm:block" />
-              You only pay for the work we deliver.
+              Every dollar goes toward deliverables you can see.
             </p>
           </div>
 
           <div className="max-w-6xl mx-auto mb-16 sm:mb-20">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-10 items-stretch">
-              <div className="relative space-y-5" data-testid="card-pricing-comparison">
-                <div className="relative p-6 sm:p-8 rounded-md border border-red-500/10 bg-red-500/[0.02] opacity-50 group">
-                  <div className="flex items-start gap-5">
-                    <div className="flex items-center justify-center w-12 h-12 rounded-md bg-red-500/10 border border-red-500/15 shrink-0">
-                      <TrendingDown className="w-6 h-6 text-red-400/80" />
+              <div className="relative space-y-4 sm:space-y-5" data-testid="card-pricing-comparison">
+                <div className="relative p-5 sm:p-8 rounded-md border border-red-500/10 bg-red-500/[0.02] opacity-50 group">
+                  <div className="flex items-start gap-3.5 sm:gap-5">
+                    <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-md bg-red-500/10 border border-red-500/15 shrink-0">
+                      <TrendingDown className="w-5 h-5 sm:w-6 sm:h-6 text-red-400/80" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-base font-semibold text-red-300/80 mb-2">The Old Way</h4>
+                      <h4 className="text-sm sm:text-base font-semibold text-red-300/80 mb-1.5 sm:mb-2">The Old Way</h4>
                       <p className="text-sm text-white/35 leading-relaxed">Pay $3,000-$10,000+ upfront. Lock into retainers. Months of waiting. Hope it works out.</p>
                       <div className="flex flex-wrap gap-2 mt-4">
                         {["Hidden fees", "Long contracts", "Slow delivery"].map(tag => (
@@ -704,18 +704,18 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                <div className="relative p-6 sm:p-8 rounded-md border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.08] via-teal-500/[0.04] to-cyan-500/[0.06] shadow-lg shadow-emerald-500/[0.05]">
-                  <div className="absolute -top-3.5 left-6">
-                    <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/25 text-xs font-semibold text-emerald-300 shadow-lg shadow-emerald-500/10">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Our Approach
+                <div className="relative p-5 sm:p-8 rounded-md border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.08] via-teal-500/[0.04] to-cyan-500/[0.06] shadow-lg shadow-emerald-500/[0.05]">
+                  <div className="absolute -top-3.5 left-5 sm:left-6">
+                    <span className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/25 text-[11px] sm:text-xs font-semibold text-emerald-300 shadow-lg shadow-emerald-500/10">
+                      <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Our Approach
                     </span>
                   </div>
-                  <div className="flex items-start gap-5 mt-3">
-                    <div className="flex items-center justify-center w-12 h-12 rounded-md bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/20 shrink-0">
-                      <Layers className="w-6 h-6 text-emerald-400" />
+                  <div className="flex items-start gap-3.5 sm:gap-5 mt-3">
+                    <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-md bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/20 shrink-0">
+                      <Layers className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-base font-semibold text-emerald-300 mb-2">Pay As You Go</h4>
+                      <h4 className="text-sm sm:text-base font-semibold text-emerald-300 mb-1.5 sm:mb-2">Pay As You Go</h4>
                       <p className="text-sm text-white/55 leading-relaxed">You're billed per deliverable — per page designed, per feature built, per revision made. See every line item before you approve.</p>
                       <div className="flex flex-wrap gap-2 mt-4">
                         {["Transparent", "No lock-in", "Scale anytime"].map(tag => (
@@ -751,27 +751,27 @@ export default function LandingPage() {
           </div>
 
           <div className="max-w-4xl mx-auto">
-            <div className="relative p-8 sm:p-12 rounded-md border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.06] via-blue-500/[0.03] to-purple-500/[0.06] text-center overflow-hidden" data-testid="card-pricing-cta">
+            <div className="relative p-6 sm:p-8 md:p-12 rounded-md border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.06] via-blue-500/[0.03] to-purple-500/[0.06] text-center overflow-hidden" data-testid="card-pricing-cta">
               <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(139,92,246,0.08)_0%,transparent_60%)]" />
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] h-[1px] bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
               <div className="relative">
-                <div className="flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-white/10 mx-auto mb-6 shadow-lg shadow-violet-500/10">
-                  <MessageSquare className="w-7 h-7 text-violet-400" />
+                <div className="flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-white/10 mx-auto mb-5 sm:mb-6 shadow-lg shadow-violet-500/10">
+                  <MessageSquare className="w-6 h-6 sm:w-7 sm:h-7 text-violet-400" />
                 </div>
-                <h3 className="text-2xl sm:text-3xl font-bold mb-4">Ready to Get Started?</h3>
-                <p className="text-white/50 text-sm sm:text-base max-w-lg mx-auto leading-relaxed mb-8">
-                  Tell us what you're building. We'll send you a clear, itemized proposal within 48 hours — completely free, zero obligation. If you love it, we start. If not, no hard feelings.
+                <h3 className="text-xl sm:text-2xl md:text-3xl font-bold mb-3 sm:mb-4">Ready to Get Started?</h3>
+                <p className="text-white/50 text-xs sm:text-sm md:text-base max-w-lg mx-auto leading-relaxed mb-6 sm:mb-8 px-2 sm:px-0">
+                  Tell us what you're building. We'll send you a clear, itemized proposal within 48 hours — completely free, zero obligation.
                 </p>
                 <Button
                   size="lg"
                   onClick={() => setChatOpen(true)}
-                  className="bg-gradient-to-r from-blue-500 via-violet-500 to-purple-600 border-0 text-white text-base font-semibold px-12 py-6 shadow-xl shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow duration-300"
+                  className="bg-gradient-to-r from-blue-500 via-violet-500 to-purple-600 border-0 text-white text-sm sm:text-base font-semibold px-8 sm:px-12 py-5 sm:py-6 shadow-xl shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow duration-300"
                   data-testid="button-pricing-message"
                 >
                   <MessageSquare className="w-5 h-5 mr-2" />
                   Start a Conversation
                 </Button>
-                <p className="text-xs text-white/30 mt-5">
+                <p className="text-[11px] sm:text-xs text-white/30 mt-4 sm:mt-5">
                   Free consultation. No calls. No pressure. Just a simple conversation via email.
                 </p>
               </div>
