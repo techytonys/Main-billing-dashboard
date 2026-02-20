@@ -640,7 +640,7 @@ export default function LandingPage() {
                     <button
                       onClick={() => runAudit.mutate()}
                       disabled={!auditUrl.trim() || runAudit.isPending}
-                      className="flex items-center justify-center gap-2 px-7 h-[40px] mx-2 bg-white text-[#0a0f1e] text-sm font-semibold rounded-xl transition-all duration-300 shrink-0 hover:bg-white/90 hover:shadow-[0_0_24px_rgba(255,255,255,0.15)] disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex items-center justify-center gap-2 px-7 h-[40px] mx-2 bg-gradient-to-r from-blue-500 to-violet-500 text-white text-sm font-semibold rounded-xl transition-all duration-300 shrink-0 hover:from-blue-400 hover:to-violet-400 hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
                       data-testid="button-audit-submit"
                     >
                       {runAudit.isPending ? (
