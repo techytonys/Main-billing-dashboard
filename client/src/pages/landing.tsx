@@ -611,20 +611,14 @@ export default function LandingPage() {
                 Built For Your Business.
               </span>
             </h1>
-            <p className="text-base sm:text-lg md:text-xl text-white font-medium leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto" data-testid="text-hero-description">
-              Custom web development services for startups and small businesses — AI-powered websites, apps, and portals designed to help you grow. No templates. No compromises.
+            <p className="text-base sm:text-lg md:text-xl text-white/70 leading-relaxed mb-10 sm:mb-12 max-w-2xl mx-auto" data-testid="text-hero-description">
+              Custom websites, apps, and portals — powered by AI, built for growth. No templates. No compromises.
             </p>
 
-            <div className="max-w-3xl mx-auto mb-8" data-testid="audit-form">
-              <div className="text-center mb-5">
-                <h2 className="text-lg sm:text-xl font-bold text-white mb-2" data-testid="text-audit-heading">
-                  Is Your Website Costing You Customers?{" "}
-                  <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Find Out Free.</span>
-                </h2>
-                <p className="text-sm text-white/45 max-w-xl mx-auto leading-relaxed">
-                  Enter your URL below and get an instant audit covering SEO, speed, mobile, security, and more — plus a free PDF report with exactly what to fix to grow your traffic and sales.
-                </p>
-              </div>
+            <div className="max-w-2xl mx-auto mb-8" data-testid="audit-form">
+              <p className="text-sm text-white/40 mb-4 max-w-md mx-auto leading-relaxed">
+                Free instant website audit — SEO, speed, mobile, security & more with a detailed PDF report.
+              </p>
               <div className="relative group">
                 <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/40 via-violet-500/30 to-blue-500/40 opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
                 <div className="relative bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.4),0_1px_4px_rgba(59,130,246,0.1)]">
