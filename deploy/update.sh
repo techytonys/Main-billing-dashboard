@@ -36,8 +36,9 @@ fi
 echo ""
 
 echo -e "  ${WHITE}[2/6]${RESET} ${BOLD}Pulling latest code${RESET}"
-git pull origin main -q
-echo -e "  ${GREEN}✔${RESET} Code updated"
+git fetch origin main
+git reset --hard origin/main
+echo -e "  ${GREEN}✔${RESET} Code updated to $(git rev-parse --short HEAD)"
 echo ""
 
 echo -e "  ${WHITE}[3/6]${RESET} ${BOLD}Stopping app container${RESET}"
@@ -46,17 +47,22 @@ docker compose rm -f app 2>/dev/null || true
 echo -e "  ${GREEN}✔${RESET} App stopped (database still running)"
 echo ""
 
-echo -e "  ${WHITE}[4/6]${RESET} ${BOLD}Rebuilding app${RESET}"
-docker compose build app 2>&1
+echo -e "  ${WHITE}[4/6]${RESET} ${BOLD}Rebuilding app (no cache)${RESET}"
+docker compose build --no-cache app 2>&1
 echo -e "  ${GREEN}✔${RESET} Build complete"
 echo ""
 
-echo -e "  ${WHITE}[5/6]${RESET} ${BOLD}Starting app${RESET}"
+echo -e "  ${WHITE}[5/7]${RESET} ${BOLD}Cleaning old images${RESET}"
+docker image prune -f 2>/dev/null || true
+echo -e "  ${GREEN}✔${RESET} Old images removed"
+echo ""
+
+echo -e "  ${WHITE}[6/7]${RESET} ${BOLD}Starting app${RESET}"
 docker compose up -d 2>/dev/null
 echo -e "  ${GREEN}✔${RESET} Containers started"
 echo ""
 
-echo -e "  ${WHITE}[6/6]${RESET} ${BOLD}Verifying${RESET}"
+echo -e "  ${WHITE}[7/7]${RESET} ${BOLD}Verifying${RESET}"
 sleep 8
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 http://localhost:80 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
@@ -67,7 +73,7 @@ else
 fi
 
 echo ""
-echo -e "  ${GREEN}${BOLD}Done!${RESET} Site is live with latest changes."
+echo -e "  ${GREEN}${BOLD}Done!${RESET} Site updated to commit $(git rev-parse --short HEAD)."
 echo -e "  ${GREEN}✔${RESET} All data preserved."
 echo ""
 echo -e "  ${DIM}View logs: docker compose logs -f app${RESET}"
