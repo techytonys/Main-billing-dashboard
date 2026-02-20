@@ -611,7 +611,7 @@ export default function LandingPage() {
                 Built For Your Business.
               </span>
             </h1>
-            <p className="text-base sm:text-lg md:text-xl font-light text-white/70 leading-relaxed mb-10 sm:mb-12 max-w-2xl mx-auto" data-testid="text-hero-description">
+            <p className="text-base sm:text-lg md:text-xl font-normal text-white/70 leading-relaxed mb-10 sm:mb-12 max-w-2xl mx-auto" data-testid="text-hero-description">
               Custom websites, apps, and portals — powered by AI, built for growth. No templates. No compromises.
             </p>
 
