@@ -655,77 +655,93 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="relative py-16 sm:py-24 md:py-32 border-t border-white/5">
-        <div className="absolute inset-0 bg-gradient-to-b from-violet-500/[0.03] to-blue-500/[0.02]" />
+      <section id="pricing" className="relative py-20 sm:py-28 md:py-36 border-t border-white/5 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/[0.02] via-transparent to-blue-500/[0.03]" />
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/3 -right-40 w-[500px] h-[500px] rounded-full bg-violet-500/[0.04] blur-[100px]" />
-          <div className="absolute bottom-1/4 -left-40 w-[400px] h-[400px] rounded-full bg-blue-500/[0.04] blur-[100px]" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full bg-emerald-500/[0.04] blur-[120px]" />
+          <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] rounded-full bg-blue-500/[0.05] blur-[100px]" />
+          <div className="absolute top-1/3 right-0 w-[400px] h-[400px] rounded-full bg-violet-500/[0.04] blur-[100px]" />
         </div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-10 sm:mb-16">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4 sm:mb-6">
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm text-white/70">Simple, Honest Pricing</span>
+          <div className="text-center mb-14 sm:mb-20">
+            <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-emerald-500/[0.08] border border-emerald-500/20 mb-6 sm:mb-8">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-sm font-medium text-emerald-300/90">Simple, Honest Pricing</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight mb-3 sm:mb-4" data-testid="text-pricing-title">
+            <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tight mb-4 sm:mb-6" data-testid="text-pricing-title">
               Pay for What You{" "}
-              <span className="bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">Actually Need</span>
+              <span className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">Actually Need</span>
             </h2>
-            <p className="text-white/50 text-sm sm:text-lg max-w-2xl mx-auto">
-              No monthly subscriptions. No surprise fees. No long-term contracts.
-              You only pay for the work we deliver — nothing more.
+            <p className="text-white/50 text-base sm:text-xl max-w-2xl mx-auto leading-relaxed">
+              No monthly subscriptions. No surprise fees. No contracts.
+              <br className="hidden sm:block" />
+              You only pay for the work we deliver.
             </p>
           </div>
 
-          <div className="max-w-5xl mx-auto mb-12 sm:mb-16">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 items-center">
-              <div className="relative" data-testid="card-pricing-comparison">
-                <div className="relative p-5 sm:p-7 rounded-md border border-red-500/10 bg-red-500/[0.02] mb-4 opacity-60">
-                  <div className="flex items-start gap-4">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-md bg-red-500/10 border border-red-500/10 shrink-0">
-                      <TrendingDown className="w-5 h-5 text-red-400" />
+          <div className="max-w-6xl mx-auto mb-16 sm:mb-20">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-10 items-stretch">
+              <div className="relative space-y-5" data-testid="card-pricing-comparison">
+                <div className="relative p-6 sm:p-8 rounded-md border border-red-500/10 bg-red-500/[0.02] opacity-50 group">
+                  <div className="flex items-start gap-5">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-md bg-red-500/10 border border-red-500/15 shrink-0">
+                      <TrendingDown className="w-6 h-6 text-red-400/80" />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-red-300 mb-1">The Old Way</h4>
-                      <p className="text-xs text-white/40 leading-relaxed">Pay $3,000–$10,000+ upfront. Lock into retainers. Months of waiting. Hope it works out.</p>
+                    <div className="flex-1">
+                      <h4 className="text-base font-semibold text-red-300/80 mb-2">The Old Way</h4>
+                      <p className="text-sm text-white/35 leading-relaxed">Pay $3,000-$10,000+ upfront. Lock into retainers. Months of waiting. Hope it works out.</p>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {["Hidden fees", "Long contracts", "Slow delivery"].map(tag => (
+                          <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-500/[0.06] border border-red-500/10 text-[11px] text-red-400/60">
+                            <X className="w-2.5 h-2.5" />{tag}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-6deg]">
-                    <div className="w-[110%] h-[2px] bg-red-400/30" />
+                  <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 rotate-[-3deg] flex justify-center">
+                    <div className="w-[90%] h-[2px] bg-gradient-to-r from-transparent via-red-400/30 to-transparent" />
                   </div>
                 </div>
 
-                <div className="relative p-5 sm:p-7 rounded-md border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] to-blue-500/[0.04]">
-                  <div className="absolute -top-3 left-6">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/20 text-xs font-medium text-emerald-300">
-                      <CheckCircle2 className="w-3 h-3" /> Our Approach
+                <div className="relative p-6 sm:p-8 rounded-md border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.08] via-teal-500/[0.04] to-cyan-500/[0.06] shadow-lg shadow-emerald-500/[0.05]">
+                  <div className="absolute -top-3.5 left-6">
+                    <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/25 text-xs font-semibold text-emerald-300 shadow-lg shadow-emerald-500/10">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Our Approach
                     </span>
                   </div>
-                  <div className="flex items-start gap-4 mt-2">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-md bg-emerald-500/10 border border-emerald-500/10 shrink-0">
-                      <Layers className="w-5 h-5 text-emerald-400" />
+                  <div className="flex items-start gap-5 mt-3">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-md bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/20 shrink-0">
+                      <Layers className="w-6 h-6 text-emerald-400" />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-semibold text-emerald-300 mb-1">Pay As You Go</h4>
-                      <p className="text-xs text-white/50 leading-relaxed">You're billed per deliverable — per page designed, per feature built, per revision made. See every line item before you approve. Stop or scale anytime.</p>
+                    <div className="flex-1">
+                      <h4 className="text-base font-semibold text-emerald-300 mb-2">Pay As You Go</h4>
+                      <p className="text-sm text-white/55 leading-relaxed">You're billed per deliverable — per page designed, per feature built, per revision made. See every line item before you approve.</p>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {["Transparent", "No lock-in", "Scale anytime"].map(tag => (
+                          <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/[0.08] border border-emerald-500/15 text-[11px] text-emerald-400/80">
+                            <CheckCircle2 className="w-2.5 h-2.5" />{tag}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3 sm:space-y-4">
+              <div className="space-y-4">
                 {[
-                  { icon: Receipt, title: "Billed Per Deliverable", desc: "Every page, feature, and asset is itemized. You see exactly what you're paying for — no bundled mystery charges." },
-                  { icon: Shield, title: "No Contracts or Commitments", desc: "Start a project, pause it, or wrap it up. There's no minimum spend, no lock-in period, no cancellation fees." },
-                  { icon: Clock, title: "Flexible Payment Plans", desc: "Bigger project? Split it into comfortable installments. We'll set up a plan that matches your cash flow." },
-                  { icon: UserCog, title: "Full Transparency Portal", desc: "Track every deliverable, view invoices, approve work, and manage payments — all from your own dashboard." },
+                  { icon: Receipt, title: "Billed Per Deliverable", desc: "Every page, feature, and asset is itemized. You see exactly what you're paying for — no bundled mystery charges.", color: "from-emerald-500/15 to-teal-500/15", iconColor: "text-emerald-400", border: "hover:border-emerald-500/20" },
+                  { icon: Shield, title: "No Contracts or Commitments", desc: "Start a project, pause it, or wrap it up. There's no minimum spend, no lock-in period, no cancellation fees.", color: "from-blue-500/15 to-cyan-500/15", iconColor: "text-blue-400", border: "hover:border-blue-500/20" },
+                  { icon: Clock, title: "Flexible Payment Plans", desc: "Bigger project? Split it into comfortable installments. We'll set up a plan that matches your cash flow.", color: "from-violet-500/15 to-purple-500/15", iconColor: "text-violet-400", border: "hover:border-violet-500/20" },
+                  { icon: UserCog, title: "Full Transparency Portal", desc: "Track every deliverable, view invoices, approve work, and manage payments — all from your own dashboard.", color: "from-amber-500/15 to-orange-500/15", iconColor: "text-amber-400", border: "hover:border-amber-500/20" },
                 ].map((item) => (
-                  <div key={item.title} className="flex items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-md bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors" data-testid={`card-benefit-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                    <div className="flex items-center justify-center w-9 h-9 rounded-md bg-gradient-to-br from-blue-500/10 to-violet-500/10 border border-white/5 shrink-0">
-                      <item.icon className="w-4 h-4 text-blue-400" />
+                  <div key={item.title} className={`group flex items-start gap-4 p-5 rounded-md bg-white/[0.02] border border-white/[0.06] ${item.border} transition-all duration-300 hover:bg-white/[0.04]`} data-testid={`card-benefit-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <div className={`flex items-center justify-center w-11 h-11 rounded-md bg-gradient-to-br ${item.color} border border-white/[0.06] shrink-0 group-hover:scale-105 transition-transform duration-300`}>
+                      <item.icon className={`w-5 h-5 ${item.iconColor}`} />
                     </div>
                     <div>
-                      <h4 className="text-sm font-semibold mb-0.5">{item.title}</h4>
+                      <h4 className="text-sm font-semibold mb-1 group-hover:text-white transition-colors">{item.title}</h4>
                       <p className="text-xs text-white/40 leading-relaxed">{item.desc}</p>
                     </div>
                   </div>
@@ -734,27 +750,28 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="max-w-3xl mx-auto">
-            <div className="relative p-6 sm:p-10 rounded-md border border-violet-500/20 bg-gradient-to-b from-violet-500/[0.05] to-blue-500/[0.02] text-center overflow-hidden" data-testid="card-pricing-cta">
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(139,92,246,0.06)_0%,transparent_70%)]" />
+          <div className="max-w-4xl mx-auto">
+            <div className="relative p-8 sm:p-12 rounded-md border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.06] via-blue-500/[0.03] to-purple-500/[0.06] text-center overflow-hidden" data-testid="card-pricing-cta">
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(139,92,246,0.08)_0%,transparent_60%)]" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] h-[1px] bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
               <div className="relative">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-white/10 mx-auto mb-5">
-                  <MessageSquare className="w-6 h-6 text-violet-400" />
+                <div className="flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-white/10 mx-auto mb-6 shadow-lg shadow-violet-500/10">
+                  <MessageSquare className="w-7 h-7 text-violet-400" />
                 </div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-3">Ready to Get Started?</h3>
-                <p className="text-white/50 text-sm sm:text-base max-w-lg mx-auto leading-relaxed mb-6">
+                <h3 className="text-2xl sm:text-3xl font-bold mb-4">Ready to Get Started?</h3>
+                <p className="text-white/50 text-sm sm:text-base max-w-lg mx-auto leading-relaxed mb-8">
                   Tell us what you're building. We'll send you a clear, itemized proposal within 48 hours — completely free, zero obligation. If you love it, we start. If not, no hard feelings.
                 </p>
                 <Button
                   size="lg"
                   onClick={() => setChatOpen(true)}
-                  className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-base font-medium px-10 shadow-lg shadow-violet-500/20"
+                  className="bg-gradient-to-r from-blue-500 via-violet-500 to-purple-600 border-0 text-white text-base font-semibold px-12 py-6 shadow-xl shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow duration-300"
                   data-testid="button-pricing-message"
                 >
-                  <MessageSquare className="w-4 h-4 mr-2" />
+                  <MessageSquare className="w-5 h-5 mr-2" />
                   Start a Conversation
                 </Button>
-                <p className="text-xs text-white/30 mt-4">
+                <p className="text-xs text-white/30 mt-5">
                   Free consultation. No calls. No pressure. Just a simple conversation via email.
                 </p>
               </div>
@@ -763,36 +780,41 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="api" className="relative py-16 sm:py-24 md:py-32 border-t border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-center">
+      <section id="api" className="relative py-20 sm:py-28 md:py-36 border-t border-white/5 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-500/[0.02] via-transparent to-cyan-500/[0.02]" />
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-1/4 -left-20 w-[600px] h-[600px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
+          <div className="absolute bottom-1/4 -right-20 w-[500px] h-[500px] rounded-full bg-cyan-500/[0.04] blur-[100px]" />
+        </div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 sm:gap-16 items-center">
             <div className="order-2 lg:order-1">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4 sm:mb-6">
-                <Plug className="w-4 h-4 text-blue-400" />
-                <span className="text-sm text-white/70">Developer API</span>
+              <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-500/[0.08] border border-blue-500/20 mb-6 sm:mb-8">
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-sm font-medium text-blue-300/90">Developer API</span>
               </div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3 sm:mb-4" data-testid="text-api-title">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4 sm:mb-6" data-testid="text-api-title">
                 Connect Your Tools with{" "}
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Our API</span>
+                <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-teal-400 bg-clip-text text-transparent">Our API</span>
               </h2>
-              <p className="text-white/50 text-sm sm:text-base leading-relaxed mb-6 sm:mb-8 max-w-lg">
-                Need to pull project data into your own systems? Our REST API lets you integrate customer info, invoices, project updates, and work entries directly into your workflow — with secure API key authentication and granular permissions.
+              <p className="text-white/50 text-base sm:text-lg leading-relaxed mb-8 sm:mb-10 max-w-lg">
+                Pull project data into your own systems. Integrate customer info, invoices, and work entries directly into your workflow with secure API key authentication.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 sm:mb-10">
                 {[
-                  { icon: Key, title: "Secure API Keys", desc: "Scope-based permissions with read, write, and full access levels." },
-                  { icon: Database, title: "Real-Time Data", desc: "Access customers, projects, invoices, and work entries instantly." },
-                  { icon: FileCode2, title: "Simple REST API", desc: "Clean JSON endpoints with beginner-friendly documentation." },
-                  { icon: Workflow, title: "Custom Integrations", desc: "Build dashboards, automate reports, or sync with any platform." },
+                  { icon: Key, title: "Secure API Keys", desc: "Scope-based permissions with read, write, and full access levels.", color: "from-blue-500/15 to-indigo-500/15", iconColor: "text-blue-400" },
+                  { icon: Database, title: "Real-Time Data", desc: "Access customers, projects, invoices, and work entries instantly.", color: "from-cyan-500/15 to-teal-500/15", iconColor: "text-cyan-400" },
+                  { icon: FileCode2, title: "Simple REST API", desc: "Clean JSON endpoints with beginner-friendly documentation.", color: "from-violet-500/15 to-purple-500/15", iconColor: "text-violet-400" },
+                  { icon: Workflow, title: "Custom Integrations", desc: "Build dashboards, automate reports, or sync with any platform.", color: "from-emerald-500/15 to-green-500/15", iconColor: "text-emerald-400" },
                 ].map((item) => (
-                  <div key={item.title} className="flex items-start gap-3 p-3 rounded-md bg-white/[0.02] border border-white/5" data-testid={`card-api-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                    <div className="flex items-center justify-center w-8 h-8 rounded-md bg-blue-500/10 border border-blue-500/10 shrink-0">
-                      <item.icon className="w-4 h-4 text-blue-400" />
+                  <div key={item.title} className="group flex items-start gap-3.5 p-4 rounded-md bg-white/[0.02] border border-white/[0.06] hover:border-blue-500/20 hover:bg-white/[0.04] transition-all duration-300" data-testid={`card-api-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-md bg-gradient-to-br ${item.color} border border-white/[0.06] shrink-0 group-hover:scale-105 transition-transform duration-300`}>
+                      <item.icon className={`w-4.5 h-4.5 ${item.iconColor}`} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-semibold mb-0.5">{item.title}</h4>
-                      <p className="text-[11px] text-white/40 leading-relaxed">{item.desc}</p>
+                      <h4 className="text-sm font-semibold mb-1 group-hover:text-white transition-colors">{item.title}</h4>
+                      <p className="text-xs text-white/40 leading-relaxed">{item.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -801,7 +823,7 @@ export default function LandingPage() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link href="/api/docs">
                   <Button
-                    className="bg-gradient-to-r from-blue-500 to-cyan-500 border-0 text-white font-medium"
+                    className="bg-gradient-to-r from-blue-500 via-cyan-500 to-teal-500 border-0 text-white font-semibold px-8 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-shadow duration-300"
                     data-testid="button-api-docs"
                   >
                     <FileCode2 className="w-4 h-4 mr-2" />
@@ -810,7 +832,7 @@ export default function LandingPage() {
                 </Link>
                 <Button
                   variant="outline"
-                  className="border-white/15 text-white bg-white/5"
+                  className="border-white/15 text-white bg-white/5 hover:bg-white/10 transition-colors"
                   onClick={() => setChatOpen(true)}
                   data-testid="button-api-contact"
                 >
@@ -821,21 +843,49 @@ export default function LandingPage() {
             </div>
 
             <div className="order-1 lg:order-2 relative" data-testid="img-api-visual">
-              <div className="relative rounded-md overflow-hidden border border-white/5">
-                <img
-                  src={apiIntegrationsImg}
-                  alt="API Integrations"
-                  className="w-full h-auto object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f]/60 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0f]/40 to-transparent" />
-              </div>
-              <div className="absolute -bottom-3 -right-3 sm:-bottom-4 sm:-right-4 p-3 sm:p-4 rounded-md bg-[#12121a] border border-white/10" style={{ backdropFilter: "blur(12px)" }}>
-                <div className="flex items-center gap-2 text-xs">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-white/60 font-medium">API Status: Live</span>
+              <div className="relative rounded-md overflow-hidden border border-white/10 shadow-2xl shadow-blue-500/[0.08]">
+                <div className="bg-[#0d1117] p-1">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06]">
+                    <div className="flex gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-red-500/60" />
+                      <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
+                      <div className="w-3 h-3 rounded-full bg-green-500/60" />
+                    </div>
+                    <div className="flex-1 flex justify-center">
+                      <div className="px-4 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]">
+                        <span className="text-[11px] text-white/40 font-mono">api/v1/customers</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-5 font-mono text-[13px] leading-relaxed">
+                    <div className="text-white/30 mb-1">
+                      <span className="text-blue-400/70">GET</span> <span className="text-white/50">/api/v1/customers</span>
+                    </div>
+                    <div className="mt-3 text-white/25">{"{"}</div>
+                    <div className="pl-4 text-white/25">"<span className="text-cyan-400/80">data</span>": {"["}</div>
+                    <div className="pl-8 text-white/25">{"{"}</div>
+                    <div className="pl-12"><span className="text-white/25">"</span><span className="text-emerald-400/80">name</span><span className="text-white/25">":</span> <span className="text-amber-400/70">"Acme Corp"</span><span className="text-white/20">,</span></div>
+                    <div className="pl-12"><span className="text-white/25">"</span><span className="text-emerald-400/80">email</span><span className="text-white/25">":</span> <span className="text-amber-400/70">"hello@acme.com"</span><span className="text-white/20">,</span></div>
+                    <div className="pl-12"><span className="text-white/25">"</span><span className="text-emerald-400/80">status</span><span className="text-white/25">":</span> <span className="text-amber-400/70">"active"</span></div>
+                    <div className="pl-8 text-white/25">{"}"}</div>
+                    <div className="pl-4 text-white/25">{"]"}</div>
+                    <div className="text-white/25">{"}"}</div>
+                  </div>
                 </div>
-                <p className="text-[10px] text-white/30 mt-1">v1 &middot; REST &middot; JSON</p>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f]/40 to-transparent pointer-events-none" />
+              </div>
+              <div className="absolute -bottom-4 -right-4 sm:-bottom-5 sm:-right-5 p-4 sm:p-5 rounded-md bg-[#12121a]/90 border border-white/10 shadow-xl" style={{ backdropFilter: "blur(16px)" }}>
+                <div className="flex items-center gap-2.5 text-xs mb-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
+                  <span className="text-white/70 font-semibold">API Status: Live</span>
+                </div>
+                <p className="text-[11px] text-white/30">v1 &middot; REST &middot; JSON &middot; Bearer Auth</p>
+              </div>
+              <div className="absolute -top-3 -left-3 sm:-top-4 sm:-left-4 p-3 sm:p-4 rounded-md bg-[#12121a]/90 border border-white/10 shadow-xl" style={{ backdropFilter: "blur(16px)" }}>
+                <div className="flex items-center gap-2 text-xs">
+                  <Shield className="w-4 h-4 text-blue-400" />
+                  <span className="text-white/70 font-semibold">Encrypted</span>
+                </div>
               </div>
             </div>
           </div>
