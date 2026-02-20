@@ -616,6 +616,15 @@ export default function LandingPage() {
             </p>
 
             <div className="max-w-3xl mx-auto mb-8" data-testid="audit-form">
+              <div className="text-center mb-5">
+                <h2 className="text-lg sm:text-xl font-bold text-white mb-2" data-testid="text-audit-heading">
+                  Is Your Website Costing You Customers?{" "}
+                  <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Find Out Free.</span>
+                </h2>
+                <p className="text-sm text-white/45 max-w-xl mx-auto leading-relaxed">
+                  Enter your URL below and get an instant audit covering SEO, speed, mobile, security, and more — plus a free PDF report with exactly what to fix to grow your traffic and sales.
+                </p>
+              </div>
               <div className="relative group">
                 <div className="absolute -inset-[1px] rounded-full bg-gradient-to-r from-blue-500/40 via-violet-500/30 to-blue-500/40 opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-[1px]" />
                 <div className="relative bg-[#0a0f1e]/90 backdrop-blur-sm rounded-full border border-white/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.4),0_1px_4px_rgba(59,130,246,0.1)]">
@@ -647,9 +656,12 @@ export default function LandingPage() {
                 </div>
               </div>
               {!auditLoading && (
-                <p className="text-[11px] text-white/25 mt-3 text-center tracking-wide">
-                  Free detailed PDF report emailed instantly
-                </p>
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3">
+                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />SEO & Keywords</span>
+                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Speed & Performance</span>
+                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Mobile & Security</span>
+                  <span className="flex items-center gap-1 text-[11px] text-white/30"><CheckCircle2 className="w-3 h-3 text-emerald-500/50" />Free PDF Report</span>
+                </div>
               )}
             </div>
 
