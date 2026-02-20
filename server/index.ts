@@ -4,17 +4,40 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { WebhookHandlers } from "./webhookHandlers";
-import { execSync } from "child_process";
+import * as fs from "fs";
 
 const port = parseInt(process.env.PORT || "5000", 10);
+const portHex = port.toString(16).toUpperCase().padStart(4, '0');
 try {
-  const cmds = [
-    `kill -9 $(lsof -ti:${port}) 2>/dev/null || true`,
-    `fuser -k -9 ${port}/tcp 2>/dev/null || true`,
-    `ss -tlnp sport = :${port} 2>/dev/null | grep -oP 'pid=\\K[0-9]+' | while read p; do [ "$p" != "$$" ] && kill -9 "$p" 2>/dev/null; done || true`,
-  ];
-  for (const cmd of cmds) {
-    try { execSync(cmd, { timeout: 2000 }); } catch {}
+  const tcpData = fs.readFileSync('/proc/net/tcp', 'utf8');
+  const inodes = new Set<string>();
+  for (const line of tcpData.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[1]?.endsWith(':' + portHex) && parts[3] === '0A') {
+      inodes.add(parts[9]);
+    }
+  }
+  if (inodes.size > 0) {
+    const myPid = String(process.pid);
+    const pids = fs.readdirSync('/proc').filter(d => /^\d+$/.test(d) && d !== myPid);
+    for (const pid of pids) {
+      try {
+        const fds = fs.readdirSync(`/proc/${pid}/fd`);
+        for (const fd of fds) {
+          try {
+            const link = fs.readlinkSync(`/proc/${pid}/fd/${fd}`);
+            for (const inode of inodes) {
+              if (link === `socket:[${inode}]`) {
+                process.kill(Number(pid), 'SIGKILL');
+                console.log(`Killed stale process ${pid} holding port ${port}`);
+              }
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+    const { execSync } = require("child_process");
+    try { execSync("sleep 1"); } catch {}
   }
 } catch {}
 
