@@ -4,6 +4,19 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { WebhookHandlers } from "./webhookHandlers";
+import { execSync } from "child_process";
+
+const port = parseInt(process.env.PORT || "5000", 10);
+try {
+  const cmds = [
+    `kill -9 $(lsof -ti:${port}) 2>/dev/null || true`,
+    `fuser -k -9 ${port}/tcp 2>/dev/null || true`,
+    `ss -tlnp sport = :${port} 2>/dev/null | grep -oP 'pid=\\K[0-9]+' | while read p; do [ "$p" != "$$" ] && kill -9 "$p" 2>/dev/null; done || true`,
+  ];
+  for (const cmd of cmds) {
+    try { execSync(cmd, { timeout: 2000 }); } catch {}
+  }
+} catch {}
 
 const app = express();
 const httpServer = createServer(app);
@@ -160,25 +173,7 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-
-  const startServer = (attempt = 1) => {
-    httpServer.once('error', (err: any) => {
-      if (err.code === 'EADDRINUSE' && attempt <= 5) {
-        log(`Port ${port} busy, retrying in 2s (attempt ${attempt}/5)...`);
-        setTimeout(() => {
-          httpServer.removeAllListeners('error');
-          startServer(attempt + 1);
-        }, 2000);
-      } else {
-        throw err;
-      }
-    });
-
-    httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
-      log(`serving on port ${port}`);
-    });
-  };
-
-  startServer();
+  httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    log(`serving on port ${port}`);
+  });
 })();
