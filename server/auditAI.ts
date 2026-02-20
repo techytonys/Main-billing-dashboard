@@ -1,10 +1,14 @@
 import OpenAI from "openai";
 import type { AuditResult } from "./audit";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+function getOpenAIClient(): OpenAI | null {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+  });
+}
 
 export interface AIAuditInsights {
   businessImpact: Record<string, string>;
@@ -63,6 +67,11 @@ Return a JSON object with these exact fields:
 Return ONLY valid JSON, no markdown fences.`;
 
   try {
+    const openai = getOpenAIClient();
+    if (!openai) {
+      console.log("No OpenAI API key configured, using static fallback for audit insights");
+      return getStaticFallback(audit);
+    }
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
