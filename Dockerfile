@@ -1,15 +1,3 @@
-FROM node:20 AS builder
-
-WORKDIR /app
-
-ENV NODE_OPTIONS="--max-old-space-size=1024"
-
-COPY package.json package-lock.json ./
-RUN npm install --legacy-peer-deps 2>&1 | tail -3
-
-COPY . .
-RUN NODE_ENV=production node --max-old-space-size=512 ./node_modules/.bin/tsx script/build.ts
-
 FROM node:20-slim
 
 WORKDIR /app
@@ -17,12 +5,12 @@ WORKDIR /app
 ENV PORT=5000
 ENV NODE_ENV=production
 
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
-COPY --from=builder /app/shared ./shared
+COPY package.json package-lock.json ./
+RUN npm install --omit=dev --ignore-scripts --legacy-peer-deps 2>&1 | tail -3
+
+COPY dist ./dist
+COPY tsconfig.json drizzle.config.ts ./
+COPY shared ./shared
 
 EXPOSE 5000
 
