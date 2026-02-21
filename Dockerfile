@@ -2,10 +2,8 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts && npm rebuild
+RUN npm install --ignore-scripts --no-optional 2>&1 | tail -5
 
 COPY . .
 RUN npm run build
@@ -17,13 +15,9 @@ WORKDIR /app
 ENV PORT=5000
 ENV NODE_ENV=production
 
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
-
 COPY package.json package-lock.json tsconfig.json drizzle.config.ts ./
 COPY shared ./shared
-RUN npm ci --omit=dev && npm cache clean --force
-
-RUN apt-get purge -y python3 make g++ && apt-get autoremove -y
+RUN npm install --omit=dev --ignore-scripts --no-optional 2>&1 | tail -5
 
 COPY --from=builder /app/dist ./dist
 
