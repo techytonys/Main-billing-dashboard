@@ -3330,6 +3330,181 @@ ${urls}
     }
   });
 
+  // ============ PORTAL: SERVER PROVISIONING ============
+
+  app.get("/api/portal/:token/servers", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const servers = await storage.getLinodeServersByCustomerId(customer.id);
+
+      const LINODE_API = "https://api.linode.com/v4";
+      const apiKey = process.env.LINODE_API_KEY;
+      const linodeHeaders = apiKey ? { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" } : null;
+
+      const enriched = await Promise.all(servers.map(async (server) => {
+        if (linodeHeaders) {
+          try {
+            const liResp = await fetch(`${LINODE_API}/linode/instances/${server.linodeId}`, { headers: linodeHeaders });
+            if (liResp.ok) {
+              const liData = await liResp.json();
+              if (liData.status !== server.status || liData.ipv4?.[0] !== server.ipv4) {
+                await storage.updateLinodeServer(server.id, {
+                  status: liData.status,
+                  ipv4: liData.ipv4?.[0] || server.ipv4,
+                  ipv6: liData.ipv6 || server.ipv6,
+                });
+              }
+              return { ...server, status: liData.status, ipv4: liData.ipv4?.[0] || server.ipv4, ipv6: liData.ipv6 || server.ipv6 };
+            }
+          } catch {}
+        }
+        return server;
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch servers" });
+    }
+  });
+
+  app.get("/api/portal/:token/server-types", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Server provisioning not configured" });
+
+      const response = await fetch("https://api.linode.com/v4/linode/types", {
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: "Failed to fetch server types" });
+
+      const types = (data.data || [])
+        .filter((t: any) => {
+          const id = (t.id || "").toLowerCase();
+          if (!id.includes("nanode") && !id.includes("standard")) return false;
+          const excluded = ["g6-standard-8", "g6-standard-16", "g6-standard-24"];
+          return !excluded.includes(t.id);
+        })
+        .map((t: any) => {
+          const baseHourly = t.price?.hourly || 0;
+          const baseMonthly = t.price?.monthly || 0;
+          const markup = 1.5;
+          return {
+            id: t.id,
+            label: t.label,
+            typeClass: t.type_class || (t.id?.includes("nanode") ? "nanode" : "standard"),
+            vcpus: t.vcpus,
+            memory: t.memory,
+            disk: t.disk,
+            transfer: t.transfer,
+            monthlyPrice: parseFloat((baseMonthly * markup).toFixed(2)),
+            hourlyPrice: parseFloat((baseHourly * markup).toFixed(6)),
+            baseMonthly,
+            baseHourly,
+            networkOut: t.network_out,
+          };
+        })
+        .sort((a: any, b: any) => (a.hourlyPrice || 0) - (b.hourlyPrice || 0));
+      res.json(types);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch server types" });
+    }
+  });
+
+  app.get("/api/portal/:token/server-regions", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Server provisioning not configured" });
+
+      const response = await fetch("https://api.linode.com/v4/regions", {
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: "Failed to fetch regions" });
+
+      const regions = (data.data || [])
+        .filter((r: any) => r.status === "ok")
+        .map((r: any) => ({ id: r.id, label: r.label, country: r.country }));
+      res.json(regions);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch regions" });
+    }
+  });
+
+  app.post("/api/portal/:token/servers/provision", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const { typeId, region, label } = req.body;
+      if (!typeId || !region || !label) {
+        return res.status(400).json({ error: "Server type, region, and label are required" });
+      }
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Server provisioning not configured" });
+
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+      const rootPass = `AiPS-${Date.now()}-${Math.random().toString(36).slice(2, 10)}!`;
+
+      let monthlyPriceCents = 0;
+      try {
+        const typesRes = await fetch(`https://api.linode.com/v4/linode/types/${typeId}`, { headers: linodeHeaders });
+        if (typesRes.ok) {
+          const typeData = await typesRes.json();
+          monthlyPriceCents = Math.round((typeData.price?.monthly || 0) * 100);
+        }
+      } catch {}
+
+      const response = await fetch("https://api.linode.com/v4/linode/instances", {
+        method: "POST",
+        headers: linodeHeaders,
+        body: JSON.stringify({
+          type: typeId,
+          region,
+          label: `${label}-${customer.id.substring(0, 6)}`,
+          image: "linode/ubuntu24.04",
+          root_pass: rootPass,
+          booted: true,
+          tags: ["aipoweredsites", "client-provisioned"],
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to provision server" });
+      }
+
+      const server = await storage.createLinodeServer({
+        linodeId: data.id,
+        label: data.label,
+        customerId: customer.id,
+        region: data.region,
+        planType: data.type,
+        planLabel: data.specs?.type_class || typeId,
+        status: data.status,
+        ipv4: data.ipv4?.[0] || null,
+        ipv6: data.ipv6 || null,
+        vcpus: data.specs?.vcpus || null,
+        memory: data.specs?.memory || null,
+        disk: data.specs?.disk || null,
+        monthlyPriceCents,
+        markupPercent: 50,
+      });
+
+      res.json({ server, rootPassword: rootPass });
+    } catch (err: any) {
+      console.error("Portal server provision error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to provision server" });
+    }
+  });
+
   // ============ LINODE SERVER PROVISIONING ============
 
   const LINODE_API_BASE = "https://api.linode.com/v4";
@@ -3974,6 +4149,130 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     } catch (err: any) {
       console.error("Invoice generation error:", err.message);
       res.status(500).json({ error: "Failed to generate invoice" });
+    }
+  });
+
+  // ===== Knowledge Base Articles =====
+  app.get("/api/knowledge-base", isAuthenticated, async (req, res) => {
+    try {
+      const articles = await storage.getKnowledgeBaseArticles();
+      res.json(articles);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch articles" });
+    }
+  });
+
+  app.get("/api/knowledge-base/:id", isAuthenticated, async (req, res) => {
+    try {
+      const article = await storage.getKnowledgeBaseArticle(req.params.id);
+      if (!article) return res.status(404).json({ error: "Article not found" });
+      res.json(article);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch article" });
+    }
+  });
+
+  app.post("/api/knowledge-base", isAuthenticated, async (req, res) => {
+    try {
+      const { title, content, category, status, sortOrder } = req.body;
+      if (!title || typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({ error: "Title is required" });
+      }
+      if (status && !["draft", "published"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'draft' or 'published'" });
+      }
+      const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const article = await storage.createKnowledgeBaseArticle({
+        title, slug, content: content || "", category: category || "General",
+        status: status || "draft", sortOrder: sortOrder || 0, notionPageId: null,
+      });
+
+      if (status === "published") {
+        try {
+          const { syncArticleToNotion } = await import("./notionClient");
+          const notionPageId = await syncArticleToNotion({ title, content: content || "", category: category || "General", status });
+          if (notionPageId) {
+            await storage.updateKnowledgeBaseArticle(article.id, { notionPageId });
+            article.notionPageId = notionPageId;
+          }
+        } catch (e) {
+          console.error("Notion sync skipped:", e);
+        }
+      }
+
+      res.json(article);
+    } catch (error) {
+      console.error("Create article error:", error);
+      res.status(500).json({ error: "Failed to create article" });
+    }
+  });
+
+  app.patch("/api/knowledge-base/:id", isAuthenticated, async (req, res) => {
+    try {
+      const existing = await storage.getKnowledgeBaseArticle(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Article not found" });
+
+      const { title, content, category, status, sortOrder } = req.body;
+      const updates: any = {};
+      if (title !== undefined) {
+        updates.title = title;
+        updates.slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      }
+      if (content !== undefined) updates.content = content;
+      if (category !== undefined) updates.category = category;
+      if (status !== undefined) updates.status = status;
+      if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+
+      const article = await storage.updateKnowledgeBaseArticle(req.params.id, updates);
+
+      if (article && (status === "published" || (existing.status === "published" && status !== "draft"))) {
+        try {
+          const { syncArticleToNotion } = await import("./notionClient");
+          const notionPageId = await syncArticleToNotion(
+            { title: article.title, content: article.content, category: article.category, status: article.status },
+            article.notionPageId
+          );
+          if (notionPageId && notionPageId !== article.notionPageId) {
+            await storage.updateKnowledgeBaseArticle(article.id, { notionPageId });
+            article.notionPageId = notionPageId;
+          }
+        } catch (e) {
+          console.error("Notion sync skipped:", e);
+        }
+      }
+
+      res.json(article);
+    } catch (error) {
+      console.error("Update article error:", error);
+      res.status(500).json({ error: "Failed to update article" });
+    }
+  });
+
+  app.delete("/api/knowledge-base/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteKnowledgeBaseArticle(req.params.id);
+      res.json({ success: deleted });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete article" });
+    }
+  });
+
+  app.get("/api/public/knowledge-base", async (_req, res) => {
+    try {
+      const articles = await storage.getPublishedKnowledgeBaseArticles();
+      res.json(articles);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch articles" });
+    }
+  });
+
+  app.get("/api/public/knowledge-base/:slug", async (req, res) => {
+    try {
+      const article = await storage.getKnowledgeBaseArticleBySlug(req.params.slug);
+      if (!article || article.status !== "published") return res.status(404).json({ error: "Article not found" });
+      res.json(article);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch article" });
     }
   });
 

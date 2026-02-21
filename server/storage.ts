@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
-  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads,
+  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads, knowledgeBaseArticles,
   type User, type InsertUser,
   type Customer, type InsertCustomer,
   type Project, type InsertProject,
@@ -35,6 +35,7 @@ import {
   type Lead, type InsertLead,
   linodeServers,
   type LinodeServer, type InsertLinodeServer,
+  type KnowledgeBaseArticle, type InsertKnowledgeBaseArticle,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -194,6 +195,7 @@ export interface IStorage {
   getLinodeServers(): Promise<LinodeServer[]>;
   getLinodeServer(id: string): Promise<LinodeServer | undefined>;
   getLinodeServerByLinodeId(linodeId: number): Promise<LinodeServer | undefined>;
+  getLinodeServersByCustomerId(customerId: string): Promise<LinodeServer[]>;
   createLinodeServer(server: InsertLinodeServer): Promise<LinodeServer>;
   updateLinodeServer(id: string, updates: Partial<InsertLinodeServer>): Promise<LinodeServer | undefined>;
   deleteLinodeServer(id: string): Promise<boolean>;
@@ -1067,6 +1069,10 @@ export class DatabaseStorage implements IStorage {
     return server;
   }
 
+  async getLinodeServersByCustomerId(customerId: string): Promise<LinodeServer[]> {
+    return db.select().from(linodeServers).where(eq(linodeServers.customerId, customerId)).orderBy(desc(linodeServers.createdAt));
+  }
+
   async createLinodeServer(server: InsertLinodeServer): Promise<LinodeServer> {
     const [created] = await db.insert(linodeServers).values(server).returning();
     return created;
@@ -1079,6 +1085,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLinodeServer(id: string): Promise<boolean> {
     const result = await db.delete(linodeServers).where(eq(linodeServers.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getKnowledgeBaseArticles(): Promise<KnowledgeBaseArticle[]> {
+    return db.select().from(knowledgeBaseArticles).orderBy(knowledgeBaseArticles.sortOrder, knowledgeBaseArticles.createdAt);
+  }
+
+  async getPublishedKnowledgeBaseArticles(): Promise<KnowledgeBaseArticle[]> {
+    return db.select().from(knowledgeBaseArticles).where(eq(knowledgeBaseArticles.status, "published")).orderBy(knowledgeBaseArticles.sortOrder, knowledgeBaseArticles.createdAt);
+  }
+
+  async getKnowledgeBaseArticle(id: string): Promise<KnowledgeBaseArticle | undefined> {
+    const [article] = await db.select().from(knowledgeBaseArticles).where(eq(knowledgeBaseArticles.id, id));
+    return article;
+  }
+
+  async getKnowledgeBaseArticleBySlug(slug: string): Promise<KnowledgeBaseArticle | undefined> {
+    const [article] = await db.select().from(knowledgeBaseArticles).where(eq(knowledgeBaseArticles.slug, slug));
+    return article;
+  }
+
+  async createKnowledgeBaseArticle(article: InsertKnowledgeBaseArticle): Promise<KnowledgeBaseArticle> {
+    const [created] = await db.insert(knowledgeBaseArticles).values(article).returning();
+    return created;
+  }
+
+  async updateKnowledgeBaseArticle(id: string, updates: Partial<InsertKnowledgeBaseArticle>): Promise<KnowledgeBaseArticle | undefined> {
+    const [updated] = await db.update(knowledgeBaseArticles).set({ ...updates, updatedAt: new Date() }).where(eq(knowledgeBaseArticles.id, id)).returning();
+    return updated;
+  }
+
+  async deleteKnowledgeBaseArticle(id: string): Promise<boolean> {
+    const result = await db.delete(knowledgeBaseArticles).where(eq(knowledgeBaseArticles.id, id)).returning();
     return result.length > 0;
   }
 }

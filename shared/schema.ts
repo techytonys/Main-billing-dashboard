@@ -478,3 +478,21 @@ export const insertLinodeServerSchema = createInsertSchema(linodeServers).omit({
 
 export type LinodeServer = typeof linodeServers.$inferSelect;
 export type InsertLinodeServer = z.infer<typeof insertLinodeServerSchema>;
+
+export const knowledgeBaseArticles = pgTable("knowledge_base_articles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  slug: text("slug").notNull(),
+  content: text("content").notNull().default(""),
+  category: text("category").notNull().default("General"),
+  status: text("status").notNull().default("draft"),
+  notionPageId: text("notion_page_id"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertKnowledgeBaseArticleSchema = createInsertSchema(knowledgeBaseArticles).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type KnowledgeBaseArticle = typeof knowledgeBaseArticles.$inferSelect;
+export type InsertKnowledgeBaseArticle = z.infer<typeof insertKnowledgeBaseArticleSchema>;

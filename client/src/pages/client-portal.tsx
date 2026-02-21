@@ -8,6 +8,7 @@ import {
   CalendarClock, ExternalLink, ImageIcon, Receipt, Wallet, LayoutDashboard, Bell, Check,
   Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
   FolderGit2, Github, GitBranch, Zap, Play, HelpCircle, DollarSign,
+  Server, Cpu, HardDrive, MemoryStick, Terminal, Copy, MapPin, BookOpen, Search, ChevronRight, ArrowUpDown,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -690,7 +691,7 @@ function PortalScreenshots({ token, projectId }: { token: string; projectId: str
   );
 }
 
-type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups";
+type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "servers" | "help";
 
 interface PortalNotification {
   id: string;
@@ -1158,6 +1159,534 @@ function NotificationBell({ token }: { token: string }) {
   );
 }
 
+interface ServerType {
+  id: string;
+  label: string;
+  typeClass: string;
+  vcpus: number;
+  memory: number;
+  disk: number;
+  transfer: number;
+  monthlyPrice: number;
+  hourlyPrice: number;
+  networkOut: number;
+}
+
+interface ServerRegion {
+  id: string;
+  label: string;
+  country: string;
+}
+
+const regionCountryMap: Record<string, string> = {
+  "us-central": "us", "us-west": "us", "us-east": "us", "us-southeast": "us", "us-iad": "us", "us-ord": "us", "us-lax": "us",
+  "ca-central": "ca", "eu-west": "gb", "eu-central": "de", "ap-west": "in", "ap-south": "sg", "ap-southeast": "au", "ap-northeast": "jp",
+  "gb-lon": "gb", "de-fra": "de", "fr-par": "fr", "nl-ams": "nl", "se-sto": "se", "es-mad": "es", "it-mil": "it",
+  "in-maa": "in", "sg-sin": "sg", "au-mel": "au", "jp-osa": "jp", "br-gru": "br",
+};
+
+function getFlag(region: string): string {
+  const code = regionCountryMap[region] || region.split("-")[0];
+  if (code.length === 2) return String.fromCodePoint(...Array.from(code.toUpperCase()).map(c => c.charCodeAt(0) + 127397));
+  return "🌐";
+}
+
+function PortalServersTab({ token, servers, serversLoading }: { token: string; servers: any[]; serversLoading: boolean }) {
+  const { toast } = useToast();
+  const [showProvision, setShowProvision] = useState(false);
+  const [selectedType, setSelectedType] = useState("");
+  const [selectedRegion, setSelectedRegion] = useState("");
+  const [serverLabel, setServerLabel] = useState("");
+  const [copiedIp, setCopiedIp] = useState<string | null>(null);
+  const [rootPassword, setRootPassword] = useState<string | null>(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [provisionedServerIp, setProvisionedServerIp] = useState<string | null>(null);
+
+  const { data: serverTypes } = useQuery<ServerType[]>({
+    queryKey: ["/api/portal", token, "server-types"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/server-types`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showProvision,
+  });
+
+  const { data: regions } = useQuery<ServerRegion[]>({
+    queryKey: ["/api/portal", token, "server-regions"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/server-regions`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showProvision,
+  });
+
+  const provisionMutation = useMutation({
+    mutationFn: async (data: { typeId: string; region: string; label: string }) => {
+      const res = await apiRequest("POST", `/api/portal/${token}/servers/provision`, data);
+      return res.json();
+    },
+    onSuccess: (data: { server: any; rootPassword: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "servers"] });
+      setRootPassword(data.rootPassword);
+      setProvisionedServerIp(data.server.ipv4 || "Assigning...");
+      setShowProvision(false);
+      setShowPasswordDialog(true);
+      setSelectedType("");
+      setSelectedRegion("");
+      setServerLabel("");
+      toast({ title: "Server Provisioned!", description: "Your server is being set up. Save your login credentials below." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Provisioning Failed", description: err.message || "Could not create server.", variant: "destructive" });
+    },
+  });
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIp(id);
+    setTimeout(() => setCopiedIp(null), 2000);
+  };
+
+  const selectedPlan = (serverTypes || []).find(t => t.id === selectedType);
+
+  const statusColor = (status: string) => {
+    switch (status) {
+      case "running": return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
+      case "provisioning": case "booting": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+      case "offline": case "shutting_down": return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+      default: return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
+    }
+  };
+
+  return (
+    <div className="space-y-6" data-testid="section-servers">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
+            <Server className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold" data-testid="text-servers-title">My Servers</h2>
+            <p className="text-xs text-muted-foreground">Provision and manage your cloud servers</p>
+          </div>
+        </div>
+        <Button onClick={() => setShowProvision(true)} data-testid="button-new-server">
+          <Plus className="w-4 h-4 mr-1.5" />
+          New Server
+        </Button>
+      </div>
+
+      <Card className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+            <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-blue-900 dark:text-blue-200">Need help choosing?</p>
+            <p className="text-xs text-blue-700 dark:text-blue-400">
+              Not sure which server is right for you? Contact us via Support and we'll help you pick the perfect plan for your needs.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {serversLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      ) : servers.length === 0 ? (
+        <Card className="p-10 text-center">
+          <Server className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="font-semibold mb-2">No Servers Yet</h3>
+          <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+            Spin up your own cloud server in seconds. You'll get full root access with an IP address and SSH credentials.
+          </p>
+          <Button onClick={() => setShowProvision(true)} data-testid="button-first-server">
+            <Plus className="w-4 h-4 mr-1.5" />
+            Provision Your First Server
+          </Button>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {servers.map((srv: any) => (
+            <Card key={srv.id} className="overflow-hidden" data-testid={`card-server-${srv.id}`}>
+              <div className="p-4 border-b bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Server className="w-5 h-5 text-blue-500" />
+                    <div>
+                      <h3 className="font-semibold text-sm">{srv.label}</h3>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {getFlag(srv.region)} {srv.region}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge className={statusColor(srv.status)} data-testid={`badge-status-${srv.id}`}>
+                    {srv.status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />}
+                    {srv.status}
+                  </Badge>
+                </div>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-muted-foreground" />
+                    <span>{srv.vcpus || "—"} vCPUs</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <MemoryStick className="w-4 h-4 text-muted-foreground" />
+                    <span>{srv.memory ? `${(srv.memory / 1024).toFixed(srv.memory >= 1024 ? 0 : 1)} GB` : "—"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-muted-foreground" />
+                    <span>{srv.disk ? `${(srv.disk / 1024).toFixed(0)} GB` : "—"}</span>
+                  </div>
+                </div>
+
+                {srv.ipv4 && (
+                  <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-3">
+                    <Terminal className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <code className="text-xs font-mono flex-1" data-testid={`text-ip-${srv.id}`}>ssh root@{srv.ipv4}</code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() => copyToClipboard(`ssh root@${srv.ipv4}`, srv.id)}
+                      data-testid={`button-copy-ssh-${srv.id}`}
+                    >
+                      {copiedIp === srv.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                )}
+
+                {srv.ipv4 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>IP: {srv.ipv4}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-xs"
+                      onClick={() => copyToClipboard(srv.ipv4, `ip-${srv.id}`)}
+                      data-testid={`button-copy-ip-${srv.id}`}
+                    >
+                      {copiedIp === `ip-${srv.id}` ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={showProvision} onOpenChange={setShowProvision}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Server className="w-5 h-5 text-blue-500" />
+              Provision a New Server
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">Choose a plan, pick a region, and your server will be live in seconds.</p>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Server Name</Label>
+              <Input
+                value={serverLabel}
+                onChange={(e) => setServerLabel(e.target.value)}
+                placeholder="my-web-server"
+                data-testid="input-server-label"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Choose a Plan</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="select-server-type">
+                {(serverTypes || []).map((t) => {
+                  const isSelected = selectedType === t.id;
+                  const ramGB = t.memory >= 1024 ? (t.memory / 1024).toFixed(0) : (t.memory / 1024).toFixed(1);
+                  const diskGB = (t.disk / 1024).toFixed(0);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSelectedType(t.id)}
+                      data-testid={`plan-card-${t.id}`}
+                      className={`relative text-left rounded-lg border-2 p-4 transition-all cursor-pointer hover:shadow-md ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm ring-1 ring-blue-500/20"
+                          : "border-border hover:border-blue-300 dark:hover:border-blue-700"
+                      }`}
+                    >
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                      <div className="mb-2">
+                        <span className="font-semibold text-sm">{t.label}</span>
+                      </div>
+                      <div className="mb-3">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold">${(t.hourlyPrice || 0).toFixed(4)}</span>
+                          <span className="text-xs text-muted-foreground">/hour</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          ~${t.monthlyPrice}/mo cap
+                        </p>
+                      </div>
+                      <div className="space-y-1.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Cpu className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span>{t.vcpus} vCPU{t.vcpus > 1 ? "s" : ""}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MemoryStick className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                          <span>{ramGB} GB RAM</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <HardDrive className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span>{diskGB} GB SSD</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <ArrowUpDown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span>{t.transfer / 1000} TB Transfer</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {(serverTypes || []).length === 0 && (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  <Loader2 className="w-5 h-5 mx-auto mb-2 animate-spin" />
+                  Loading plans...
+                </div>
+              )}
+            </div>
+
+            <Card className="p-3 bg-blue-50/50 dark:bg-blue-950/10 border-blue-200/50 dark:border-blue-800/30">
+              <div className="flex items-start gap-2.5">
+                <DollarSign className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-blue-900 dark:text-blue-200">Usage-Based Billing</p>
+                  <p className="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                    You're billed hourly for the time your server is running — only pay for what you use. Each plan has a monthly cap so you'll never pay more than that amount regardless of uptime.
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Region</Label>
+              <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+                <SelectTrigger data-testid="select-server-region">
+                  <SelectValue placeholder="Choose a region..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(regions || []).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {getFlag(r.id)} {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowProvision(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+                disabled={!selectedType || !selectedRegion || !serverLabel.trim() || provisionMutation.isPending}
+                onClick={() => provisionMutation.mutate({ typeId: selectedType, region: selectedRegion, label: serverLabel.trim() })}
+                data-testid="button-provision-server"
+              >
+                {provisionMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Provisioning...</>
+                ) : (
+                  <><Server className="w-4 h-4 mr-1.5" /> Provision Server</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+              <Check className="w-5 h-5" />
+              Server Created Successfully!
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Card className="p-4 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-200 mb-1">
+                ⚠️ Save these credentials — they won't be shown again!
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                You'll need this password to log into your server via SSH.
+              </p>
+            </Card>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-muted-foreground">SSH Command</Label>
+                <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                  <code className="text-xs font-mono flex-1" data-testid="text-ssh-command">ssh root@{provisionedServerIp}</code>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyToClipboard(`ssh root@${provisionedServerIp}`, "new-ssh")} data-testid="button-copy-new-ssh">
+                    {copiedIp === "new-ssh" ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-muted-foreground">Root Password</Label>
+                <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                  <code className="text-xs font-mono flex-1 break-all" data-testid="text-root-password">{rootPassword}</code>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyToClipboard(rootPassword || "", "new-pass")} data-testid="button-copy-password">
+                    {copiedIp === "new-pass" ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Button className="w-full" onClick={() => setShowPasswordDialog(false)} data-testid="button-close-password">
+              I've Saved My Credentials
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function PortalHelpTab({ articles }: { articles: any[] }) {
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [viewingArticle, setViewingArticle] = useState<any>(null);
+
+  const categories = ["all", ...Array.from(new Set(articles.map(a => a.category)))];
+
+  const filtered = articles.filter(a => {
+    const matchesSearch = !search || a.title.toLowerCase().includes(search.toLowerCase()) || (a.content || "").toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = selectedCategory === "all" || a.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const categoryIcons: Record<string, string> = {
+    "General": "📋", "Getting Started": "🚀", "Billing": "💳", "Technical": "⚙️",
+    "FAQ": "❓", "Tutorials": "📖", "Troubleshooting": "🔧",
+  };
+
+  if (viewingArticle) {
+    return (
+      <div className="space-y-4" data-testid="section-help-article">
+        <Button variant="ghost" size="sm" onClick={() => setViewingArticle(null)} data-testid="button-back-to-help">
+          <ArrowLeft className="w-4 h-4 mr-1.5" />
+          Back to Help Center
+        </Button>
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Badge variant="secondary" className="text-xs">
+              {categoryIcons[viewingArticle.category] || "📄"} {viewingArticle.category}
+            </Badge>
+          </div>
+          <h2 className="text-xl font-semibold mb-4" data-testid="text-article-title">{viewingArticle.title}</h2>
+          <div
+            className="article-content prose prose-sm max-w-none text-sm leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: viewingArticle.content }}
+            data-testid="article-content"
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-testid="section-help">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
+          <BookOpen className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold" data-testid="text-help-title">Help Center</h2>
+          <p className="text-xs text-muted-foreground">Guides and tutorials to help you get the most out of your services</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search articles..."
+            className="pl-9"
+            data-testid="input-help-search"
+          />
+        </div>
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-help-category">
+            <SelectValue placeholder="All Categories" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map(cat => (
+              <SelectItem key={cat} value={cat}>
+                {cat === "all" ? "All Categories" : `${categoryIcons[cat] || "📄"} ${cat}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card className="p-10 text-center">
+          <BookOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="font-semibold mb-2">No Articles Found</h3>
+          <p className="text-sm text-muted-foreground">
+            {search ? "Try a different search term or category." : "No help articles have been published yet."}
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((article: any) => (
+            <Card
+              key={article.id}
+              className="p-4 hover-elevate cursor-pointer transition-all"
+              onClick={() => setViewingArticle(article)}
+              data-testid={`card-article-${article.id}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="text-[10px] shrink-0">
+                      {categoryIcons[article.category] || "📄"} {article.category}
+                    </Badge>
+                  </div>
+                  <h3 className="font-medium text-sm truncate" data-testid={`text-article-title-${article.id}`}>{article.title}</h3>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                    {(article.content || "").replace(/<[^>]+>/g, "").substring(0, 150)}...
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-3" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClientPortal() {
   const params = useParams<{ token: string }>();
   const { toast } = useToast();
@@ -1358,6 +1887,21 @@ export default function ClientPortal() {
     },
   });
 
+  const { data: portalServers, isLoading: serversLoading } = useQuery<any[]>({
+    queryKey: ["/api/portal", params.token, "servers"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${params.token}/servers`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!params.token,
+  });
+
+  const { data: kbArticles } = useQuery<any[]>({
+    queryKey: ["/api/public/knowledge-base"],
+    enabled: !!params.token,
+  });
+
   if (isLoading) return <PortalSkeleton />;
 
   if (error || !data) {
@@ -1397,6 +1941,8 @@ export default function ClientPortal() {
     { id: "billing", label: "Billing", icon: Wallet },
     { id: "support", label: "Support", icon: LifeBuoy, count: activeTicketCount },
     { id: "backups", label: "Backups", icon: FolderGit2 },
+    { id: "servers", label: "Servers", icon: Server },
+    { id: "help", label: "Help Center", icon: BookOpen },
   ];
 
   return (
@@ -1455,7 +2001,7 @@ export default function ClientPortal() {
 
       <div className="max-w-6xl mx-auto px-6">
         <PushPromptBanner token={params.token!} />
-        <div className="-mt-5 mb-8">
+        <div className="mt-4 mb-8">
           <Card className="p-1.5 inline-flex items-center gap-1 flex-wrap">
             {tabs.map(tab => (
               <Button
@@ -2424,6 +2970,14 @@ export default function ClientPortal() {
                 </DialogContent>
               </Dialog>
             </>
+          )}
+
+          {activeTab === "servers" && (
+            <PortalServersTab token={params.token!} servers={portalServers || []} serversLoading={serversLoading} />
+          )}
+
+          {activeTab === "help" && (
+            <PortalHelpTab articles={kbArticles || []} />
           )}
 
           {activeTab === "backups" && (

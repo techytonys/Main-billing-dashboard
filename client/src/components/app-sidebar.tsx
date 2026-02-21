@@ -14,6 +14,7 @@ import {
   FolderGit2,
   Target,
   Server,
+  BookOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -44,6 +45,7 @@ const mainItems = [
   { title: "Code Backups", url: "/admin/code-backups", icon: FolderGit2 },
   { title: "Lead Generator", url: "/admin/lead-generator", icon: Target },
   { title: "Servers", url: "/admin/servers", icon: Server },
+  { title: "Knowledge Base", url: "/admin/knowledge-base", icon: BookOpen },
 ];
 
 const settingsItems = [

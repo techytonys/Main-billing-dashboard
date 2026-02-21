@@ -37,6 +37,8 @@ import ApiDocs from "@/pages/api-docs";
 import CodeBackups from "@/pages/code-backups";
 import LeadGenerator from "@/pages/lead-generator";
 import LinodeServers from "@/pages/linode-servers";
+import KnowledgeBase from "@/pages/knowledge-base";
+import PublicHelp from "@/pages/public-help";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -57,6 +59,7 @@ function DashboardRouter() {
       <Route path="/admin/code-backups" component={CodeBackups} />
       <Route path="/admin/lead-generator" component={LeadGenerator} />
       <Route path="/admin/servers" component={LinodeServers} />
+      <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
@@ -137,6 +140,7 @@ function AppRouter() {
       <Route path="/quote/:token" component={QuoteView} />
       <Route path="/conversation/:token" component={ConversationPage} />
       <Route path="/api/docs" component={ApiDocs} />
+      <Route path="/help" component={PublicHelp} />
       <Route path="/login" component={LoginPage} />
       <Route path="/admin/:rest*">
         <DashboardLayout />
