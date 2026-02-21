@@ -2,11 +2,13 @@ FROM node:20 AS builder
 
 WORKDIR /app
 
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
 COPY package.json package-lock.json ./
 RUN npm install --legacy-peer-deps 2>&1 | tail -3
 
 COPY . .
-RUN NODE_ENV=production npm run build
+RUN NODE_ENV=production node --max-old-space-size=512 ./node_modules/.bin/tsx script/build.ts
 
 FROM node:20-slim
 
