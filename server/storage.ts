@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
-  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs,
+  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads,
   type User, type InsertUser,
   type Customer, type InsertCustomer,
   type Project, type InsertProject,
@@ -32,6 +32,9 @@ import {
   pushSubscriptions,
   type PushSubscription, type InsertPushSubscription,
   agentCostEntries,
+  type Lead, type InsertLead,
+  linodeServers,
+  type LinodeServer, type InsertLinodeServer,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -180,6 +183,20 @@ export interface IStorage {
   createGitBackupLog(log: InsertGitBackupLog): Promise<GitBackupLog>;
   updateGitBackupLog(id: string, updates: Partial<GitBackupLog>): Promise<GitBackupLog | undefined>;
   getAutopilotDueConfigs(): Promise<GitBackupConfig[]>;
+
+  getLeads(filters?: { status?: string; zipCode?: string }): Promise<Lead[]>;
+  getLead(id: string): Promise<Lead | undefined>;
+  getLeadByPlaceId(placeId: string): Promise<Lead | undefined>;
+  createLead(lead: InsertLead): Promise<Lead>;
+  updateLead(id: string, updates: Partial<InsertLead & { auditScore: number; auditData: string; lastContactedAt: Date }>): Promise<Lead | undefined>;
+  deleteLead(id: string): Promise<boolean>;
+
+  getLinodeServers(): Promise<LinodeServer[]>;
+  getLinodeServer(id: string): Promise<LinodeServer | undefined>;
+  getLinodeServerByLinodeId(linodeId: number): Promise<LinodeServer | undefined>;
+  createLinodeServer(server: InsertLinodeServer): Promise<LinodeServer>;
+  updateLinodeServer(id: string, updates: Partial<InsertLinodeServer>): Promise<LinodeServer | undefined>;
+  deleteLinodeServer(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -999,6 +1016,70 @@ export class DatabaseStorage implements IStorage {
         lt(gitBackupConfigs.nextScheduledAt, new Date()),
       )
     );
+  }
+
+  async getLeads(filters?: { status?: string; zipCode?: string }): Promise<Lead[]> {
+    let conditions = [];
+    if (filters?.status) conditions.push(eq(leads.status, filters.status));
+    if (filters?.zipCode) conditions.push(eq(leads.zipCode, filters.zipCode));
+    if (conditions.length > 0) {
+      return db.select().from(leads).where(and(...conditions)).orderBy(desc(leads.createdAt));
+    }
+    return db.select().from(leads).orderBy(desc(leads.createdAt));
+  }
+
+  async getLead(id: string): Promise<Lead | undefined> {
+    const [lead] = await db.select().from(leads).where(eq(leads.id, id));
+    return lead;
+  }
+
+  async getLeadByPlaceId(placeId: string): Promise<Lead | undefined> {
+    const [lead] = await db.select().from(leads).where(eq(leads.googlePlaceId, placeId));
+    return lead;
+  }
+
+  async createLead(lead: InsertLead): Promise<Lead> {
+    const [created] = await db.insert(leads).values(lead).returning();
+    return created;
+  }
+
+  async updateLead(id: string, updates: Partial<InsertLead & { auditScore: number; auditData: string; lastContactedAt: Date }>): Promise<Lead | undefined> {
+    const [updated] = await db.update(leads).set(updates).where(eq(leads.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLead(id: string): Promise<boolean> {
+    const result = await db.delete(leads).where(eq(leads.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getLinodeServers(): Promise<LinodeServer[]> {
+    return db.select().from(linodeServers).orderBy(desc(linodeServers.createdAt));
+  }
+
+  async getLinodeServer(id: string): Promise<LinodeServer | undefined> {
+    const [server] = await db.select().from(linodeServers).where(eq(linodeServers.id, id));
+    return server;
+  }
+
+  async getLinodeServerByLinodeId(linodeId: number): Promise<LinodeServer | undefined> {
+    const [server] = await db.select().from(linodeServers).where(eq(linodeServers.linodeId, linodeId));
+    return server;
+  }
+
+  async createLinodeServer(server: InsertLinodeServer): Promise<LinodeServer> {
+    const [created] = await db.insert(linodeServers).values(server).returning();
+    return created;
+  }
+
+  async updateLinodeServer(id: string, updates: Partial<InsertLinodeServer>): Promise<LinodeServer | undefined> {
+    const [updated] = await db.update(linodeServers).set(updates).where(eq(linodeServers.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLinodeServer(id: string): Promise<boolean> {
+    const result = await db.delete(linodeServers).where(eq(linodeServers.id, id)).returning();
+    return result.length > 0;
   }
 }
 

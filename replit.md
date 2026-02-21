@@ -4,6 +4,9 @@
 A project-based billing dashboard for a website design business. Track customers, projects, work deliverables, and generate invoices based on configurable per-unit rates. Includes a client portal for customers to view their invoices and automatic overdue invoice tracking.
 
 ## Recent Changes
+- 2026-02-21: Added Linode Server Provisioning (/admin/servers) - one-click server provisioning via Linode API, plan dropdown with shared/dedicated filter, region selector, customer assignment, live status sync, usage stats (CPU/network), invoice generation with markup billing, email invoices to customers via Resend
+- 2026-02-21: Added email scraping to Lead Generator - scrapes business websites for real email addresses (homepage, /contact, /about, /team pages), mailto: links and regex extraction, SSRF protection, scraped emails shown in green vs guessed in gray, "Find Emails" button on saved leads
+- 2026-02-21: Added Lead Generator tool (/admin/lead-generator) - admin-only local business prospecting with Google Places API, search by zip code + business type, place details with phone/website/domain, AI email guessing, clickable website links, one-click site audit, mini CRM with status tracking (new/contacted/interested/not_interested/converted), notes, lead stats dashboard
 - 2026-02-20: Added AI-powered PDF audit reports - OpenAI generates personalized "Why This Matters" business impact explanations, custom "What This Means for Your Business" summaries, and tailored quick wins/recommendations specific to the audited domain. Falls back to static content if AI unavailable. Uses server/auditAI.ts with gpt-4o-mini via Replit AI Integrations.
 - 2026-02-20: Added Git Code Backup system - admin enables backups per project, customer connects GitHub via OAuth from portal, admin selects repo/branch, manual push or autopilot (hourly/daily/weekly), backup history with commit SHAs, admin page at /admin/code-backups, client portal "Backups" tab
 - 2026-02-20: Enhanced work entry management - edit existing work entries (type, qty, description), date picker for backdating entries, payment terms selector (Net 7/14/15/30/45/60/90) on invoice generation with due date preview
@@ -59,6 +62,7 @@ A project-based billing dashboard for a website design business. Track customers
 - `/admin/conversations` - Admin conversations dashboard (view all, reply, close/reopen)
 - `/conversation/:token` - Public conversation page (secure token-based messaging)
 - `/admin/api-keys` - Admin API key management (create, toggle, delete keys)
+- `/admin/lead-generator` - Lead Generator (search local businesses, save leads, mini CRM, audit integration)
 - `/api/docs` - Public API documentation page (beginner-friendly, interactive examples)
 
 ### API Endpoints

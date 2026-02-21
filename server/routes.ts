@@ -3142,6 +3142,841 @@ ${urls}
     }
   }
 
+  // ============ LEAD GENERATION ============
+
+  app.get("/api/leads/search", isAuthenticated, async (req, res) => {
+    try {
+      const { zipCode, query, type } = req.query;
+      if (!zipCode) return res.status(400).json({ error: "Zip code is required" });
+
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Google Places API key not configured" });
+
+      const searchQuery = query || type || "business";
+      const textSearchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(String(searchQuery))}+near+${encodeURIComponent(String(zipCode))}&key=${apiKey}`;
+
+      const response = await fetch(textSearchUrl);
+      const data = await response.json();
+
+      if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+        return res.status(400).json({ error: `Google Places API error: ${data.status}`, details: data.error_message });
+      }
+
+      const results = (data.results || []).map((place: any) => {
+        let website = null;
+        let domain = null;
+        let emailGuess = null;
+
+        return {
+          placeId: place.place_id,
+          name: place.name,
+          address: place.formatted_address,
+          rating: place.rating || null,
+          reviewCount: place.user_ratings_total || 0,
+          category: place.types?.[0]?.replace(/_/g, " ") || null,
+          businessStatus: place.business_status,
+          priceLevel: place.price_level,
+        };
+      });
+
+      res.json({ results, total: results.length });
+    } catch (err: any) {
+      console.error("Lead search error:", err);
+      res.status(500).json({ error: "Failed to search businesses" });
+    }
+  });
+
+  app.get("/api/leads/place-details/:placeId", isAuthenticated, async (req, res) => {
+    try {
+      const apiKey = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Google Places API key not configured" });
+
+      const { placeId } = req.params;
+      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=name,formatted_address,formatted_phone_number,website,url,rating,user_ratings_total,types,business_status,opening_hours&key=${apiKey}`;
+
+      const response = await fetch(detailsUrl);
+      const data = await response.json();
+
+      if (data.status !== "OK") {
+        return res.status(400).json({ error: `Place details error: ${data.status}` });
+      }
+
+      const place = data.result;
+      let website = place.website || null;
+      let domain = null;
+      let scrapedEmails: string[] = [];
+      let guessedEmails: string[] = [];
+      let emailSource: string = "none";
+
+      if (website) {
+        try {
+          const url = new URL(website);
+          domain = url.hostname.replace(/^www\./, "");
+        } catch {}
+
+        try {
+          const { scrapeEmailsFromWebsite } = await import("./emailScraper");
+          const scrapeResult = await scrapeEmailsFromWebsite(website);
+          scrapedEmails = scrapeResult.scrapedEmails;
+          guessedEmails = scrapeResult.guessedEmails;
+          emailSource = scrapeResult.source;
+        } catch (err) {
+          console.error("Email scraping failed, falling back to guesses:", err);
+          if (domain) {
+            const baseName = domain.split(".")[0];
+            guessedEmails = [
+              `info@${domain}`,
+              `contact@${domain}`,
+              `hello@${domain}`,
+              `${baseName}@gmail.com`,
+            ];
+            emailSource = "guessed";
+          }
+        }
+      }
+
+      const emailGuess = [...scrapedEmails, ...guessedEmails].join(", ") || null;
+
+      res.json({
+        placeId: place.place_id || req.params.placeId,
+        name: place.name,
+        address: place.formatted_address,
+        phone: place.formatted_phone_number || null,
+        website,
+        domain,
+        emailGuess,
+        scrapedEmails,
+        guessedEmails,
+        emailSource,
+        rating: place.rating || null,
+        reviewCount: place.user_ratings_total || 0,
+        category: place.types?.[0]?.replace(/_/g, " ") || null,
+        googleMapsUrl: place.url || null,
+        isOpen: place.opening_hours?.open_now || null,
+      });
+    } catch (err: any) {
+      console.error("Place details error:", err);
+      res.status(500).json({ error: "Failed to get place details" });
+    }
+  });
+
+  app.get("/api/leads", isAuthenticated, async (req, res) => {
+    try {
+      const { status, zipCode } = req.query;
+      const filters: { status?: string; zipCode?: string } = {};
+      if (status) filters.status = String(status);
+      if (zipCode) filters.zipCode = String(zipCode);
+      const allLeads = await storage.getLeads(filters);
+      res.json(allLeads);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  app.post("/api/leads", isAuthenticated, async (req, res) => {
+    try {
+      const existing = req.body.googlePlaceId ? await storage.getLeadByPlaceId(req.body.googlePlaceId) : null;
+      if (existing) {
+        return res.json(existing);
+      }
+      const lead = await storage.createLead(req.body);
+      res.json(lead);
+    } catch (err: any) {
+      console.error("Create lead error:", err);
+      res.status(500).json({ error: "Failed to save lead" });
+    }
+  });
+
+  app.patch("/api/leads/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateLead(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Lead not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update lead" });
+    }
+  });
+
+  app.post("/api/leads/scrape-email", isAuthenticated, async (req, res) => {
+    try {
+      const { website } = req.body;
+      if (!website) return res.status(400).json({ error: "Website URL is required" });
+
+      try {
+        const parsed = new URL(String(website));
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return res.status(400).json({ error: "Only HTTP/HTTPS URLs are allowed" });
+        }
+      } catch {
+        return res.status(400).json({ error: "Invalid URL format" });
+      }
+
+      const { scrapeEmailsFromWebsite } = await import("./emailScraper");
+      const result = await scrapeEmailsFromWebsite(website);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Email scrape error:", err);
+      res.status(500).json({ error: "Failed to scrape emails" });
+    }
+  });
+
+  app.delete("/api/leads/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteLead(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Lead not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete lead" });
+    }
+  });
+
+  // ============ LINODE SERVER PROVISIONING ============
+
+  const LINODE_API_BASE = "https://api.linode.com/v4";
+
+  function getLinodeHeaders() {
+    const apiKey = process.env.LINODE_API_KEY;
+    if (!apiKey) throw new Error("LINODE_API_KEY not configured");
+    return {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    };
+  }
+
+  app.get("/api/linode/types", isAuthenticated, async (req, res) => {
+    try {
+      const response = await fetch(`${LINODE_API_BASE}/linode/types`, {
+        headers: getLinodeHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to fetch types" });
+
+      const types = (data.data || []).map((t: any) => ({
+        id: t.id,
+        label: t.label,
+        typeClass: t.type_class,
+        vcpus: t.vcpus,
+        memory: t.memory,
+        disk: t.disk,
+        transfer: t.transfer,
+        monthlyPrice: t.price?.monthly,
+        hourlyPrice: t.price?.hourly,
+      }));
+      res.json(types);
+    } catch (err: any) {
+      console.error("Linode types error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to fetch server types" });
+    }
+  });
+
+  app.get("/api/linode/regions", isAuthenticated, async (req, res) => {
+    try {
+      const response = await fetch(`${LINODE_API_BASE}/regions`, {
+        headers: getLinodeHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to fetch regions" });
+
+      const regions = (data.data || [])
+        .filter((r: any) => r.status === "ok")
+        .map((r: any) => ({
+          id: r.id,
+          label: r.label,
+          country: r.country,
+        }));
+      res.json(regions);
+    } catch (err: any) {
+      console.error("Linode regions error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to fetch regions" });
+    }
+  });
+
+  app.post("/api/linode/provision", isAuthenticated, async (req, res) => {
+    try {
+      const { typeId, region, label, customerId } = req.body;
+      if (!typeId || !region || !label) {
+        return res.status(400).json({ error: "typeId, region, and label are required" });
+      }
+
+      const rootPass = `AiPS-${Date.now()}-${Math.random().toString(36).slice(2, 10)}!`;
+
+      let monthlyPriceCents = 0;
+      let hourlyPriceForPlan = 0;
+      try {
+        const typesRes = await fetch(`${LINODE_API_BASE}/linode/types/${typeId}`, {
+          headers: getLinodeHeaders(),
+        });
+        if (typesRes.ok) {
+          const typeData = await typesRes.json();
+          monthlyPriceCents = Math.round((typeData.price?.monthly || 0) * 100);
+          hourlyPriceForPlan = typeData.price?.hourly || 0;
+        }
+      } catch {}
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances`, {
+        method: "POST",
+        headers: getLinodeHeaders(),
+        body: JSON.stringify({
+          type: typeId,
+          region,
+          label,
+          image: "linode/ubuntu24.04",
+          root_pass: rootPass,
+          booted: true,
+          tags: ["aipoweredsites"],
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to provision server" });
+      }
+
+      const sanitizedCustomerId = customerId && customerId !== "none" ? customerId : null;
+
+      const server = await storage.createLinodeServer({
+        linodeId: data.id,
+        label: data.label,
+        customerId: sanitizedCustomerId,
+        region: data.region,
+        planType: data.type,
+        planLabel: data.specs?.type_class || typeId,
+        status: data.status,
+        ipv4: data.ipv4?.[0] || null,
+        ipv6: data.ipv6 || null,
+        vcpus: data.specs?.vcpus || null,
+        memory: data.specs?.memory || null,
+        disk: data.specs?.disk || null,
+        monthlyPriceCents,
+        markupPercent: 50,
+      });
+
+      res.json(server);
+    } catch (err: any) {
+      console.error("Linode provision error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to provision server" });
+    }
+  });
+
+  app.get("/api/linode/servers", isAuthenticated, async (req, res) => {
+    try {
+      const servers = await storage.getLinodeServers();
+
+      const enriched = await Promise.all(servers.map(async (server) => {
+        try {
+          const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}`, {
+            headers: getLinodeHeaders(),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.status !== server.status || data.ipv4?.[0] !== server.ipv4) {
+              await storage.updateLinodeServer(server.id, {
+                status: data.status,
+                ipv4: data.ipv4?.[0] || server.ipv4,
+              });
+            }
+            return {
+              ...server,
+              status: data.status,
+              ipv4: data.ipv4?.[0] || server.ipv4,
+              updated: data.updated || null,
+            };
+          }
+        } catch {}
+        return server;
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch servers" });
+    }
+  });
+
+  app.get("/api/linode/servers/:id/stats", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/stats`, {
+        headers: getLinodeHeaders(),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        if (response.status === 400 || response.status === 404) {
+          return res.json({
+            cpu: "0.00",
+            networkInGB: "0.00",
+            networkOutGB: "0.00",
+            cpuTimeline: [],
+            message: "Stats not available yet — usage data takes a few hours to populate after provisioning.",
+          });
+        }
+        return res.status(response.status).json({ error: err.errors?.[0]?.reason || "Stats not available" });
+      }
+
+      const stats = await response.json();
+
+      const cpuData = stats.data?.cpu || [];
+      const netIn = stats.data?.netv4?.in || [];
+      const netOut = stats.data?.netv4?.out || [];
+
+      const avgCpu = cpuData.length > 0
+        ? cpuData.reduce((sum: number, p: number[]) => sum + p[1], 0) / cpuData.length
+        : 0;
+
+      const totalNetIn = netIn.length > 0
+        ? netIn.reduce((sum: number, p: number[]) => sum + p[1], 0)
+        : 0;
+      const totalNetOut = netOut.length > 0
+        ? netOut.reduce((sum: number, p: number[]) => sum + p[1], 0)
+        : 0;
+
+      await storage.updateLinodeServer(server.id, {
+        cpuUsage: String(avgCpu.toFixed(2)),
+        networkIn: String((totalNetIn / 1e9).toFixed(2)),
+        networkOut: String((totalNetOut / 1e9).toFixed(2)),
+        lastStatsAt: new Date(),
+      });
+
+      res.json({
+        cpu: avgCpu.toFixed(2),
+        networkInGB: (totalNetIn / 1e9).toFixed(2),
+        networkOutGB: (totalNetOut / 1e9).toFixed(2),
+        cpuTimeline: cpuData.slice(-24).map((p: number[]) => ({ time: p[0], value: p[1]?.toFixed(1) })),
+      });
+    } catch (err: any) {
+      console.error("Linode stats error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to fetch stats" });
+    }
+  });
+
+  app.delete("/api/linode/servers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}`, {
+        method: "DELETE",
+        headers: getLinodeHeaders(),
+      });
+
+      if (!response.ok && response.status !== 404) {
+        const err = await response.json();
+        return res.status(response.status).json({ error: err.errors?.[0]?.reason || "Failed to delete server" });
+      }
+
+      await storage.deleteLinodeServer(server.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Linode delete error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to delete server" });
+    }
+  });
+
+  app.patch("/api/linode/servers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      // If label is being changed, sync to Linode
+      if (req.body.label && req.body.label !== server.label) {
+        const linodeRes = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}`, {
+          method: "PUT",
+          headers: getLinodeHeaders(),
+          body: JSON.stringify({ label: req.body.label }),
+        });
+        if (!linodeRes.ok) {
+          const err = await linodeRes.json();
+          return res.status(linodeRes.status).json({ error: err.errors?.[0]?.reason || "Failed to rename on Linode" });
+        }
+      }
+
+      const updated = await storage.updateLinodeServer(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Server not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to update server" });
+    }
+  });
+
+  // In-memory cache for Linode type pricing (avoids hitting API every 30s per server)
+  const typeCache = new Map<string, { hourly: number; monthly: number; backupMonthly: number; fetchedAt: number }>();
+  const TYPE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  async function getLinodeTypePricing(planType: string): Promise<{ hourly: number; monthly: number; backupMonthly: number }> {
+    const cached = typeCache.get(planType);
+    if (cached && Date.now() - cached.fetchedAt < TYPE_CACHE_TTL) {
+      return { hourly: cached.hourly, monthly: cached.monthly, backupMonthly: cached.backupMonthly };
+    }
+
+    try {
+      const typeRes = await fetch(`${LINODE_API_BASE}/linode/types/${planType}`, {
+        headers: getLinodeHeaders(),
+      });
+      if (typeRes.ok) {
+        const typeData = await typeRes.json();
+        const result = {
+          hourly: typeData.price?.hourly || 0,
+          monthly: typeData.price?.monthly || 0,
+          backupMonthly: typeData.addons?.backups?.price?.monthly || 0,
+          fetchedAt: Date.now(),
+        };
+        typeCache.set(planType, result);
+        return result;
+      }
+      console.warn(`[linode-pricing] Type API returned ${typeRes.status} for ${planType}`);
+    } catch (err: any) {
+      console.warn(`[linode-pricing] Type API failed for ${planType}: ${err.message}`);
+    }
+
+    if (cached) {
+      return { hourly: cached.hourly, monthly: cached.monthly, backupMonthly: cached.backupMonthly };
+    }
+
+    return { hourly: 0, monthly: 0, backupMonthly: 0 };
+  }
+
+  // Get real-time pricing info for a server (hourly cost, backup cost, hours running)
+  app.get("/api/linode/servers/:id/pricing", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const typePricing = await getLinodeTypePricing(server.planType);
+      let hourlyPrice = typePricing.hourly;
+      let backupMonthly = typePricing.backupMonthly;
+
+      // Fallback: derive hourly from stored monthly price if Linode API returned 0
+      if (hourlyPrice === 0 && server.monthlyPriceCents) {
+        hourlyPrice = server.monthlyPriceCents / 100 / 730;
+        console.warn(`[linode-pricing] Using fallback hourly rate $${hourlyPrice.toFixed(6)} for server ${server.id} (plan: ${server.planType})`);
+      }
+
+      const markupMultiplier = 1 + (server.markupPercent || 50) / 100;
+      const billingStart = server.lastInvoiceAt ? new Date(server.lastInvoiceAt) : new Date(server.createdAt || Date.now());
+      const hoursRunning = Math.max(0, (Date.now() - billingStart.getTime()) / (1000 * 60 * 60));
+
+      const linodeCostSoFar = hourlyPrice * hoursRunning;
+      const costWithMarkup = linodeCostSoFar * markupMultiplier;
+      const backupWithMarkup = backupMonthly * markupMultiplier;
+
+      res.json({
+        hourlyPrice,
+        hourlyWithMarkup: +(hourlyPrice * markupMultiplier).toFixed(6),
+        hoursRunning: +hoursRunning.toFixed(4),
+        billingStart: billingStart.toISOString(),
+        linodeCostSoFar: +linodeCostSoFar.toFixed(6),
+        costWithMarkup: +costWithMarkup.toFixed(6),
+        markupPercent: server.markupPercent || 50,
+        monthlyPrice: typePricing.monthly,
+        monthlyWithMarkup: +(typePricing.monthly * markupMultiplier).toFixed(2),
+        backupMonthly,
+        backupWithMarkup: +backupWithMarkup.toFixed(2),
+      });
+    } catch (err: any) {
+      console.error(`[linode-pricing] Error for server ${req.params.id}:`, err.message);
+      res.status(500).json({ error: "Failed to fetch pricing" });
+    }
+  });
+
+  app.post("/api/linode/servers/:id/reboot", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/reboot`, {
+        method: "POST",
+        headers: getLinodeHeaders(),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        return res.status(response.status).json({ error: err.errors?.[0]?.reason || "Failed to reboot server" });
+      }
+
+      await storage.updateLinodeServer(server.id, { status: "rebooting" });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Linode reboot error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to reboot server" });
+    }
+  });
+
+  app.get("/api/linode/servers/:id/backups", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/backups`, {
+        headers: getLinodeHeaders(),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to fetch backup info" });
+      }
+
+      res.json({
+        enabled: data.enabled ?? false,
+        automatic: data.automatic || [],
+        snapshot: data.snapshot || {},
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch backup info" });
+    }
+  });
+
+  app.post("/api/linode/servers/:id/backups/enable", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/backups/enable`, {
+        method: "POST",
+        headers: getLinodeHeaders(),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        return res.status(response.status).json({ error: err.errors?.[0]?.reason || "Failed to enable backups" });
+      }
+
+      // Fetch the backup price from the plan type
+      let backupPriceCents = 0;
+      try {
+        const typeRes = await fetch(`${LINODE_API_BASE}/linode/types/${server.planType}`, {
+          headers: getLinodeHeaders(),
+        });
+        if (typeRes.ok) {
+          const typeData = await typeRes.json();
+          backupPriceCents = Math.round((typeData.addons?.backups?.price?.monthly || 0) * 100);
+        }
+      } catch {}
+
+      const markupCents = Math.round(backupPriceCents * 0.5);
+
+      res.json({
+        success: true,
+        backupPriceCents,
+        markupCents,
+        totalCents: backupPriceCents + markupCents,
+      });
+    } catch (err: any) {
+      console.error("Linode backup enable error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to enable backups" });
+    }
+  });
+
+  app.post("/api/linode/servers/:id/backups/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      const response = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/backups/cancel`, {
+        method: "POST",
+        headers: getLinodeHeaders(),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        return res.status(response.status).json({ error: err.errors?.[0]?.reason || "Failed to cancel backups" });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Linode backup cancel error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to cancel backups" });
+    }
+  });
+
+  app.post("/api/linode/servers/:id/invoice", isAuthenticated, async (req, res) => {
+    try {
+      const server = await storage.getLinodeServer(req.params.id);
+      if (!server) return res.status(404).json({ error: "Server not found" });
+
+      let customerEmail = null;
+      let customerName = null;
+      if (server.customerId) {
+        const customer = await storage.getCustomer(server.customerId);
+        if (customer) {
+          customerEmail = customer.email;
+          customerName = customer.name;
+        }
+      }
+
+      // Fetch actual Linode transfer usage for this server
+      let transferUsedGB = 0;
+      let transferQuotaGB = 0;
+      try {
+        const transferRes = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/transfer`, {
+          headers: getLinodeHeaders(),
+        });
+        if (transferRes.ok) {
+          const transferData = await transferRes.json();
+          transferUsedGB = Math.round(((transferData.used || 0) / 1e9) * 100) / 100;
+          transferQuotaGB = Math.round(((transferData.quota || 0) / 1e9) * 100) / 100;
+        }
+      } catch {}
+
+      // Compute usage cost: hours since last invoice (or server creation) × hourly rate
+      const billingStart = server.lastInvoiceAt ? new Date(server.lastInvoiceAt) : new Date(server.createdAt || Date.now());
+      const billingEnd = new Date();
+      const hoursInPeriod = Math.max(1, Math.ceil((billingEnd.getTime() - billingStart.getTime()) / (1000 * 60 * 60)));
+
+      let linodeCostCents = 0;
+      let hourlyPrice = 0;
+
+      // Use server.planType directly (more reliable than fetching instance first)
+      const typePricing = await getLinodeTypePricing(server.planType);
+      hourlyPrice = typePricing.hourly;
+
+      if (hourlyPrice === 0 && server.monthlyPriceCents) {
+        hourlyPrice = server.monthlyPriceCents / 100 / 730;
+      }
+
+      linodeCostCents = Math.round(hourlyPrice * hoursInPeriod * 100);
+
+      if (linodeCostCents === 0) {
+        return res.status(400).json({ error: "Could not calculate usage cost. Server may still be provisioning — try again shortly." });
+      }
+
+      const MARKUP_PERCENT = server.markupPercent || 50;
+      const markupCents = Math.round(linodeCostCents * MARKUP_PERCENT / 100);
+      const totalCents = linodeCostCents + markupCents;
+
+      // Fetch CPU/network stats for the invoice
+      let avgCpu = "0";
+      let netInGB = server.networkIn || "0";
+      let netOutGB = server.networkOut || "0";
+      try {
+        const statsRes = await fetch(`${LINODE_API_BASE}/linode/instances/${server.linodeId}/stats`, {
+          headers: getLinodeHeaders(),
+        });
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          const cpuData = statsData.data?.cpu || [];
+          if (cpuData.length > 0) {
+            avgCpu = (cpuData.reduce((s: number, p: number[]) => s + p[1], 0) / cpuData.length).toFixed(1);
+          }
+          const netInData = statsData.data?.netv4?.in || [];
+          const netOutData = statsData.data?.netv4?.out || [];
+          if (netInData.length > 0) {
+            netInGB = (netInData.reduce((s: number, p: number[]) => s + p[1], 0) / 1e9).toFixed(2);
+          }
+          if (netOutData.length > 0) {
+            netOutGB = (netOutData.reduce((s: number, p: number[]) => s + p[1], 0) / 1e9).toFixed(2);
+          }
+        }
+      } catch {}
+
+      const invoiceHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+body{font-family:'Poppins',sans-serif;margin:0;padding:40px;background:#f8f9fa}
+.invoice{max-width:700px;margin:0 auto;background:white;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.08)}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;padding-bottom:20px;border-bottom:2px solid #f0f0f0}
+.logo{font-size:22px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.invoice-number{color:#6b7280;font-size:14px}
+.details{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px}
+.detail-group h4{color:#6b7280;font-size:12px;text-transform:uppercase;margin:0 0 6px}
+.detail-group p{margin:0;font-size:14px;color:#1f2937}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+th{background:#f9fafb;padding:12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb}
+td{padding:12px;border-bottom:1px solid #f3f4f6;font-size:14px}
+.total-row{font-weight:700;font-size:16px;border-top:2px solid #e5e7eb}
+.total-row td{padding-top:16px}
+.usage-box{background:#f0f4ff;border-radius:12px;padding:16px;margin-bottom:24px}
+.usage-box h4{margin:0 0 12px;font-size:13px;color:#4b5563;text-transform:uppercase}
+.usage-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.usage-item{text-align:center}
+.usage-item .value{font-size:20px;font-weight:700;color:#1f2937}
+.usage-item .label{font-size:11px;color:#6b7280;margin-top:2px}
+.footer{text-align:center;color:#9ca3af;font-size:12px;margin-top:32px}
+</style></head>
+<body>
+<div class="invoice">
+<div class="header">
+<div class="logo">AI Powered Sites</div>
+<div class="invoice-number">Usage-Based Server Invoice<br>Period: ${billingStart.toLocaleDateString()} — ${billingEnd.toLocaleDateString()}<br>${hoursInPeriod} hours</div>
+</div>
+<div class="details">
+<div class="detail-group">
+<h4>Billed To</h4>
+<p>${customerName || "—"}</p>
+<p>${customerEmail || "—"}</p>
+</div>
+<div class="detail-group">
+<h4>Server Details</h4>
+<p>${server.label}</p>
+<p>IP: ${server.ipv4 || "Pending"}</p>
+<p>Region: ${server.region}</p>
+<p>Plan: ${server.planType}</p>
+</div>
+</div>
+<div class="usage-box">
+<h4>Usage Summary</h4>
+<div class="usage-grid">
+<div class="usage-item"><div class="value">${avgCpu}%</div><div class="label">Avg CPU</div></div>
+<div class="usage-item"><div class="value">${netInGB} GB</div><div class="label">Network In</div></div>
+<div class="usage-item"><div class="value">${netOutGB} GB</div><div class="label">Network Out</div></div>
+</div>
+${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;text-align:center">Transfer used: ${transferUsedGB} GB of ${transferQuotaGB} GB quota</p>` : ""}
+</div>
+<table>
+<thead><tr><th>Item</th><th>Details</th><th style="text-align:right">Amount</th></tr></thead>
+<tbody>
+<tr><td>Compute Usage (${hoursInPeriod} hrs × $${hourlyPrice}/hr)</td><td>${server.vcpus || "—"} vCPU / ${server.memory ? Math.round(server.memory / 1024) + "GB" : "—"} RAM / ${server.disk ? Math.round(server.disk / 1024) + "GB" : "—"} Disk</td><td style="text-align:right">$${(linodeCostCents / 100).toFixed(2)}</td></tr>
+<tr><td>Network Transfer</td><td>In: ${netInGB} GB / Out: ${netOutGB} GB</td><td style="text-align:right">Included</td></tr>
+<tr><td>Management & Support (${MARKUP_PERCENT}% markup)</td><td>Server management, monitoring, updates</td><td style="text-align:right">$${(markupCents / 100).toFixed(2)}</td></tr>
+<tr class="total-row"><td colspan="2">Total Due</td><td style="text-align:right">$${(totalCents / 100).toFixed(2)}</td></tr>
+</tbody>
+</table>
+<div class="footer">
+<p>AI Powered Sites — aipoweredsites.com</p>
+<p>Usage-based billing. Thank you for your business!</p>
+</div>
+</div>
+</body>
+</html>`;
+
+      // Update lastInvoiceAt so next invoice only covers the new period
+      await storage.updateLinodeServer(server.id, {
+        lastInvoiceAt: billingEnd,
+      });
+
+      if (customerEmail) {
+        try {
+          const { sendEmail } = await import("./email");
+          await sendEmail({
+            to: customerEmail,
+            subject: `Server Usage Invoice — ${server.label}`,
+            html: invoiceHtml,
+          });
+        } catch (emailErr) {
+          console.error("Failed to send server invoice email:", emailErr);
+        }
+      }
+
+      res.json({
+        html: invoiceHtml,
+        linodeCostCents,
+        markupPercent: MARKUP_PERCENT,
+        markupCents,
+        totalCents,
+        hoursInPeriod,
+        billingStart: billingStart.toISOString(),
+        billingEnd: billingEnd.toISOString(),
+        customerEmail,
+        emailSent: !!customerEmail,
+      });
+    } catch (err: any) {
+      console.error("Invoice generation error:", err.message);
+      res.status(500).json({ error: "Failed to generate invoice" });
+    }
+  });
+
   // Autopilot scheduler - runs every 5 minutes
   setInterval(async () => {
     try {

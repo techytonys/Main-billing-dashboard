@@ -12,6 +12,8 @@ import {
   MessagesSquare,
   Key,
   FolderGit2,
+  Target,
+  Server,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,6 +42,8 @@ const mainItems = [
   { title: "Q&A", url: "/admin/qa", icon: MessageSquare },
   { title: "API Keys", url: "/admin/api-keys", icon: Key },
   { title: "Code Backups", url: "/admin/code-backups", icon: FolderGit2 },
+  { title: "Lead Generator", url: "/admin/lead-generator", icon: Target },
+  { title: "Servers", url: "/admin/servers", icon: Server },
 ];
 
 const settingsItems = [

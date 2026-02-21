@@ -423,3 +423,58 @@ export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+
+export const leads = pgTable("leads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  businessName: text("business_name").notNull(),
+  address: text("address"),
+  phone: text("phone"),
+  website: text("website"),
+  domain: text("domain"),
+  emailGuess: text("email_guess"),
+  googlePlaceId: text("google_place_id"),
+  googleRating: numeric("google_rating"),
+  googleReviewCount: integer("google_review_count"),
+  category: text("category"),
+  zipCode: text("zip_code"),
+  status: text("status").notNull().default("new"),
+  notes: text("notes"),
+  lastContactedAt: timestamp("last_contacted_at"),
+  auditScore: integer("audit_score"),
+  auditData: text("audit_data"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
+
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = z.infer<typeof insertLeadSchema>;
+
+export const linodeServers = pgTable("linode_servers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  linodeId: integer("linode_id").notNull(),
+  label: text("label").notNull(),
+  customerId: varchar("customer_id"),
+  region: text("region").notNull(),
+  planType: text("plan_type").notNull(),
+  planLabel: text("plan_label"),
+  status: text("status").notNull().default("provisioning"),
+  ipv4: text("ipv4"),
+  ipv6: text("ipv6"),
+  vcpus: integer("vcpus"),
+  memory: integer("memory"),
+  disk: integer("disk"),
+  monthlyPriceCents: integer("monthly_price_cents"),
+  markupPercent: integer("markup_percent").default(50),
+  lastStatsAt: timestamp("last_stats_at"),
+  networkIn: numeric("network_in"),
+  networkOut: numeric("network_out"),
+  cpuUsage: numeric("cpu_usage"),
+  lastInvoiceAt: timestamp("last_invoice_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLinodeServerSchema = createInsertSchema(linodeServers).omit({ id: true, createdAt: true });
+
+export type LinodeServer = typeof linodeServers.$inferSelect;
+export type InsertLinodeServer = z.infer<typeof insertLinodeServerSchema>;
