@@ -97,6 +97,60 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/robots.txt", (_req, res) => {
+    const baseUrl = process.env.SITE_URL || "https://aipoweredsites.com";
+    res.type("text/plain").send(
+`User-agent: *
+Allow: /
+Allow: /questions
+Allow: /api/docs
+Allow: /quote/*
+Allow: /conversation/*
+Allow: /progress/*
+
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /portal/*
+Disallow: /api/
+Disallow: /login
+
+Sitemap: ${baseUrl}/sitemap.xml
+`
+    );
+  });
+
+  app.get("/sitemap.xml", async (_req, res) => {
+    const baseUrl = process.env.SITE_URL || "https://aipoweredsites.com";
+    const today = new Date().toISOString().split("T")[0];
+
+    const staticPages = [
+      { loc: "/", changefreq: "weekly", priority: "1.0" },
+      { loc: "/questions", changefreq: "daily", priority: "0.8" },
+      { loc: "/api/docs", changefreq: "monthly", priority: "0.6" },
+    ];
+
+    let urls = staticPages.map(p =>
+      `  <url>\n    <loc>${baseUrl}${p.loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${p.changefreq}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`
+    ).join("\n");
+
+    try {
+      const questions = await storage.getQaQuestions("public");
+      if (questions && questions.length > 0) {
+        const qUrls = questions.slice(0, 50).map(q =>
+          `  <url>\n    <loc>${baseUrl}/questions#q-${q.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.5</priority>\n  </url>`
+        ).join("\n");
+        urls += "\n" + qUrls;
+      }
+    } catch {}
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>`;
+
+    res.type("application/xml").send(xml);
+  });
+
   app.get("/api/dashboard/stats", isAuthenticated, async (_req, res) => {
     try {
       await storage.markOverdueInvoices();
