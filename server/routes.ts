@@ -98,20 +98,31 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   app.get("/robots.txt", (_req, res) => {
-    const baseUrl = process.env.SITE_URL || "https://aipoweredsites.com";
+    const baseUrl = (process.env.SITE_URL || "https://aipoweredsites.com").replace(/\/$/, "");
     res.type("text/plain").send(
 `User-agent: *
 Allow: /
 Allow: /questions
+Allow: /quote/
+Allow: /conversation/
+Allow: /progress/
 Allow: /api/docs
-Allow: /quote/*
-Allow: /conversation/*
-Allow: /progress/*
 
-Disallow: /admin
-Disallow: /admin/*
-Disallow: /portal/*
-Disallow: /api/
+Disallow: /admin/
+Disallow: /portal/
+Disallow: /api/dashboard/
+Disallow: /api/customers
+Disallow: /api/projects
+Disallow: /api/invoices
+Disallow: /api/billing-rates
+Disallow: /api/work-entries
+Disallow: /api/support/
+Disallow: /api/conversations
+Disallow: /api/payment-plans
+Disallow: /api/agent-costs
+Disallow: /api/api-keys
+Disallow: /api/login
+Disallow: /api/logout
 Disallow: /login
 
 Sitemap: ${baseUrl}/sitemap.xml
@@ -120,7 +131,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   app.get("/sitemap.xml", async (_req, res) => {
-    const baseUrl = process.env.SITE_URL || "https://aipoweredsites.com";
+    const baseUrl = (process.env.SITE_URL || "https://aipoweredsites.com").replace(/\/$/, "");
     const today = new Date().toISOString().split("T")[0];
 
     const staticPages = [
