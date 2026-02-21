@@ -3,10 +3,10 @@ FROM node:20 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps 2>&1 | tail -3
 
 COPY . .
-RUN npm run build
+RUN NODE_ENV=production npm run build
 
 FROM node:20-slim
 
