@@ -41,6 +41,14 @@ import {
   licenses, licenseActivations,
   type License, type InsertLicense,
   type LicenseActivation, type InsertLicenseActivation,
+  communityUsers, communitySessions, type CommunitySession, communityMessages,
+  communityPosts, communityComments, communityReactions, communityNotifications,
+  type CommunityUser, type InsertCommunityUser,
+  type CommunityMessage, type InsertCommunityMessage,
+  type CommunityPost, type InsertCommunityPost,
+  type CommunityComment, type InsertCommunityComment,
+  type CommunityReaction, type InsertCommunityReaction,
+  type CommunityNotification, type InsertCommunityNotification,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -218,6 +226,42 @@ export interface IStorage {
   createLicenseActivation(activation: InsertLicenseActivation): Promise<LicenseActivation>;
   releaseLicenseActivation(id: string): Promise<LicenseActivation | undefined>;
   releaseLicenseActivationsByServerId(serverId: string): Promise<number>;
+
+  getCommunityUser(id: string): Promise<CommunityUser | undefined>;
+  getCommunityUserByEmail(email: string): Promise<CommunityUser | undefined>;
+  createCommunityUser(user: InsertCommunityUser): Promise<CommunityUser>;
+  updateCommunityUser(id: string, updates: Partial<CommunityUser>): Promise<CommunityUser | undefined>;
+  getCommunityMembers(limit?: number): Promise<CommunityUser[]>;
+  getCommunityUserBySessionToken(token: string): Promise<CommunityUser | undefined>;
+  createCommunitySession(userId: string, token: string, expiresAt: Date, ipAddress?: string, userAgent?: string): Promise<void>;
+  deleteCommunitySession(token: string): Promise<void>;
+  deleteExpiredCommunitySessions(): Promise<void>;
+  getCommunityUserSessions(userId: string): Promise<CommunitySession[]>;
+  searchCommunityUsers(query: string, limit?: number): Promise<CommunityUser[]>;
+
+  getCommunityMessages(status?: string): Promise<CommunityMessage[]>;
+  getCommunityMessage(id: string): Promise<CommunityMessage | undefined>;
+  createCommunityMessage(message: InsertCommunityMessage): Promise<CommunityMessage>;
+  updateCommunityMessage(id: string, updates: Partial<CommunityMessage>): Promise<CommunityMessage | undefined>;
+
+  getCommunityPosts(limit?: number, cursor?: string): Promise<CommunityPost[]>;
+  getCommunityPost(id: string): Promise<CommunityPost | undefined>;
+  createCommunityPost(post: InsertCommunityPost): Promise<CommunityPost>;
+  updateCommunityPost(id: string, updates: Partial<InsertCommunityPost>): Promise<CommunityPost | undefined>;
+  deleteCommunityPost(id: string): Promise<boolean>;
+
+  getCommunityComments(postId: string): Promise<CommunityComment[]>;
+  createCommunityComment(comment: InsertCommunityComment): Promise<CommunityComment>;
+  deleteCommunityComment(id: string): Promise<boolean>;
+
+  getCommunityReactions(postId: string): Promise<CommunityReaction[]>;
+  toggleCommunityReaction(postId: string, reactionType: string, actorName: string, actorType: string, customerId?: string): Promise<{ added: boolean }>;
+
+  getCommunityNotifications(recipientType: string, recipientId?: string, limit?: number): Promise<CommunityNotification[]>;
+  getUnreadCommunityNotificationCount(recipientType: string, recipientId?: string): Promise<number>;
+  createCommunityNotification(notification: InsertCommunityNotification): Promise<CommunityNotification>;
+  markCommunityNotificationRead(id: string): Promise<CommunityNotification | undefined>;
+  markAllCommunityNotificationsRead(recipientType: string, recipientId?: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1279,6 +1323,297 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return result.length;
+  }
+
+  async getCommunityPosts(limit = 50, cursor?: string): Promise<any[]> {
+    const baseQuery = db
+      .select({
+        id: communityPosts.id,
+        authorName: communityPosts.authorName,
+        authorAvatar: sql<string>`COALESCE(${communityUsers.avatarUrl}, ${communityPosts.authorAvatar})`.as('authorAvatar'),
+        authorRole: communityPosts.authorRole,
+        authorUserId: communityPosts.authorUserId,
+        authorType: sql<string>`COALESCE(${communityPosts.authorRole}, 'client')`.as('authorType'),
+        title: communityPosts.title,
+        body: communityPosts.body,
+        imageUrl: communityPosts.imageUrl,
+        isPinned: communityPosts.isPinned,
+        likesCount: communityPosts.likesCount,
+        heartsCount: communityPosts.heartsCount,
+        hahaCount: communityPosts.hahaCount,
+        angryCount: communityPosts.angryCount,
+        commentsCount: communityPosts.commentsCount,
+        sharesCount: communityPosts.sharesCount,
+        mentions: communityPosts.mentions,
+        createdAt: communityPosts.createdAt,
+      })
+      .from(communityPosts)
+      .leftJoin(communityUsers, eq(communityPosts.authorUserId, communityUsers.id));
+
+    if (cursor) {
+      return baseQuery
+        .where(lt(communityPosts.createdAt, new Date(cursor)))
+        .orderBy(desc(communityPosts.isPinned), desc(communityPosts.createdAt))
+        .limit(limit);
+    }
+    return baseQuery
+      .orderBy(desc(communityPosts.isPinned), desc(communityPosts.createdAt))
+      .limit(limit);
+  }
+
+  async getCommunityPost(id: string): Promise<CommunityPost | undefined> {
+    const [post] = await db.select().from(communityPosts).where(eq(communityPosts.id, id));
+    return post;
+  }
+
+  async createCommunityPost(post: InsertCommunityPost): Promise<CommunityPost> {
+    const [created] = await db.insert(communityPosts).values(post).returning();
+    return created;
+  }
+
+  async updateCommunityPost(id: string, updates: Partial<InsertCommunityPost>): Promise<CommunityPost | undefined> {
+    const [updated] = await db.update(communityPosts).set(updates).where(eq(communityPosts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCommunityPost(id: string): Promise<boolean> {
+    await db.delete(communityComments).where(eq(communityComments.postId, id));
+    await db.delete(communityReactions).where(eq(communityReactions.postId, id));
+    const result = await db.delete(communityPosts).where(eq(communityPosts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getCommunityComments(postId: string): Promise<any[]> {
+    return db
+      .select({
+        id: communityComments.id,
+        postId: communityComments.postId,
+        authorName: communityComments.authorName,
+        authorAvatar: sql<string>`COALESCE(${communityUsers.avatarUrl}, ${communityComments.authorAvatar})`.as('authorAvatar'),
+        authorType: communityComments.authorType,
+        authorUserId: communityComments.authorUserId,
+        body: communityComments.body,
+        likesCount: communityComments.likesCount,
+        mentions: communityComments.mentions,
+        createdAt: communityComments.createdAt,
+      })
+      .from(communityComments)
+      .leftJoin(communityUsers, eq(communityComments.authorUserId, communityUsers.id))
+      .where(eq(communityComments.postId, postId))
+      .orderBy(communityComments.createdAt);
+  }
+
+  async createCommunityComment(comment: InsertCommunityComment): Promise<CommunityComment> {
+    const [created] = await db.insert(communityComments).values(comment).returning();
+    await db.update(communityPosts).set({
+      commentsCount: sql`${communityPosts.commentsCount} + 1`,
+    }).where(eq(communityPosts.id, comment.postId));
+    return created;
+  }
+
+  async deleteCommunityComment(id: string): Promise<boolean> {
+    const [comment] = await db.select().from(communityComments).where(eq(communityComments.id, id));
+    if (!comment) return false;
+    await db.delete(communityComments).where(eq(communityComments.id, id));
+    await db.update(communityPosts).set({
+      commentsCount: sql`GREATEST(${communityPosts.commentsCount} - 1, 0)`,
+    }).where(eq(communityPosts.id, comment.postId));
+    return true;
+  }
+
+  async getCommunityReactions(postId: string): Promise<CommunityReaction[]> {
+    return db.select().from(communityReactions)
+      .where(eq(communityReactions.postId, postId));
+  }
+
+  async toggleCommunityReaction(postId: string, reactionType: string, actorName: string, actorType: string, customerId?: string): Promise<{ added: boolean }> {
+    const conditions = [
+      eq(communityReactions.postId, postId),
+      eq(communityReactions.reactionType, reactionType),
+      eq(communityReactions.actorName, actorName),
+    ];
+    if (customerId) {
+      conditions.push(eq(communityReactions.customerId, customerId));
+    }
+    const [existing] = await db.select().from(communityReactions).where(and(...conditions));
+
+    const countFieldMap: Record<string, any> = {
+      like: { field: communityPosts.likesCount, key: "likesCount" },
+      heart: { field: communityPosts.heartsCount, key: "heartsCount" },
+      haha: { field: communityPosts.hahaCount, key: "hahaCount" },
+      angry: { field: communityPosts.angryCount, key: "angryCount" },
+    };
+    const mapping = countFieldMap[reactionType] || countFieldMap["like"];
+
+    if (existing) {
+      await db.delete(communityReactions).where(eq(communityReactions.id, existing.id));
+      await db.update(communityPosts).set({
+        [mapping.key]: sql`GREATEST(${mapping.field} - 1, 0)`,
+      }).where(eq(communityPosts.id, postId));
+      return { added: false };
+    } else {
+      await db.insert(communityReactions).values({ postId, reactionType, actorName, actorType, customerId });
+      await db.update(communityPosts).set({
+        [mapping.key]: sql`${mapping.field} + 1`,
+      }).where(eq(communityPosts.id, postId));
+      return { added: true };
+    }
+  }
+
+  async getCommunityNotifications(recipientType: string, recipientId?: string, limit = 50): Promise<CommunityNotification[]> {
+    const conditions = [eq(communityNotifications.recipientType, recipientType)];
+    if (recipientId) {
+      if (recipientType === "community_user") {
+        conditions.push(eq(communityNotifications.recipientUserId, recipientId));
+      } else {
+        conditions.push(eq(communityNotifications.recipientId, recipientId));
+      }
+    }
+    return db.select().from(communityNotifications)
+      .where(and(...conditions))
+      .orderBy(desc(communityNotifications.createdAt))
+      .limit(limit);
+  }
+
+  async getUnreadCommunityNotificationCount(recipientType: string, recipientId?: string): Promise<number> {
+    const conditions = [
+      eq(communityNotifications.recipientType, recipientType),
+      eq(communityNotifications.isRead, false),
+    ];
+    if (recipientId) {
+      if (recipientType === "community_user") {
+        conditions.push(eq(communityNotifications.recipientUserId, recipientId));
+      } else {
+        conditions.push(eq(communityNotifications.recipientId, recipientId));
+      }
+    }
+    const [result] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(communityNotifications)
+      .where(and(...conditions));
+    return result?.count ?? 0;
+  }
+
+  async createCommunityNotification(notification: InsertCommunityNotification): Promise<CommunityNotification> {
+    const [created] = await db.insert(communityNotifications).values(notification).returning();
+    return created;
+  }
+
+  async markCommunityNotificationRead(id: string): Promise<CommunityNotification | undefined> {
+    const [updated] = await db.update(communityNotifications).set({ isRead: true }).where(eq(communityNotifications.id, id)).returning();
+    return updated;
+  }
+
+  async markAllCommunityNotificationsRead(recipientType: string, recipientId?: string): Promise<number> {
+    const conditions = [
+      eq(communityNotifications.recipientType, recipientType),
+      eq(communityNotifications.isRead, false),
+    ];
+    if (recipientId) {
+      if (recipientType === "community_user") {
+        conditions.push(eq(communityNotifications.recipientUserId, recipientId));
+      } else {
+        conditions.push(eq(communityNotifications.recipientId, recipientId));
+      }
+    }
+    const result = await db.update(communityNotifications).set({ isRead: true }).where(and(...conditions)).returning();
+    return result.length;
+  }
+
+  async getCommunityUser(id: string): Promise<CommunityUser | undefined> {
+    const [user] = await db.select().from(communityUsers).where(eq(communityUsers.id, id));
+    return user;
+  }
+
+  async getCommunityUserByEmail(email: string): Promise<CommunityUser | undefined> {
+    const [user] = await db.select().from(communityUsers).where(eq(communityUsers.email, email.toLowerCase()));
+    return user;
+  }
+
+  async createCommunityUser(user: InsertCommunityUser): Promise<CommunityUser> {
+    const [created] = await db.insert(communityUsers).values({ ...user, email: user.email.toLowerCase() }).returning();
+    return created;
+  }
+
+  async updateCommunityUser(id: string, updates: Partial<CommunityUser>): Promise<CommunityUser | undefined> {
+    const [updated] = await db.update(communityUsers).set(updates).where(eq(communityUsers.id, id)).returning();
+    return updated;
+  }
+
+  async getCommunityMembers(limit = 50): Promise<CommunityUser[]> {
+    return db.select({
+      id: communityUsers.id,
+      email: communityUsers.email,
+      passwordHash: communityUsers.passwordHash,
+      displayName: communityUsers.displayName,
+      avatarUrl: communityUsers.avatarUrl,
+      bio: communityUsers.bio,
+      customerId: communityUsers.customerId,
+      isActive: communityUsers.isActive,
+      lastSeenAt: communityUsers.lastSeenAt,
+      createdAt: communityUsers.createdAt,
+    }).from(communityUsers)
+      .where(eq(communityUsers.isActive, true))
+      .orderBy(desc(communityUsers.createdAt))
+      .limit(limit);
+  }
+
+  async getCommunityUserBySessionToken(token: string): Promise<CommunityUser | undefined> {
+    const [session] = await db.select().from(communitySessions)
+      .where(eq(communitySessions.sessionToken, token));
+    if (!session || new Date(session.expiresAt) < new Date()) return undefined;
+    return this.getCommunityUser(session.userId);
+  }
+
+  async createCommunitySession(userId: string, token: string, expiresAt: Date, ipAddress?: string, userAgent?: string): Promise<void> {
+    await db.insert(communitySessions).values({ userId, sessionToken: token, expiresAt, ipAddress, userAgent });
+  }
+
+  async deleteCommunitySession(token: string): Promise<void> {
+    await db.delete(communitySessions).where(eq(communitySessions.sessionToken, token));
+  }
+
+  async deleteExpiredCommunitySessions(): Promise<void> {
+    await db.delete(communitySessions).where(lt(communitySessions.expiresAt, new Date()));
+  }
+
+  async getCommunityMessages(status?: string): Promise<CommunityMessage[]> {
+    if (status) {
+      return db.select().from(communityMessages)
+        .where(eq(communityMessages.status, status))
+        .orderBy(desc(communityMessages.createdAt));
+    }
+    return db.select().from(communityMessages).orderBy(desc(communityMessages.createdAt));
+  }
+
+  async getCommunityMessage(id: string): Promise<CommunityMessage | undefined> {
+    const [msg] = await db.select().from(communityMessages).where(eq(communityMessages.id, id));
+    return msg;
+  }
+
+  async createCommunityMessage(message: InsertCommunityMessage): Promise<CommunityMessage> {
+    const [created] = await db.insert(communityMessages).values(message).returning();
+    return created;
+  }
+
+  async updateCommunityMessage(id: string, updates: Partial<CommunityMessage>): Promise<CommunityMessage | undefined> {
+    const [updated] = await db.update(communityMessages).set(updates).where(eq(communityMessages.id, id)).returning();
+    return updated;
+  }
+
+  async getCommunityUserSessions(userId: string): Promise<CommunitySession[]> {
+    return db.select().from(communitySessions)
+      .where(eq(communitySessions.userId, userId))
+      .orderBy(desc(communitySessions.createdAt));
+  }
+
+  async searchCommunityUsers(query: string, limit = 10): Promise<CommunityUser[]> {
+    return db.select().from(communityUsers)
+      .where(and(
+        eq(communityUsers.isActive, true),
+        sql`LOWER(${communityUsers.displayName}) LIKE ${'%' + query.toLowerCase() + '%'}`
+      ))
+      .orderBy(communityUsers.displayName)
+      .limit(limit);
   }
 }
 

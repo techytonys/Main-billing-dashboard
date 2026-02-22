@@ -11,6 +11,7 @@ RUN npm install --omit=dev --ignore-scripts --legacy-peer-deps 2>&1 | tail -3
 COPY dist ./dist
 COPY tsconfig.json drizzle.config.ts ./
 COPY shared ./shared
+COPY deploy/migrations ./deploy/migrations
 
 EXPOSE 5000
 

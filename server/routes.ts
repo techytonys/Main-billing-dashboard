@@ -5229,5 +5229,587 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  // ==================== Community Auth ====================
+
+  const getCommunityUser = async (req: any): Promise<any | null> => {
+    const token = req.cookies?.community_session;
+    if (!token) return null;
+    const user = await storage.getCommunityUserBySessionToken(token);
+    return user || null;
+  };
+
+  const processMentionNotifications = async (text: string, actorName: string, actorUserId: string | null, postId: string, commentId?: string) => {
+    const mentionRegex = /@([A-Za-z0-9_ ]+)/g;
+    let match;
+    const mentionedNames = new Set<string>();
+    while ((match = mentionRegex.exec(text)) !== null) {
+      mentionedNames.add(match[1].trim());
+    }
+    for (const name of mentionedNames) {
+      const users = await storage.searchCommunityUsers(name, 1);
+      const mentioned = users.find(u => u.displayName.toLowerCase() === name.toLowerCase());
+      if (mentioned && mentioned.id !== actorUserId) {
+        await storage.createCommunityNotification({
+          recipientType: "community_user",
+          recipientUserId: mentioned.id,
+          type: "mention",
+          message: `${actorName} mentioned you in a ${commentId ? "comment" : "post"}`,
+          postId,
+          commentId: commentId || null,
+          actorName,
+        });
+      }
+    }
+  };
+
+  app.post("/api/community/auth/signup", async (req, res) => {
+    try {
+      const { email, password, displayName } = req.body;
+      if (!email || !password || !displayName) {
+        return res.status(400).json({ error: "Email, password, and display name are required" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      const existing = await storage.getCommunityUserByEmail(email);
+      if (existing) {
+        return res.status(409).json({ error: "An account with this email already exists" });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 12);
+      const user = await storage.createCommunityUser({
+        email: email.toLowerCase(),
+        passwordHash,
+        displayName,
+        isActive: true,
+      });
+      const crypto = await import("crypto");
+      const sessionToken = crypto.randomBytes(48).toString("hex");
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+      const userAgentStr = req.headers["user-agent"] || "";
+      await storage.createCommunitySession(user.id, sessionToken, expiresAt, ipAddress, userAgentStr);
+      res.cookie("community_session", sessionToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+      const { passwordHash: _, ...safeUser } = user;
+      res.status(201).json(safeUser);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+      const user = await storage.getCommunityUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      const bcrypt = await import("bcryptjs");
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      await storage.updateCommunityUser(user.id, { lastSeenAt: new Date() });
+      const crypto = await import("crypto");
+      const sessionToken = crypto.randomBytes(48).toString("hex");
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+      const userAgentStr = req.headers["user-agent"] || "";
+      await storage.createCommunitySession(user.id, sessionToken, expiresAt, ipAddress, userAgentStr);
+      res.cookie("community_session", sessionToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+      const { passwordHash: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/auth/logout", async (req, res) => {
+    try {
+      const token = req.cookies?.community_session;
+      if (token) {
+        await storage.deleteCommunitySession(token);
+      }
+      res.clearCookie("community_session", { path: "/" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/auth/me", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      await storage.updateCommunityUser(user.id, { lastSeenAt: new Date() });
+      const { passwordHash: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/community/auth/profile", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { displayName, bio, avatarUrl } = req.body;
+      const updated = await storage.updateCommunityUser(user.id, {
+        ...(displayName && { displayName }),
+        ...(bio !== undefined && { bio }),
+        ...(avatarUrl !== undefined && { avatarUrl }),
+      });
+      if (!updated) return res.status(404).json({ error: "User not found" });
+      const { passwordHash: _, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Sessions & User Search ====================
+
+  app.get("/api/community/auth/sessions", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const sessions = await storage.getCommunityUserSessions(user.id);
+      const currentToken = req.cookies?.community_session;
+      const safeSessions = sessions.map(({ sessionToken, ...s }) => ({
+        ...s,
+        isCurrent: sessionToken === currentToken,
+      }));
+      res.json(safeSessions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/community/auth/sessions/:id", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const sessions = await storage.getCommunityUserSessions(user.id);
+      const session = sessions.find(s => s.id === req.params.id);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      await storage.deleteCommunitySession(session.sessionToken);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/users/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string || "").trim();
+      if (!q || q.length < 1) return res.json([]);
+      const users = await storage.searchCommunityUsers(q, 8);
+      const safeUsers = users.map(({ passwordHash, ...u }) => u);
+      res.json(safeUsers);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Members ====================
+
+  app.get("/api/community/members", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const members = await storage.getCommunityMembers(limit);
+      const safeMembers = members.map(({ passwordHash, ...m }) => m);
+      res.json(safeMembers);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Messages / Support ====================
+
+  app.post("/api/community/messages", async (req, res) => {
+    try {
+      const { name, email, subject, body } = req.body;
+      if (!name || !email || !subject || !body) {
+        return res.status(400).json({ error: "All fields are required" });
+      }
+      const communityUser = await getCommunityUser(req);
+      const message = await storage.createCommunityMessage({
+        userId: communityUser?.id || null,
+        name,
+        email,
+        subject,
+        body,
+      });
+      res.status(201).json(message);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/messages", isAuthenticated, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const messages = await storage.getCommunityMessages(status);
+      res.json(messages);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/community/messages/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateCommunityMessage(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Message not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community User Notifications ====================
+
+  app.get("/api/community/user/notifications", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const notifications = await storage.getCommunityNotifications("community_user", user.id, 50);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/user/notifications/unread-count", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const count = await storage.getUnreadCommunityNotificationCount("community_user", user.id);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/user/notifications/:id/read", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const notification = await storage.markCommunityNotificationRead(req.params.id);
+      res.json(notification);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/user/notifications/read-all", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const count = await storage.markAllCommunityNotificationsRead("community_user", user.id);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Check if community user has a linked portal
+  app.get("/api/community/user/portal-link", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user || !user.customerId) {
+        return res.json({ hasPortal: false });
+      }
+      const customer = await storage.getCustomer(user.customerId);
+      if (!customer || !customer.portalToken) {
+        return res.json({ hasPortal: false });
+      }
+      res.json({ hasPortal: true, portalUrl: `/portal/${customer.portalToken}` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Feed ====================
+
+  app.get("/api/community/posts", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const cursor = req.query.cursor as string;
+      const posts = await storage.getCommunityPosts(limit, cursor);
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/posts/:id", async (req, res) => {
+    try {
+      const post = await storage.getCommunityPost(req.params.id);
+      if (!post) return res.status(404).json({ error: "Post not found" });
+      res.json(post);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/posts", async (req, res) => {
+    try {
+      const { authorName, body } = req.body;
+      if (!authorName || !body) return res.status(400).json({ error: "authorName and body are required" });
+      const communityUser = await getCommunityUser(req);
+      const post = await storage.createCommunityPost({
+        ...req.body,
+        authorUserId: communityUser?.id || null,
+      });
+      try {
+        await processMentionNotifications(body, authorName, communityUser?.id || null, post.id);
+      } catch (e) {}
+      res.status(201).json(post);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/community/posts/:id", async (req, res) => {
+    try {
+      const post = await storage.getCommunityPost(req.params.id);
+      if (!post) return res.status(404).json({ error: "Post not found" });
+      const { authorName } = req.body;
+      const isAdmin = req.isAuthenticated?.();
+      if (!isAdmin && post.authorName !== authorName) {
+        return res.status(403).json({ error: "You can only edit your own posts" });
+      }
+      const updated = await storage.updateCommunityPost(req.params.id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/community/posts/:id", async (req, res) => {
+    try {
+      const { authorName } = req.query;
+      const post = await storage.getCommunityPost(req.params.id);
+      if (!post) return res.status(404).json({ error: "Post not found" });
+      const isAdmin = req.isAuthenticated?.();
+      if (!isAdmin && post.authorName !== authorName) {
+        return res.status(403).json({ error: "You can only delete your own posts" });
+      }
+      const deleted = await storage.deleteCommunityPost(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Post not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/posts/:id/comments", async (req, res) => {
+    try {
+      const comments = await storage.getCommunityComments(req.params.id);
+      res.json(comments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/posts/:id/comments", async (req, res) => {
+    try {
+      const communityUser = await getCommunityUser(req);
+      const comment = await storage.createCommunityComment({
+        ...req.body,
+        postId: req.params.id,
+        authorUserId: communityUser?.id || null,
+      });
+
+      const post = await storage.getCommunityPost(req.params.id);
+      if (post) {
+        if (post.authorRole === "admin") {
+          await storage.createCommunityNotification({
+            recipientType: "admin",
+            type: "comment",
+            message: `${comment.authorName} commented on your post`,
+            postId: req.params.id,
+            commentId: comment.id,
+            actorName: comment.authorName,
+          });
+        }
+        if (post.authorUserId && post.authorUserId !== communityUser?.id) {
+          await storage.createCommunityNotification({
+            recipientType: "community_user",
+            recipientUserId: post.authorUserId,
+            type: "comment",
+            message: `${comment.authorName} commented on your post`,
+            postId: req.params.id,
+            commentId: comment.id,
+            actorName: comment.authorName,
+          });
+        }
+      }
+
+      try {
+        await processMentionNotifications(req.body.body || "", comment.authorName, communityUser?.id || null, req.params.id, comment.id);
+      } catch (e) {}
+
+      res.status(201).json(comment);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/community/comments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteCommunityComment(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Comment not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/posts/:id/reactions", async (req, res) => {
+    try {
+      const reactions = await storage.getCommunityReactions(req.params.id);
+      res.json(reactions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/posts/:id/reactions", async (req, res) => {
+    try {
+      const { reactionType, actorName, actorType, customerId } = req.body;
+      const communityUser = await getCommunityUser(req);
+      const result = await storage.toggleCommunityReaction(
+        req.params.id, reactionType || "like", actorName, actorType || "client", customerId
+      );
+
+      if (result.added) {
+        const post = await storage.getCommunityPost(req.params.id);
+        if (post) {
+          const reactionLabel = reactionType === "heart" ? "loved" : reactionType === "haha" ? "laughed at" : reactionType === "angry" ? "reacted to" : "liked";
+          if (post.authorRole === "admin") {
+            await storage.createCommunityNotification({
+              recipientType: "admin",
+              type: "reaction",
+              message: `${actorName} ${reactionLabel} your post`,
+              postId: req.params.id,
+              actorName,
+            });
+          }
+          if (post.authorUserId && post.authorUserId !== communityUser?.id) {
+            await storage.createCommunityNotification({
+              recipientType: "community_user",
+              recipientUserId: post.authorUserId,
+              type: "reaction",
+              message: `${actorName} ${reactionLabel} your post`,
+              postId: req.params.id,
+              actorName,
+            });
+          }
+        }
+      }
+
+      const updatedPost = await storage.getCommunityPost(req.params.id);
+      res.json({ ...result, post: updatedPost });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/posts/:id/share", async (req, res) => {
+    try {
+      await storage.updateCommunityPost(req.params.id, {} as any);
+      const post = await storage.getCommunityPost(req.params.id);
+      if (post) {
+        await storage.createCommunityNotification({
+          recipientType: "admin",
+          type: "share",
+          message: `${req.body.actorName || "Someone"} shared your post`,
+          postId: req.params.id,
+          actorName: req.body.actorName || "Anonymous",
+        });
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const notifications = await storage.getCommunityNotifications("admin", undefined, 50);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/notifications/unread-count", isAuthenticated, async (req, res) => {
+    try {
+      const count = await storage.getUnreadCommunityNotificationCount("admin");
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const notification = await storage.markCommunityNotificationRead(req.params.id);
+      res.json(notification);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/notifications/read-all", isAuthenticated, async (req, res) => {
+    try {
+      const count = await storage.markAllCommunityNotificationsRead("admin");
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Portal community endpoints (for clients)
+  app.get("/api/portal/:token/community/notifications", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const notifications = await storage.getCommunityNotifications("client", customer.id, 50);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/portal/:token/community/notifications/unread-count", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const count = await storage.getUnreadCommunityNotificationCount("client", customer.id);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

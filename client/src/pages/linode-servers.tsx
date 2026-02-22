@@ -469,36 +469,6 @@ function SshCommand({ ip }: { ip: string }) {
 }
 
 function SetupCommandButton({ serverId, customerId, serverSetupComplete }: { serverId: string; customerId: string | null; serverSetupComplete?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const [setupCmd, setSetupCmd] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchSetupCommand = async () => {
-    if (setupCmd) {
-      navigator.clipboard.writeText(setupCmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/linode/servers/${serverId}/setup-command`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to get setup command");
-      }
-      const data = await res.json();
-      setSetupCmd(data.setupCommand);
-      navigator.clipboard.writeText(data.setupCommand);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err: any) {
-      alert(err.message || "Could not get setup command. Make sure this server is assigned to a customer.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (!customerId) return null;
 
   if (serverSetupComplete) {
@@ -514,40 +484,10 @@ function SetupCommandButton({ serverId, customerId, serverSetupComplete }: { ser
 
   return (
     <div className="mt-2">
-      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800 rounded-lg mb-2" data-testid={`auto-setup-status-${serverId}`}>
+      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid={`auto-setup-status-${serverId}`}>
         <Loader2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-spin flex-shrink-0" />
         <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Auto-setup in progress — server will secure itself on boot</span>
       </div>
-      {setupCmd ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg" data-testid={`setup-command-${serverId}`}>
-          <Rocket className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-          <code className="text-xs font-mono flex-1 select-all text-emerald-700 dark:text-emerald-300 truncate">{setupCmd}</code>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(setupCmd);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
-            title="Copy setup command"
-            data-testid={`button-copy-setup-${serverId}`}
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
-          </button>
-        </div>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5 text-xs text-muted-foreground"
-          onClick={fetchSetupCommand}
-          disabled={loading}
-          data-testid={`button-get-setup-${serverId}`}
-        >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5" />}
-          Copy Manual Setup Command (fallback)
-        </Button>
-      )}
     </div>
   );
 }

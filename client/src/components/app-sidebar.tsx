@@ -7,7 +7,6 @@ import {
   DollarSign,
   Settings,
   LifeBuoy,
-  MessageSquare,
   Calculator,
   MessagesSquare,
   Key,
@@ -16,6 +15,8 @@ import {
   Server,
   BookOpen,
   Shield,
+  Users2,
+  Sparkles,
 } from "lucide-react";
 import {
   Sidebar,
@@ -37,22 +38,54 @@ const mainItems = [
   { title: "Customers", url: "/admin/customers", icon: Users },
   { title: "Projects", url: "/admin/projects", icon: FolderOpen },
   { title: "Invoices", url: "/admin/invoices", icon: FileText },
-  { title: "Billing Rates", url: "/admin/billing-rates", icon: DollarSign },
-  { title: "Quote Builder", url: "/admin/quote-builder", icon: Calculator },
-  { title: "Conversations", url: "/admin/conversations", icon: MessagesSquare },
-  { title: "Support Tickets", url: "/admin/support", icon: LifeBuoy },
-  { title: "Q&A", url: "/admin/qa", icon: MessageSquare },
-  { title: "API Keys", url: "/admin/api-keys", icon: Key },
-  { title: "Code Backups", url: "/admin/code-backups", icon: FolderGit2 },
-  { title: "Lead Generator", url: "/admin/lead-generator", icon: Target },
-  { title: "Servers", url: "/admin/servers", icon: Server },
-  { title: "Knowledge Base", url: "/admin/knowledge-base", icon: BookOpen },
-  { title: "Licenses", url: "/admin/licenses", icon: Shield },
+  { title: "Rates", url: "/admin/billing-rates", icon: DollarSign },
+  { title: "Quotes", url: "/admin/quote-builder", icon: Calculator },
 ];
 
-const settingsItems = [
+const engageItems = [
+  { title: "Conversations", url: "/admin/conversations", icon: MessagesSquare },
+  { title: "Support", url: "/admin/support", icon: LifeBuoy },
+  { title: "Community", url: "/admin/community", icon: Users2 },
+  { title: "Leads", url: "/admin/lead-generator", icon: Target },
+];
+
+const manageItems = [
+  { title: "Knowledge Base", url: "/admin/knowledge-base", icon: BookOpen },
+  { title: "Code Backups", url: "/admin/code-backups", icon: FolderGit2 },
+  { title: "Servers", url: "/admin/servers", icon: Server },
+  { title: "API Keys", url: "/admin/api-keys", icon: Key },
+  { title: "Licenses", url: "/admin/licenses", icon: Shield },
   { title: "Settings", url: "/admin/settings", icon: Settings },
 ];
+
+function NavGroup({ label, items, location }: { label: string; items: typeof mainItems; location: string }) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => {
+            const isActive = location === item.url ||
+              (item.url !== "/admin" && location.startsWith(item.url));
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                >
+                  <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <item.icon className="w-4 h-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -70,57 +103,14 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Dashboard</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainItems.map((item) => {
-                const isActive = location === item.url || 
-                  (item.url !== "/admin" && location.startsWith(item.url));
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                    >
-                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>System</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {settingsItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                    >
-                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup label="Core" items={mainItems} location={location} />
+        <NavGroup label="Engage" items={engageItems} location={location} />
+        <NavGroup label="Manage" items={manageItems} location={location} />
       </SidebarContent>
       <SidebarFooter className="p-4">
-        <div className="text-xs text-muted-foreground">
-          AI Powered Sites
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>AI Powered Sites</span>
         </div>
       </SidebarFooter>
     </Sidebar>

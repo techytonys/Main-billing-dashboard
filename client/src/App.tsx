@@ -11,8 +11,9 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LogOut } from "lucide-react";
+import { LogOut, Bell } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 import NotFound from "@/pages/not-found";
 import Overview from "@/pages/overview";
 import Customers from "@/pages/customers";
@@ -40,6 +41,8 @@ import LinodeServers from "@/pages/linode-servers";
 import KnowledgeBase from "@/pages/knowledge-base";
 import Licenses from "@/pages/licenses";
 import PublicHelp from "@/pages/public-help";
+import Community from "@/pages/community";
+import CommunityAccount from "@/pages/community-account";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -62,6 +65,7 @@ function DashboardRouter() {
       <Route path="/admin/servers" component={LinodeServers} />
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/licenses" component={Licenses} />
+      <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
@@ -98,6 +102,12 @@ function DashboardLayout() {
 
   const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join("").toUpperCase() || "U";
 
+  const { data: notifData } = useQuery<{ count: number }>({
+    queryKey: ["/api/community/notifications/unread-count"],
+    refetchInterval: 15000,
+  });
+  const unreadCount = notifData?.count || 0;
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
@@ -106,6 +116,16 @@ function DashboardLayout() {
           <header className="flex items-center justify-between gap-3 flex-wrap px-4 py-2 border-b sticky top-0 z-50 bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-3">
+              <a href="/admin/community" className="relative" data-testid="link-community-notifications">
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="w-4 h-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none" data-testid="badge-notification-count">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </a>
               <div className="flex items-center gap-2">
                 <Avatar className="w-7 h-7" data-testid="img-user-avatar">
                   <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
@@ -143,6 +163,8 @@ function AppRouter() {
       <Route path="/conversation/:token" component={ConversationPage} />
       <Route path="/api/docs" component={ApiDocs} />
       <Route path="/help" component={PublicHelp} />
+      <Route path="/community">{() => <Community />}</Route>
+      <Route path="/community/account" component={CommunityAccount} />
       <Route path="/login" component={LoginPage} />
       <Route path="/admin/:rest*">
         <DashboardLayout />

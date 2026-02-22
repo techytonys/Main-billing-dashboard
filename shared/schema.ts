@@ -570,3 +570,126 @@ export const insertKnowledgeBaseArticleSchema = createInsertSchema(knowledgeBase
 
 export type KnowledgeBaseArticle = typeof knowledgeBaseArticles.$inferSelect;
 export type InsertKnowledgeBaseArticle = z.infer<typeof insertKnowledgeBaseArticleSchema>;
+
+export const communityUsers = pgTable("community_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  displayName: text("display_name").notNull(),
+  avatarUrl: text("avatar_url"),
+  bio: text("bio"),
+  customerId: varchar("customer_id"),
+  isActive: boolean("is_active").default(true),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityUserSchema = createInsertSchema(communityUsers).omit({ id: true, createdAt: true, lastSeenAt: true });
+export type CommunityUser = typeof communityUsers.$inferSelect;
+export type InsertCommunityUser = z.infer<typeof insertCommunityUserSchema>;
+
+export const communitySessions = pgTable("community_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  sessionToken: text("session_token").notNull().unique(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type CommunitySession = typeof communitySessions.$inferSelect;
+
+export const communityMessages = pgTable("community_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("new"),
+  adminReply: text("admin_reply"),
+  repliedAt: timestamp("replied_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityMessageSchema = createInsertSchema(communityMessages).omit({ id: true, createdAt: true, status: true, adminReply: true, repliedAt: true });
+export type CommunityMessage = typeof communityMessages.$inferSelect;
+export type InsertCommunityMessage = z.infer<typeof insertCommunityMessageSchema>;
+
+export const communityPosts = pgTable("community_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  authorName: text("author_name").notNull(),
+  authorAvatar: text("author_avatar"),
+  authorRole: text("author_role").default("admin"),
+  authorUserId: varchar("author_user_id"),
+  title: text("title"),
+  body: text("body").notNull(),
+  imageUrl: text("image_url"),
+  isPinned: boolean("is_pinned").default(false),
+  likesCount: integer("likes_count").default(0),
+  heartsCount: integer("hearts_count").default(0),
+  hahaCount: integer("haha_count").default(0),
+  angryCount: integer("angry_count").default(0),
+  commentsCount: integer("comments_count").default(0),
+  sharesCount: integer("shares_count").default(0),
+  mentions: text("mentions").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityPostSchema = createInsertSchema(communityPosts).omit({ id: true, createdAt: true, likesCount: true, heartsCount: true, hahaCount: true, angryCount: true, commentsCount: true, sharesCount: true });
+export type CommunityPost = typeof communityPosts.$inferSelect;
+export type InsertCommunityPost = z.infer<typeof insertCommunityPostSchema>;
+
+export const communityComments = pgTable("community_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(),
+  authorName: text("author_name").notNull(),
+  authorAvatar: text("author_avatar"),
+  authorType: text("author_type").notNull().default("client"),
+  authorUserId: varchar("author_user_id"),
+  customerId: varchar("customer_id"),
+  body: text("body").notNull(),
+  likesCount: integer("likes_count").default(0),
+  mentions: text("mentions").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityCommentSchema = createInsertSchema(communityComments).omit({ id: true, createdAt: true, likesCount: true });
+export type CommunityComment = typeof communityComments.$inferSelect;
+export type InsertCommunityComment = z.infer<typeof insertCommunityCommentSchema>;
+
+export const communityReactions = pgTable("community_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(),
+  commentId: varchar("comment_id"),
+  reactionType: text("reaction_type").notNull().default("like"),
+  actorName: text("actor_name").notNull(),
+  actorType: text("actor_type").notNull().default("client"),
+  actorUserId: varchar("actor_user_id"),
+  customerId: varchar("customer_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityReactionSchema = createInsertSchema(communityReactions).omit({ id: true, createdAt: true });
+export type CommunityReaction = typeof communityReactions.$inferSelect;
+export type InsertCommunityReaction = z.infer<typeof insertCommunityReactionSchema>;
+
+export const communityNotifications = pgTable("community_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipientType: text("recipient_type").notNull().default("admin"),
+  recipientId: varchar("recipient_id"),
+  recipientUserId: varchar("recipient_user_id"),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  postId: varchar("post_id"),
+  commentId: varchar("comment_id"),
+  actorName: text("actor_name").notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityNotificationSchema = createInsertSchema(communityNotifications).omit({ id: true, createdAt: true });
+export type CommunityNotification = typeof communityNotifications.$inferSelect;
+export type InsertCommunityNotification = z.infer<typeof insertCommunityNotificationSchema>;

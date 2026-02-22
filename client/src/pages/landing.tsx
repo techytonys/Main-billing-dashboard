@@ -479,42 +479,48 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden" style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
       <nav aria-label="Main navigation" className="fixed top-0 left-0 right-0 z-50 border-b border-white/5" style={{ backdropFilter: "blur(20px)", backgroundColor: "rgba(10,10,15,0.8)" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-3">
+          <a href="#hero" className="flex items-center gap-2 shrink-0" data-testid="link-nav-home">
             <img src="/images/logo.png" alt="AI Powered Sites" className="w-8 h-8 rounded-md object-cover" />
             <span className="text-base font-semibold tracking-tight whitespace-nowrap" data-testid="text-brand-name">AI Powered Sites</span>
-          </div>
-          <div className="hidden lg:flex items-center gap-4 xl:gap-6">
-            <a href="#hero" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-home"><Home className="w-3.5 h-3.5" />Home</a>
-            <a href="#services" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-services"><Layout className="w-3.5 h-3.5" />Services</a>
-            <a href="#process" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-process"><Zap className="w-3.5 h-3.5" />Process</a>
-            <a href="#features" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-features"><Shield className="w-3.5 h-3.5" />Why Us</a>
-            <a href="#testimonials" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-testimonials"><Quote className="w-3.5 h-3.5" />Reviews</a>
-            <a href="#pricing" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-pricing"><DollarSign className="w-3.5 h-3.5" />Pricing</a>
-            <a href="#api" className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-api"><Plug className="w-3.5 h-3.5" />API</a>
-            <Link href="/questions"><span className="text-[13px] font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer" style={{ fontFamily: "Poppins, sans-serif" }} data-testid="link-nav-qa"><MessageSquare className="w-3.5 h-3.5" />Q&A</span></Link>
+          </a>
+          <div className="hidden md:flex items-center gap-1">
+            <a href="#services" className="px-3 py-1.5 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-md transition-all" data-testid="link-nav-services">Services</a>
+            <a href="#pricing" className="px-3 py-1.5 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-md transition-all" data-testid="link-nav-pricing">Pricing</a>
+            <div className="relative group">
+              <button className="px-3 py-1.5 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-md transition-all flex items-center gap-1" data-testid="button-nav-more">
+                About <ChevronDown className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+              </button>
+              <div className="absolute top-full left-1/2 -translate-x-1/2 pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="w-44 rounded-lg border border-white/10 bg-[#12121a]/95 shadow-xl shadow-black/40 py-1.5" style={{ backdropFilter: "blur(20px)" }}>
+                  <a href="#process" className="flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-white/60 hover:text-white hover:bg-white/5 transition-colors" data-testid="link-nav-process"><Zap className="w-3.5 h-3.5 text-blue-400/70" />Our Process</a>
+                  <a href="#features" className="flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-white/60 hover:text-white hover:bg-white/5 transition-colors" data-testid="link-nav-features"><Shield className="w-3.5 h-3.5 text-emerald-400/70" />Why Us</a>
+                  <a href="#testimonials" className="flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-white/60 hover:text-white hover:bg-white/5 transition-colors" data-testid="link-nav-testimonials"><Star className="w-3.5 h-3.5 text-amber-400/70" />Reviews</a>
+                  <a href="#stats" className="flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-white/60 hover:text-white hover:bg-white/5 transition-colors" data-testid="link-nav-stats"><BarChart3 className="w-3.5 h-3.5 text-violet-400/70" />Results</a>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
               onClick={() => setChatOpen(true)}
               size="sm"
-              className="hidden sm:inline-flex bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium text-[13px]"
+              className="hidden sm:inline-flex bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium text-[13px] h-8 px-3.5"
               data-testid="button-nav-message"
             >
-              <MessageSquare className="w-3.5 h-3.5 mr-1" />
-              Message Us
+              <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+              Contact
             </Button>
             {!authLoading && isLoggedIn && (
-              <div className="hidden sm:flex items-center gap-1.5">
+              <div className="hidden sm:flex items-center gap-1">
                 <Link href="/admin">
-                  <Button variant="outline" size="sm" className="border-white/20 text-white bg-white/5 text-[13px]" data-testid="button-nav-dashboard">
-                    <LayoutDashboard className="w-3.5 h-3.5 mr-1" />
-                    Dashboard
+                  <Button variant="ghost" size="sm" className="text-white/60 hover:text-white text-[13px] h-8 px-2.5" data-testid="button-nav-dashboard">
+                    <LayoutDashboard className="w-3.5 h-3.5" />
                   </Button>
                 </Link>
                 <a href="/api/logout">
-                  <Button variant="ghost" size="icon" className="text-white/60" data-testid="button-nav-logout">
-                    <LogOut className="w-4 h-4" />
+                  <Button variant="ghost" size="sm" className="text-white/40 hover:text-white/70 h-8 px-2" data-testid="button-nav-logout">
+                    <LogOut className="w-3.5 h-3.5" />
                   </Button>
                 </a>
               </div>
@@ -522,7 +528,7 @@ export default function LandingPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden text-white/70"
+              className="md:hidden text-white/70 h-8 w-8"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               data-testid="button-mobile-menu"
             >
@@ -531,51 +537,38 @@ export default function LandingPage() {
           </div>
         </div>
         {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-white/5 px-4 py-4 space-y-1" style={{ backgroundColor: "rgba(10,10,15,0.95)" }}>
-            <a href="#hero" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-home">
-              <Home className="w-4 h-4" />Home
-            </a>
+          <div className="md:hidden border-t border-white/5 px-4 py-3 space-y-0.5" style={{ backgroundColor: "rgba(10,10,15,0.95)" }}>
             <a href="#services" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-services">
-              <Layout className="w-4 h-4" />Services
-            </a>
-            <a href="#process" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-process">
-              <Zap className="w-4 h-4" />Process
-            </a>
-            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-features">
-              <Shield className="w-4 h-4" />Why Us
-            </a>
-            <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-testimonials">
-              <Quote className="w-4 h-4" />Reviews
+              <Layout className="w-4 h-4 text-blue-400/60" />Services
             </a>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-pricing">
-              <DollarSign className="w-4 h-4" />Pricing
+              <DollarSign className="w-4 h-4 text-emerald-400/60" />Pricing
             </a>
-            <a href="#api" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-api">
-              <Plug className="w-4 h-4" />API
+            <a href="#process" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-process">
+              <Zap className="w-4 h-4 text-amber-400/60" />Our Process
             </a>
-            <Link href="/questions">
-              <span onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5 cursor-pointer" data-testid="link-mobile-qa">
-                <MessageSquare className="w-4 h-4" />Q&A
-              </span>
-            </Link>
+            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-features">
+              <Shield className="w-4 h-4 text-violet-400/60" />Why Us
+            </a>
+            <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-white/70 active:bg-white/5" data-testid="link-mobile-testimonials">
+              <Star className="w-4 h-4 text-amber-400/60" />Reviews
+            </a>
             <div className="pt-3 mt-2 border-t border-white/5 space-y-2">
               <Button
                 onClick={() => { setChatOpen(true); setMobileMenuOpen(false); }}
-                className="w-full bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium"
+                className="w-full bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-medium h-9"
                 data-testid="button-mobile-message"
               >
                 <MessageSquare className="w-4 h-4 mr-1.5" />
-                Message Us
+                Contact Us
               </Button>
               {!authLoading && isLoggedIn && (
-                <>
-                  <Link href="/admin">
-                    <Button variant="outline" className="w-full border-white/20 text-white bg-white/5" data-testid="button-mobile-dashboard">
-                      <LayoutDashboard className="w-4 h-4 mr-1.5" />
-                      Dashboard
-                    </Button>
-                  </Link>
-                </>
+                <Link href="/admin">
+                  <Button variant="outline" className="w-full border-white/15 text-white/70 bg-white/5 h-9" data-testid="button-mobile-dashboard">
+                    <LayoutDashboard className="w-4 h-4 mr-1.5" />
+                    Dashboard
+                  </Button>
+                </Link>
               )}
             </div>
           </div>
@@ -1209,117 +1202,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="api" className="relative py-20 sm:py-28 md:py-36 border-t border-white/5 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-500/[0.02] via-transparent to-cyan-500/[0.02]" />
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-1/4 -left-20 w-[600px] h-[600px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
-          <div className="absolute bottom-1/4 -right-20 w-[500px] h-[500px] rounded-full bg-cyan-500/[0.04] blur-[100px]" />
-        </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 sm:gap-16 items-center">
-            <div className="order-2 lg:order-1">
-              <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-500/[0.08] border border-blue-500/20 mb-6 sm:mb-8">
-                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-sm font-medium text-blue-300/90">Developer API</span>
-              </div>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4 sm:mb-6" data-testid="text-api-title">
-                Connect Your Tools with{" "}
-                <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-teal-400 bg-clip-text text-transparent">Our API</span>
-              </h2>
-              <p className="text-white/50 text-base sm:text-lg leading-relaxed mb-8 sm:mb-10 max-w-lg">
-                Pull project data into your own systems. Integrate customer info, invoices, and work entries directly into your workflow with secure API key authentication.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 sm:mb-10">
-                {[
-                  { icon: Key, title: "Secure API Keys", desc: "Scope-based permissions with read, write, and full access levels.", color: "from-blue-500/15 to-indigo-500/15", iconColor: "text-blue-400" },
-                  { icon: Database, title: "Real-Time Data", desc: "Access customers, projects, invoices, and work entries instantly.", color: "from-cyan-500/15 to-teal-500/15", iconColor: "text-cyan-400" },
-                  { icon: FileCode2, title: "Simple REST API", desc: "Clean JSON endpoints with beginner-friendly documentation.", color: "from-violet-500/15 to-purple-500/15", iconColor: "text-violet-400" },
-                  { icon: Workflow, title: "Custom Integrations", desc: "Build dashboards, automate reports, or sync with any platform.", color: "from-emerald-500/15 to-green-500/15", iconColor: "text-emerald-400" },
-                ].map((item) => (
-                  <div key={item.title} className="group flex items-start gap-3.5 p-4 rounded-md bg-white/[0.02] border border-white/[0.06] hover:border-blue-500/20 hover:bg-white/[0.04] transition-all duration-300" data-testid={`card-api-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-md bg-gradient-to-br ${item.color} border border-white/[0.06] shrink-0 group-hover:scale-105 transition-transform duration-300`}>
-                      <item.icon className={`w-4.5 h-4.5 ${item.iconColor}`} />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-semibold mb-1 group-hover:text-white transition-colors">{item.title}</h4>
-                      <p className="text-xs text-white/40 leading-relaxed">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/api/docs">
-                  <Button
-                    className="bg-gradient-to-r from-blue-500 via-cyan-500 to-teal-500 border-0 text-white font-semibold px-8 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transition-shadow duration-300"
-                    data-testid="button-api-docs"
-                  >
-                    <FileCode2 className="w-4 h-4 mr-2" />
-                    View API Docs
-                  </Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  className="border-white/15 text-white bg-white/5 hover:bg-white/10 transition-colors"
-                  onClick={() => setChatOpen(true)}
-                  data-testid="button-api-contact"
-                >
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Ask About Integrations
-                </Button>
-              </div>
-            </div>
-
-            <div className="order-1 lg:order-2 relative" data-testid="img-api-visual">
-              <div className="relative rounded-md overflow-hidden border border-white/10 shadow-2xl shadow-blue-500/[0.08]">
-                <div className="bg-[#0d1117] p-1">
-                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06]">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-500/60" />
-                      <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
-                      <div className="w-3 h-3 rounded-full bg-green-500/60" />
-                    </div>
-                    <div className="flex-1 flex justify-center">
-                      <div className="px-4 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]">
-                        <span className="text-[11px] text-white/40 font-mono">api/v1/customers</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-5 font-mono text-[13px] leading-relaxed">
-                    <div className="text-white/30 mb-1">
-                      <span className="text-blue-400/70">GET</span> <span className="text-white/50">/api/v1/customers</span>
-                    </div>
-                    <div className="mt-3 text-white/25">{"{"}</div>
-                    <div className="pl-4 text-white/25">"<span className="text-cyan-400/80">data</span>": {"["}</div>
-                    <div className="pl-8 text-white/25">{"{"}</div>
-                    <div className="pl-12"><span className="text-white/25">"</span><span className="text-emerald-400/80">name</span><span className="text-white/25">":</span> <span className="text-amber-400/70">"Acme Corp"</span><span className="text-white/20">,</span></div>
-                    <div className="pl-12"><span className="text-white/25">"</span><span className="text-emerald-400/80">email</span><span className="text-white/25">":</span> <span className="text-amber-400/70">"hello@acme.com"</span><span className="text-white/20">,</span></div>
-                    <div className="pl-12"><span className="text-white/25">"</span><span className="text-emerald-400/80">status</span><span className="text-white/25">":</span> <span className="text-amber-400/70">"active"</span></div>
-                    <div className="pl-8 text-white/25">{"}"}</div>
-                    <div className="pl-4 text-white/25">{"]"}</div>
-                    <div className="text-white/25">{"}"}</div>
-                  </div>
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f]/40 to-transparent pointer-events-none" />
-              </div>
-              <div className="absolute -bottom-4 -right-4 sm:-bottom-5 sm:-right-5 p-4 sm:p-5 rounded-md bg-[#12121a]/90 border border-white/10 shadow-xl" style={{ backdropFilter: "blur(16px)" }}>
-                <div className="flex items-center gap-2.5 text-xs mb-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
-                  <span className="text-white/70 font-semibold">API Status: Live</span>
-                </div>
-                <p className="text-[11px] text-white/30">v1 &middot; REST &middot; JSON &middot; Bearer Auth</p>
-              </div>
-              <div className="absolute -top-3 -left-3 sm:-top-4 sm:-left-4 p-3 sm:p-4 rounded-md bg-[#12121a]/90 border border-white/10 shadow-xl" style={{ backdropFilter: "blur(16px)" }}>
-                <div className="flex items-center gap-2 text-xs">
-                  <Shield className="w-4 h-4 text-blue-400" />
-                  <span className="text-white/70 font-semibold">Encrypted</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section id="faq" className="relative py-16 sm:py-24 md:py-32 border-t border-white/5">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
@@ -1409,10 +1291,8 @@ export default function LandingPage() {
                 <li><a href="#features" className="text-sm text-white/40 transition-colors" data-testid="link-footer-features">Why Choose Us</a></li>
                 <li><a href="#process" className="text-sm text-white/40 transition-colors" data-testid="link-footer-process">Our Process</a></li>
                 <li><a href="#pricing" className="text-sm text-white/40 transition-colors" data-testid="link-footer-pricing">Pricing</a></li>
-                <li><a href="#api" className="text-sm text-white/40 transition-colors" data-testid="link-footer-api">API</a></li>
                 <li><a href="#testimonials" className="text-sm text-white/40 transition-colors" data-testid="link-footer-testimonials">Testimonials</a></li>
                 <li><a href="#stats" className="text-sm text-white/40 transition-colors" data-testid="link-footer-results">Results</a></li>
-                <li><Link href="/questions"><span className="text-sm text-white/40 transition-colors cursor-pointer" data-testid="link-footer-qa">Q&A</span></Link></li>
               </ul>
             </div>
             <div>

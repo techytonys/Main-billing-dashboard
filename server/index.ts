@@ -83,6 +83,9 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+import cookieParser from "cookie-parser";
+app.use(cookieParser());
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
