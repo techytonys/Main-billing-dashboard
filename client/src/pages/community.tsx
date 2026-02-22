@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1611,6 +1612,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
 
+  const adminAuth = useAuth();
   const skipAuth = isAdmin || !!portalToken;
   const auth = useCommunityAuth(skipAuth);
 
@@ -1625,7 +1627,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
   });
 
   const displayName = isAdmin
-    ? "Admin"
+    ? [adminAuth.user?.firstName, adminAuth.user?.lastName].filter(Boolean).join(" ") || "Admin"
     : portalToken && portalData?.customer?.name
       ? portalData.customer.name
       : auth.user?.displayName || "";
@@ -1642,7 +1644,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
   const [editBody, setEditBody] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
 
-  const userAvatar = auth.user?.avatarUrl || "";
+  const userAvatar = isAdmin ? (adminAuth.user?.profileImageUrl || "") : (auth.user?.avatarUrl || "");
 
   const createPost = useMutation({
     mutationFn: async (data: { title?: string; body: string; imageUrl?: string }) => {
