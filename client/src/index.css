@@ -380,6 +380,7 @@
 .quill-wrapper .ql-editor {
   min-height: 200px;
   color: hsl(var(--foreground));
+  line-height: 1.8;
 }
 
 .quill-wrapper .ql-editor.ql-blank::before {
@@ -534,6 +535,7 @@
 
 .ql-editor {
   min-height: 280px;
+  line-height: 1.8;
 }
 
 .ql-editor.ql-blank::before {
