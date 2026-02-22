@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -46,6 +47,12 @@ import {
   DollarSign,
   Clock,
   UserPlus,
+  Rocket,
+  ShieldCheck,
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { LinodeServer, Customer } from "@shared/schema";
 
@@ -461,6 +468,90 @@ function SshCommand({ ip }: { ip: string }) {
   );
 }
 
+function SetupCommandButton({ serverId, customerId, serverSetupComplete }: { serverId: string; customerId: string | null; serverSetupComplete?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const [setupCmd, setSetupCmd] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchSetupCommand = async () => {
+    if (setupCmd) {
+      navigator.clipboard.writeText(setupCmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/linode/servers/${serverId}/setup-command`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Failed to get setup command");
+      }
+      const data = await res.json();
+      setSetupCmd(data.setupCommand);
+      navigator.clipboard.writeText(data.setupCommand);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err: any) {
+      alert(err.message || "Could not get setup command. Make sure this server is assigned to a customer.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!customerId) return null;
+
+  if (serverSetupComplete) {
+    return (
+      <div className="mt-2">
+        <div className="flex items-center gap-2 px-2.5 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg" data-testid={`setup-complete-${serverId}`}>
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Server secured &amp; setup complete</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800 rounded-lg mb-2" data-testid={`auto-setup-status-${serverId}`}>
+        <Loader2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-spin flex-shrink-0" />
+        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Auto-setup in progress — server will secure itself on boot</span>
+      </div>
+      {setupCmd ? (
+        <div className="flex items-center gap-2 px-2.5 py-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg" data-testid={`setup-command-${serverId}`}>
+          <Rocket className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+          <code className="text-xs font-mono flex-1 select-all text-emerald-700 dark:text-emerald-300 truncate">{setupCmd}</code>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(setupCmd);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+            title="Copy setup command"
+            data-testid={`button-copy-setup-${serverId}`}
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
+          </button>
+        </div>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 text-xs text-muted-foreground"
+          onClick={fetchSetupCommand}
+          disabled={loading}
+          data-testid={`button-get-setup-${serverId}`}
+        >
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5" />}
+          Copy Manual Setup Command (fallback)
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export default function LinodeServers() {
   usePageTitle("Server Provisioning");
   const { toast } = useToast();
@@ -470,6 +561,9 @@ export default function LinodeServers() {
   const [serverLabel, setServerLabel] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "shared" | "dedicated">("all");
+  const [rootPassword, setRootPassword] = useState("");
+  const [showRootPass, setShowRootPass] = useState(false);
+  const [authorizedKeys, setAuthorizedKeys] = useState("");
   const [statsServerId, setStatsServerId] = useState<string | null>(null);
   const [invoiceHtml, setInvoiceHtml] = useState<string | null>(null);
 
@@ -499,7 +593,7 @@ export default function LinodeServers() {
   });
 
   const provisionMutation = useMutation({
-    mutationFn: async (data: { typeId: string; region: string; label: string; customerId?: string }) => {
+    mutationFn: async (data: { typeId: string; region: string; label: string; customerId?: string; rootPassword?: string; authorizedKeys?: string }) => {
       const res = await apiRequest("POST", "/api/linode/provision", data);
       return res.json();
     },
@@ -509,9 +603,11 @@ export default function LinodeServers() {
       setSelectedType("");
       setServerLabel("");
       setSelectedCustomer("");
+      setRootPassword("");
+      setAuthorizedKeys("");
       toast({
         title: "Server provisioned!",
-        description: `${data.label} is being created. Root password has been generated.`,
+        description: `${data.label} is being created.${data.rootPassword ? " Root password has been set." : ""}`,
       });
     },
     onError: (err: any) => {
@@ -627,6 +723,8 @@ export default function LinodeServers() {
       region: selectedRegion,
       label: serverLabel,
       customerId: selectedCustomer && selectedCustomer !== "none" ? selectedCustomer : undefined,
+      rootPassword: rootPassword || undefined,
+      authorizedKeys: authorizedKeys || undefined,
     });
   };
 
@@ -723,6 +821,8 @@ export default function LinodeServers() {
                     <SshCommand ip={server.ipv4} />
                   </div>
                 )}
+
+                <SetupCommandButton serverId={server.id} customerId={server.customerId} serverSetupComplete={server.serverSetupComplete} />
 
                 <div className="flex gap-2 pt-3 mt-1 border-t flex-wrap">
                   <Button
@@ -840,6 +940,47 @@ export default function LinodeServers() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1.5 block flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" />
+                Root Password <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type={showRootPass ? "text" : "password"}
+                  placeholder="Leave blank to auto-generate"
+                  value={rootPassword}
+                  onChange={(e) => setRootPassword(e.target.value)}
+                  data-testid="input-root-password"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowRootPass(!showRootPass)}
+                  tabIndex={-1}
+                >
+                  {showRootPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">If left blank, a secure password will be generated automatically.</p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1.5 block flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5" />
+                SSH Public Key <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+              </label>
+              <Textarea
+                placeholder="ssh-rsa AAAA... or ssh-ed25519 AAAA..."
+                value={authorizedKeys}
+                onChange={(e) => setAuthorizedKeys(e.target.value)}
+                rows={3}
+                className="font-mono text-xs"
+                data-testid="input-ssh-key"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Paste your public SSH key to enable key-based login from the start.</p>
             </div>
 
             <div>

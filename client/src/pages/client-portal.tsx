@@ -9,6 +9,7 @@ import {
   Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
   FolderGit2, Github, GitBranch, Zap, Play, HelpCircle, DollarSign,
   Server, Cpu, HardDrive, MemoryStick, Terminal, Copy, MapPin, BookOpen, Search, ChevronRight, ArrowUpDown,
+  ShieldCheck, Unplug,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -107,19 +108,28 @@ function AddCardForm({ token, onSuccess, onCancel }: { token: string; onSuccess:
     }
   };
 
+  const isDark = document.documentElement.classList.contains("dark");
+  const textColor = isDark ? "#fafafa" : "#171717";
+  const placeholderColor = isDark ? "#a3a3a3" : "#666666";
+  const errorColor = "#ef4444";
+  const bgColor = isDark ? "#1a1a1a" : "#ffffff";
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="p-4 border rounded-md bg-background">
+      <div className="p-4 border rounded-lg" style={{ backgroundColor: bgColor }}>
         <CardElement
           options={{
             style: {
               base: {
                 fontSize: "15px",
-                color: "hsl(var(--foreground))",
-                "::placeholder": { color: "hsl(var(--muted-foreground))" },
+                color: textColor,
+                iconColor: textColor,
+                "::placeholder": { color: placeholderColor },
                 fontFamily: "Poppins, sans-serif",
+                fontSmoothing: "antialiased",
+                ":-webkit-autofill": { color: textColor },
               },
-              invalid: { color: "hsl(var(--destructive))" },
+              invalid: { color: errorColor, iconColor: errorColor },
             },
           }}
         />
@@ -1191,6 +1201,204 @@ function getFlag(region: string): string {
   return "🌐";
 }
 
+function PortalLicenseCard({ token, license, copiedLicenseKey, setCopiedLicenseKey, servers }: {
+  token: string;
+  license: any;
+  copiedLicenseKey: string | null;
+  setCopiedLicenseKey: (id: string | null) => void;
+  servers?: any[];
+}) {
+  const { toast } = useToast();
+  const [showActivations, setShowActivations] = useState(false);
+  const [copiedItem, setCopiedItem] = useState<string | null>(null);
+
+  const { data: activations } = useQuery<any[]>({
+    queryKey: ["/api/portal", token, "licenses", license.id, "activations"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/licenses/${license.id}/activations`);
+      return res.json();
+    },
+    enabled: showActivations,
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: async (activationId: string) => {
+      await apiRequest("POST", `/api/portal/${token}/licenses/${license.id}/release/${activationId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "licenses", license.id, "activations"] });
+      toast({ title: "IP Released", description: "The activation slot has been freed." });
+    },
+  });
+
+  const activeActivations = activations?.filter(a => a.status === "active") || [];
+
+  const copyItem = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedItem(id);
+    setTimeout(() => setCopiedItem(null), 2000);
+  };
+
+  const baseUrl = window.location.origin;
+
+  return (
+    <Card className="p-5 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 border-emerald-200 dark:border-emerald-800" data-testid={`card-license-info-${license.id}`}>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+          <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">License & Server Setup</p>
+          <p className="text-xs text-emerald-700 dark:text-emerald-400">
+            Your license key and one-click setup commands
+          </p>
+        </div>
+        <div className="text-right flex items-center gap-2">
+          {license.activationCount > 0 && (
+            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1 text-xs">
+              ✅ Validated
+            </Badge>
+          )}
+          <Badge variant="outline" className="text-xs border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400">
+            {license.activationCount || 0} / {license.maxActivations === 0 ? "∞" : license.maxActivations} activations
+          </Badge>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <Label className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-1 block">License Key</Label>
+          <div className="flex items-center gap-2 bg-white/70 dark:bg-black/20 rounded-lg px-3 py-2.5 font-mono text-sm border border-emerald-200/50 dark:border-emerald-800/50" data-testid={`portal-license-key-${license.id}`}>
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span className="flex-1 select-all break-all">{license.licenseKey}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 shrink-0"
+              onClick={() => {
+                navigator.clipboard.writeText(license.licenseKey);
+                setCopiedLicenseKey(license.id);
+                setTimeout(() => setCopiedLicenseKey(null), 2000);
+              }}
+              data-testid={`btn-copy-license-${license.id}`}
+            >
+              {copiedLicenseKey === license.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
+        </div>
+
+        {servers && servers.length > 0 && (
+          <div>
+            <Label className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-1 block flex items-center gap-1.5">
+              <Terminal className="w-3.5 h-3.5" />
+              One-Click Setup Commands
+            </Label>
+            <p className="text-[11px] text-emerald-600/70 dark:text-emerald-400/60 mb-2">
+              SSH into your server as root, then paste the command to automatically secure and configure it.
+              Your license key is pre-included.
+            </p>
+            <div className="space-y-2">
+              {servers.map((server: any) => {
+                const curlCmd = `curl -sL ${baseUrl}/api/server-setup/${token}/${server.id} | sudo bash`;
+                return (
+                  <div key={server.id} className="bg-white/50 dark:bg-black/15 rounded-lg border border-emerald-200/40 dark:border-emerald-800/40 p-3" data-testid={`setup-cmd-card-${server.id}`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Server className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">{server.label || server.id}</span>
+                      {server.ipv4 && (
+                        <span className="text-[11px] font-mono text-emerald-600/70 dark:text-emerald-400/60">{server.ipv4}</span>
+                      )}
+                      <Badge variant="outline" className="text-[10px] ml-auto h-5 border-emerald-300/50 dark:border-emerald-700/50">
+                        {server.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 bg-gray-900 dark:bg-black/40 rounded-md px-3 py-2">
+                      <code className="text-[11px] font-mono text-emerald-400 flex-1 break-all select-all" data-testid={`text-curl-cmd-${server.id}`}>
+                        {curlCmd}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/30 shrink-0"
+                        onClick={() => copyItem(curlCmd, `curl-${server.id}`)}
+                        data-testid={`btn-copy-curl-${server.id}`}
+                      >
+                        {copiedItem === `curl-${server.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {(!servers || servers.length === 0) && (
+          <div>
+            <Label className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-1 block flex items-center gap-1.5">
+              <Terminal className="w-3.5 h-3.5" />
+              Setup Command
+            </Label>
+            <p className="text-[11px] text-emerald-600/70 dark:text-emerald-400/60">
+              Provision a server above to get your one-click setup command with your license key pre-included.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={() => setShowActivations(!showActivations)}
+        className="mt-4 text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+        data-testid={`btn-toggle-activations-${license.id}`}
+      >
+        <Globe className="w-3 h-3" />
+        {showActivations ? "Hide" : "Manage"} IP Activations
+        {activeActivations.length > 0 && ` (${activeActivations.length} active)`}
+      </button>
+
+      {showActivations && (
+        <div className="mt-3 space-y-2">
+          {!activations?.length ? (
+            <p className="text-xs text-emerald-700/70 dark:text-emerald-400/70">No IP activations yet. Activations are created when a server runs the setup script with this license key.</p>
+          ) : (
+            activations.map((a: any) => (
+              <div key={a.id} className="flex items-center gap-2 text-xs bg-white/40 dark:bg-black/10 rounded px-3 py-2">
+                <span className={`w-2 h-2 rounded-full ${a.status === "active" ? "bg-green-500" : "bg-gray-400"}`} />
+                <span className="font-mono font-medium">{a.serverIp}</span>
+                <span className="text-emerald-700/70 dark:text-emerald-400/70">{a.hostname}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  a.status === "active"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                }`}>
+                  {a.status}
+                </span>
+                <span className="ml-auto text-emerald-700/50 dark:text-emerald-400/50">
+                  {a.activatedAt ? new Date(a.activatedAt).toLocaleDateString() : ""}
+                </span>
+                {a.status === "active" && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`Release IP ${a.serverIp}? This will free up an activation slot.`)) {
+                        releaseMutation.mutate(a.id);
+                      }
+                    }}
+                    className="text-red-500 hover:text-red-700 flex items-center gap-1 ml-2"
+                    data-testid={`btn-portal-release-ip-${a.id}`}
+                  >
+                    <Unplug className="w-3 h-3" />
+                    Release
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PortalServersTab({ token, servers, serversLoading }: { token: string; servers: any[]; serversLoading: boolean }) {
   const { toast } = useToast();
   const [showProvision, setShowProvision] = useState(false);
@@ -1198,9 +1406,21 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
   const [selectedRegion, setSelectedRegion] = useState("");
   const [serverLabel, setServerLabel] = useState("");
   const [copiedIp, setCopiedIp] = useState<string | null>(null);
+  const [copiedLicenseKey, setCopiedLicenseKey] = useState<string | null>(null);
   const [rootPassword, setRootPassword] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [provisionedServerIp, setProvisionedServerIp] = useState<string | null>(null);
+  const [setupCommand, setSetupCommand] = useState<string>("");
+  const [autoSetupEnabled, setAutoSetupEnabled] = useState(false);
+
+  const { data: portalLicenses } = useQuery<{ id: string; licenseKey: string; status: string; activationCount: number; maxActivations: number; createdAt: string }[]>({
+    queryKey: ["/api/portal", token, "licenses"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/licenses`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 
   const { data: serverTypes } = useQuery<ServerType[]>({
     queryKey: ["/api/portal", token, "server-types"],
@@ -1227,10 +1447,12 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
       const res = await apiRequest("POST", `/api/portal/${token}/servers/provision`, data);
       return res.json();
     },
-    onSuccess: (data: { server: any; rootPassword: string }) => {
+    onSuccess: (data: { server: any; rootPassword: string; setupCommand?: string; autoSetup?: boolean }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "servers"] });
       setRootPassword(data.rootPassword);
       setProvisionedServerIp(data.server.ipv4 || "Assigning...");
+      setSetupCommand(data.setupCommand || "");
+      setAutoSetupEnabled(data.autoSetup || false);
       setShowProvision(false);
       setShowPasswordDialog(true);
       setSelectedType("");
@@ -1291,6 +1513,14 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
           </div>
         </div>
       </Card>
+
+      {portalLicenses && portalLicenses.length > 0 && (
+        <div className="space-y-3">
+          {portalLicenses.map((lic) => (
+            <PortalLicenseCard key={lic.id} token={token} license={lic} copiedLicenseKey={copiedLicenseKey} setCopiedLicenseKey={setCopiedLicenseKey} servers={servers} />
+          ))}
+        </div>
+      )}
 
       {serversLoading ? (
         <div className="space-y-3">
@@ -1557,6 +1787,31 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
                   </Button>
                 </div>
               </div>
+
+              {autoSetupEnabled && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg" data-testid="auto-setup-notice">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Automatic Setup Enabled</p>
+                      <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80">Your server will automatically secure itself when it boots — SSH hardening, user creation, Docker install, and firewall setup. You'll receive an email with your new login credentials once complete.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {setupCommand && !autoSetupEnabled && (
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Manual Server Setup (fallback)</Label>
+                  <p className="text-[11px] text-muted-foreground">SSH into your server as root, then paste this command to secure it:</p>
+                  <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-2.5">
+                    <code className="text-xs font-mono flex-1 break-all text-emerald-700 dark:text-emerald-300" data-testid="text-setup-command">{setupCommand}</code>
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyToClipboard(setupCommand, "setup-cmd")} data-testid="button-copy-setup-cmd">
+                      {copiedIp === "setup-cmd" ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button className="w-full" onClick={() => setShowPasswordDialog(false)} data-testid="button-close-password">

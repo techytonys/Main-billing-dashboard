@@ -1,12 +1,23 @@
 import { usePageTitle } from "@/hooks/use-page-title";
-import { Globe, Bell, BookOpen, Users, FolderOpen, Clock, Receipt, DollarSign, ExternalLink, AlertTriangle, Send, Mail, Webhook } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Globe, Bell, BookOpen, Users, FolderOpen, Clock, Receipt, DollarSign, ExternalLink, AlertTriangle, Send, Mail, Webhook, Rocket, Check, Loader2, Train, Triangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Settings() {
   usePageTitle("Settings");
+  const { toast } = useToast();
+
+  const { data: deployStatus } = useQuery<{ netlify: { configured: boolean }; vercel: { configured: boolean }; railway: { configured: boolean } }>({
+    queryKey: ["/api/deploy/status"],
+  });
 
   return (
     <div className="space-y-6">
@@ -275,6 +286,91 @@ export default function Settings() {
             <p className="text-muted-foreground">
               Quote form submissions from the landing page also automatically create support tickets.
             </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="flex items-center justify-center w-10 h-10 rounded-md bg-teal-500/10 shrink-0">
+            <Rocket className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+          </div>
+          <div className="flex-1">
+            <h2 className="font-semibold">Deploy Platforms</h2>
+            <p className="text-xs text-muted-foreground">Connect one or more platforms to deploy client sites</p>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-md bg-muted/30 text-sm text-muted-foreground mb-5">
+          <strong>How it works:</strong> Build client sites on Replit → push to GitHub → platform auto-deploys → client sees the live preview link. Choose the right platform for each project type.
+        </div>
+
+        <div className="space-y-5">
+          <div className="p-4 rounded-lg border border-teal-500/20 bg-teal-500/5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-7 h-7 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold text-sm flex items-center justify-center">N</span>
+              <div className="flex-1">
+                <h3 className="font-semibold text-sm">Netlify</h3>
+                <p className="text-[11px] text-muted-foreground">Static sites & JAMstack — Free tier: unlimited sites, 100GB bandwidth</p>
+              </div>
+              {deployStatus?.netlify?.configured && (
+                <Badge variant="outline" className="border-green-500/30 text-green-600 dark:text-green-400 text-[10px]">
+                  <Check className="w-3 h-3 mr-1" /> Connected
+                </Badge>
+              )}
+            </div>
+            <div className="space-y-2 text-xs text-muted-foreground">
+              <p>1. Sign up at <a href="https://app.netlify.com/signup" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">netlify.com</a></p>
+              <p>2. Go to <strong>User Settings → Applications → Personal access tokens</strong> → create token</p>
+              <p>3. Add secret: <code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">NETLIFY_API_TOKEN</code></p>
+              <p>4. Connect GitHub in Netlify: <strong>User Settings → Applications</strong></p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg border border-blue-500/20 bg-blue-500/5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-7 h-7 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold text-sm flex items-center justify-center">V</span>
+              <div className="flex-1">
+                <h3 className="font-semibold text-sm">Vercel</h3>
+                <p className="text-[11px] text-muted-foreground">Static & serverless apps — Free tier: unlimited deploys, 100GB bandwidth</p>
+              </div>
+              {deployStatus?.vercel?.configured && (
+                <Badge variant="outline" className="border-green-500/30 text-green-600 dark:text-green-400 text-[10px]">
+                  <Check className="w-3 h-3 mr-1" /> Connected
+                </Badge>
+              )}
+            </div>
+            <div className="space-y-2 text-xs text-muted-foreground">
+              <p>1. Sign up at <a href="https://vercel.com/signup" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">vercel.com</a></p>
+              <p>2. Go to <strong>Settings → Tokens</strong> → create token (full account scope)</p>
+              <p>3. Add secret: <code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">VERCEL_API_TOKEN</code></p>
+              <p>4. Connect GitHub in Vercel: <strong>Settings → Git → Connect GitHub</strong></p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-7 h-7 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold text-sm flex items-center justify-center">R</span>
+              <div className="flex-1">
+                <h3 className="font-semibold text-sm">Railway</h3>
+                <p className="text-[11px] text-muted-foreground">Docker & full-stack apps — Free trial: $5 credit, then $5/mo + usage</p>
+              </div>
+              {deployStatus?.railway?.configured && (
+                <Badge variant="outline" className="border-green-500/30 text-green-600 dark:text-green-400 text-[10px]">
+                  <Check className="w-3 h-3 mr-1" /> Connected
+                </Badge>
+              )}
+            </div>
+            <div className="space-y-2 text-xs text-muted-foreground">
+              <p>1. Sign up at <a href="https://railway.app" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">railway.app</a></p>
+              <p>2. Go to <strong>Account Settings → Tokens</strong> → create API token</p>
+              <p>3. Add secret: <code className="px-1 py-0.5 rounded bg-muted text-[11px] font-mono">RAILWAY_API_TOKEN</code></p>
+              <p>4. Connect GitHub in Railway: <strong>Account Settings → Source</strong></p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-md bg-amber-500/5 border border-amber-500/20 text-xs text-muted-foreground">
+            <strong className="text-amber-600 dark:text-amber-400">Which to choose?</strong> Use <strong>Netlify</strong> for simple HTML/CSS/React sites. Use <strong>Vercel</strong> for Next.js or serverless apps. Use <strong>Railway</strong> for Docker containers and full-stack apps with databases. You can connect all three and choose per project.
           </div>
         </div>
       </Card>

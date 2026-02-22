@@ -397,6 +397,24 @@ export async function sendNotificationEmail(data: NotificationEmailData): Promis
   }
 }
 
+export async function sendEmail(data: { to: string; subject: string; html: string }): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { client, fromEmail } = await getResendClient();
+    const result = await client.emails.send({
+      from: fromEmail || "AI Powered Sites <onboarding@resend.dev>",
+      to: [data.to],
+      subject: data.subject,
+      html: data.html,
+    });
+    if (result.error) {
+      return { success: false, error: result.error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to send email" };
+  }
+}
+
 export async function createResendAudience(name: string) {
   const { client } = await getResendClient();
   const result = await client.audiences.create({ name });

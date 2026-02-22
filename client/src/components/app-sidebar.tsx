@@ -15,6 +15,7 @@ import {
   Target,
   Server,
   BookOpen,
+  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -46,6 +47,7 @@ const mainItems = [
   { title: "Lead Generator", url: "/admin/lead-generator", icon: Target },
   { title: "Servers", url: "/admin/servers", icon: Server },
   { title: "Knowledge Base", url: "/admin/knowledge-base", icon: BookOpen },
+  { title: "Licenses", url: "/admin/licenses", icon: Shield },
 ];
 
 const settingsItems = [

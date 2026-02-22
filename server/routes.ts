@@ -3332,6 +3332,25 @@ ${urls}
 
   // ============ PORTAL: SERVER PROVISIONING ============
 
+  app.get("/api/portal/:token/licenses", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const customerLicenses = await storage.getLicenses(customer.id);
+      const activeLicenses = customerLicenses.filter(l => l.status === "active");
+      res.json(activeLicenses.map(l => ({
+        id: l.id,
+        licenseKey: l.licenseKey,
+        status: l.status,
+        activationCount: l.activationCount,
+        maxActivations: l.maxActivations,
+        createdAt: l.createdAt,
+      })));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/portal/:token/servers", async (req, res) => {
     try {
       const customer = await storage.getCustomerByPortalToken(req.params.token);
@@ -3442,6 +3461,19 @@ ${urls}
       const customer = await storage.getCustomerByPortalToken(req.params.token);
       if (!customer) return res.status(404).json({ message: "Invalid portal link" });
 
+      const existingLicenses = await storage.getLicenses(customer.id);
+      const hasActiveLicense = existingLicenses.some(l => l.status === "active");
+      if (!hasActiveLicense) {
+        await storage.createLicense({
+          customerId: customer.id,
+          licenseKey: generateLicenseKey(),
+          status: "active",
+          maxActivations: 0,
+          expiresAt: null,
+          notes: "Auto-issued during server provisioning",
+        });
+      }
+
       const { typeId, region, label } = req.body;
       if (!typeId || !region || !label) {
         return res.status(400).json({ error: "Server type, region, and label are required" });
@@ -3462,6 +3494,19 @@ ${urls}
         }
       } catch {}
 
+      const { randomUUID } = await import("crypto");
+      const preGeneratedId = randomUUID();
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+      const setupUrl = `${protocol}://${host}/api/server-setup/${req.params.token}/${preGeneratedId}`;
+
+      const cloudInitScript = `#!/bin/bash
+apt-get update -qq && apt-get install -y -qq curl jq > /dev/null 2>&1
+curl -sL ${setupUrl} | bash
+`;
+      const userDataBase64 = Buffer.from(cloudInitScript).toString("base64");
+
       const response = await fetch("https://api.linode.com/v4/linode/instances", {
         method: "POST",
         headers: linodeHeaders,
@@ -3473,6 +3518,9 @@ ${urls}
           root_pass: rootPass,
           booted: true,
           tags: ["aipoweredsites", "client-provisioned"],
+          metadata: {
+            user_data: userDataBase64,
+          },
         }),
       });
 
@@ -3496,12 +3544,192 @@ ${urls}
         disk: data.specs?.disk || null,
         monthlyPriceCents,
         markupPercent: 50,
-      });
+      }, preGeneratedId);
 
-      res.json({ server, rootPassword: rootPass });
+      const setupCommand = `curl -sL ${setupUrl} | sudo bash`;
+
+      res.json({ server, rootPassword: rootPass, setupCommand, autoSetup: true });
     } catch (err: any) {
       console.error("Portal server provision error:", err.message);
       res.status(500).json({ error: err.message || "Failed to provision server" });
+    }
+  });
+
+  app.post("/api/portal/:token/servers/:serverId/credentials", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const { sshUser, sshPort, sshPublicKey, serverIp, password } = req.body;
+      if (!sshUser || !sshPort) {
+        return res.status(400).json({ error: "SSH user and port are required" });
+      }
+
+      const servers = await storage.getLinodeServersByCustomerId(customer.id);
+      const server = servers.find(s => s.id === req.params.serverId);
+      if (!server) return res.status(404).json({ message: "Server not found" });
+
+      await storage.updateLinodeServer(server.id, {
+        sshUser: sshUser,
+        sshPort: sshPort,
+        sshPublicKey: sshPublicKey || null,
+        serverSetupComplete: true,
+      });
+
+      if (customer.email && serverIp && password) {
+        try {
+          const { sendEmail } = await import("./email");
+          const sshCmd = `ssh -p ${sshPort} ${sshUser}@${serverIp}`;
+
+          const customerLicenses = await storage.getLicenses(customer.id);
+          const activeLicense = customerLicenses.find(l => l.status === "active");
+          const licenseKey = activeLicense?.licenseKey || "";
+
+          const protocol = req.headers["x-forwarded-proto"] || "https";
+          const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+          const curlCommand = `curl -sL ${protocol}://${host}/api/server-setup/${req.params.token}/${req.params.serverId} | sudo bash`;
+
+          const portalUrl = `${protocol}://${host}/portal/${req.params.token}`;
+
+          await sendEmail({
+            to: customer.email,
+            subject: `Your Server Is Ready - ${serverIp}`,
+            html: `<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #ffffff;">
+<div style="background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 30px; border-radius: 12px 12px 0 0;">
+  <h1 style="color: #ffffff; margin: 0 0 5px 0; font-size: 24px;">🚀 Your Server Is Ready</h1>
+  <p style="color: #94a3b8; margin: 0; font-size: 14px;">Everything is set up and secured. Here's everything you need.</p>
+</div>
+
+<div style="padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+
+<h2 style="color: #1a1a2e; font-size: 16px; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid #10b981;">🔐 SSH Login Credentials</h2>
+<table style="width: 100%; border-collapse: collapse; margin: 0 0 20px 0;">
+<tr><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc; width: 140px; color: #374151;">Server IP</td><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-family: monospace; color: #1a1a2e;">${serverIp}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc; color: #374151;">Username</td><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-family: monospace; color: #1a1a2e;">${sshUser}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc; color: #374151;">Password</td><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-family: monospace; color: #1a1a2e;">${password}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc; color: #374151;">SSH Port</td><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-family: monospace; color: #1a1a2e;">${sshPort}</td></tr>
+<tr><td style="padding: 10px 12px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc; color: #374151;">Sudo Access</td><td style="padding: 10px 12px; border: 1px solid #e2e8f0; color: #10b981; font-weight: 600;">✅ Yes — use the same password</td></tr>
+</table>
+
+<h3 style="color: #1a1a2e; font-size: 14px; margin: 0 0 8px 0;">SSH Login Command</h3>
+<pre style="background: #0f172a; color: #4ade80; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; margin: 0 0 20px 0;">${sshCmd}</pre>
+
+${sshPublicKey ? `<h2 style="color: #1a1a2e; font-size: 16px; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid #3b82f6;">🔑 SSH Public Key</h2>
+<p style="color: #64748b; font-size: 13px; margin: 0 0 10px 0;">This key has been installed on your server for passwordless authentication:</p>
+<pre style="background: #f1f5f9; color: #334155; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 11px; word-break: break-all; white-space: pre-wrap; margin: 0 0 20px 0; border: 1px solid #e2e8f0;">${sshPublicKey}</pre>` : ''}
+
+${licenseKey ? `<h2 style="color: #1a1a2e; font-size: 16px; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid #f59e0b;">🛡️ License Key</h2>
+<p style="color: #64748b; font-size: 13px; margin: 0 0 10px 0;">Your license key for server setup script validation:</p>
+<pre style="background: #fefce8; color: #854d0e; padding: 14px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; letter-spacing: 1px; margin: 0 0 20px 0; border: 1px solid #fde68a; text-align: center;">${licenseKey}</pre>` : ''}
+
+<h2 style="color: #1a1a2e; font-size: 16px; margin: 0 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid #8b5cf6;">⚡ One-Click Setup Command</h2>
+<p style="color: #64748b; font-size: 13px; margin: 0 0 10px 0;">Need to re-run the setup? SSH into your server as root and paste this command. Your license key is pre-included — no extra configuration needed:</p>
+<pre style="background: #0f172a; color: #c4b5fd; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12px; margin: 0 0 20px 0; word-break: break-all; white-space: pre-wrap;">${curlCommand}</pre>
+
+<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 0 0 20px 0;">
+  <h3 style="color: #166534; font-size: 14px; margin: 0 0 8px 0;">🔒 Security Notes</h3>
+  <ul style="color: #15803d; font-size: 13px; margin: 0; padding-left: 20px; line-height: 1.8;">
+    <li>Root SSH login has been <strong>disabled</strong> for security</li>
+    <li>Please change your password after first login</li>
+    <li>Your user <strong>${sshUser}</strong> has full sudo access using the same password</li>
+    <li>SSH is configured on a custom port (<strong>${sshPort}</strong>) for added security</li>
+  </ul>
+</div>
+
+<div style="text-align: center; margin: 25px 0 10px 0;">
+  <a href="${portalUrl}" style="display: inline-block; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px;">View in Your Portal →</a>
+</div>
+
+<hr style="margin: 25px 0; border: none; border-top: 1px solid #e2e8f0;">
+<p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">This is an automated message from AI Powered Sites. Keep this email safe — it contains your server credentials.</p>
+</div>
+</div>`,
+          });
+        } catch (emailErr: any) {
+          console.error("Failed to send server credentials email:", emailErr.message);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Portal server credentials update error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to update server credentials" });
+    }
+  });
+
+  app.get("/api/linode/servers/:serverId/setup-command", isAuthenticated, async (req, res) => {
+    try {
+      const servers = await storage.getLinodeServers();
+      const server = servers.find(s => s.id === req.params.serverId);
+      if (!server) return res.status(404).json({ message: "Server not found" });
+      if (!server.customerId) return res.status(400).json({ message: "Server must be assigned to a customer first" });
+
+      const customer = await storage.getCustomer(server.customerId);
+      if (!customer) return res.status(400).json({ message: "Customer not found" });
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+      const setupCommand = `curl -sL ${protocol}://${host}/api/server-setup/${customer.portalToken}/${server.id} | sudo bash`;
+
+      res.json({ setupCommand });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/server-setup/:token/:serverId", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).send("# Invalid portal token");
+
+      const servers = await storage.getLinodeServersByCustomerId(customer.id);
+      const server = servers.find(s => s.id === req.params.serverId) || null;
+
+      const fs = await import("fs");
+      const path = await import("path");
+      const scriptPath = path.join(process.cwd(), "scripts", "server-setup.sh");
+      let script = fs.readFileSync(scriptPath, "utf-8");
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+      let apiUrl = `${protocol}://${host}`;
+      if (apiUrl.includes("localhost") && process.env.REPLIT_DEV_DOMAIN) {
+        apiUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+      }
+
+      const nameParts = (customer.name || "").split(" ");
+      const firstName = nameParts[0] || "User";
+      const lastName = nameParts.slice(1).join(" ") || "";
+      const username = req.query.user as string || firstName.toLowerCase().replace(/[^a-z0-9]/g, "") || "admin";
+
+      const customerLicenses = await storage.getLicenses(customer.id);
+      const activeLicense = customerLicenses.find(l => l.status === "active");
+      const licenseKey = activeLicense?.licenseKey || "";
+
+      const adminSshKey = server?.sshPublicKey || "";
+
+      const envBlock = [
+        `export SETUP_USER="${username}"`,
+        `export SETUP_EMAIL="${customer.email || ""}"`,
+        `export SETUP_FIRST_NAME="${firstName}"`,
+        `export SETUP_LAST_NAME="${lastName}"`,
+        `export SETUP_API_URL="${apiUrl}"`,
+        `export SETUP_RESEND_KEY=""`,
+        `export SETUP_PORTAL_TOKEN="${req.params.token}"`,
+        `export SETUP_SERVER_ID="${req.params.serverId}"`,
+        `export SETUP_LICENSE_KEY="${licenseKey}"`,
+        `export SETUP_ADMIN_SSH_KEY="${adminSshKey.replace(/"/g, '\\"')}"`,
+      ].join("\n");
+
+      script = script.replace(
+        "#!/bin/bash\nset -euo pipefail",
+        `#!/bin/bash\nset -euo pipefail\n\n# Auto-configured by Billing Hub\n${envBlock}\n`
+      );
+
+      res.setHeader("Content-Type", "text/plain");
+      res.send(script);
+    } catch (err: any) {
+      res.status(500).send(`# Error: ${err.message}`);
     }
   });
 
@@ -3568,12 +3796,12 @@ ${urls}
 
   app.post("/api/linode/provision", isAuthenticated, async (req, res) => {
     try {
-      const { typeId, region, label, customerId } = req.body;
+      const { typeId, region, label, customerId, rootPassword, authorizedKeys } = req.body;
       if (!typeId || !region || !label) {
         return res.status(400).json({ error: "typeId, region, and label are required" });
       }
 
-      const rootPass = `AiPS-${Date.now()}-${Math.random().toString(36).slice(2, 10)}!`;
+      const rootPass = rootPassword || `AiPS-${Date.now()}-${Math.random().toString(36).slice(2, 10)}!`;
 
       let monthlyPriceCents = 0;
       let hourlyPriceForPlan = 0;
@@ -3588,26 +3816,60 @@ ${urls}
         }
       } catch {}
 
+      const { randomUUID } = await import("crypto");
+      const preGeneratedId = randomUUID();
+      const sanitizedCustomerId = customerId && customerId !== "none" ? customerId : null;
+
+      let setupCommand = "";
+      let autoSetup = false;
+      let userDataBase64: string | undefined;
+
+      if (sanitizedCustomerId) {
+        const customer = await storage.getCustomer(sanitizedCustomerId);
+        if (customer) {
+          const protocol = req.headers["x-forwarded-proto"] || "https";
+          const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+          const setupUrl = `${protocol}://${host}/api/server-setup/${customer.portalToken}/${preGeneratedId}`;
+          setupCommand = `curl -sL ${setupUrl} | sudo bash`;
+
+          const cloudInitScript = `#!/bin/bash
+apt-get update -qq && apt-get install -y -qq curl jq > /dev/null 2>&1
+curl -sL ${setupUrl} | bash
+`;
+          userDataBase64 = Buffer.from(cloudInitScript).toString("base64");
+          autoSetup = true;
+        }
+      }
+
+      const linodePayload: any = {
+        type: typeId,
+        region,
+        label,
+        image: "linode/ubuntu24.04",
+        root_pass: rootPass,
+        booted: true,
+        tags: ["aipoweredsites"],
+      };
+      if (authorizedKeys) {
+        const keys = authorizedKeys.split("\n").map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+        if (keys.length > 0) {
+          linodePayload.authorized_keys = keys;
+        }
+      }
+      if (userDataBase64) {
+        linodePayload.metadata = { user_data: userDataBase64 };
+      }
+
       const response = await fetch(`${LINODE_API_BASE}/linode/instances`, {
         method: "POST",
         headers: getLinodeHeaders(),
-        body: JSON.stringify({
-          type: typeId,
-          region,
-          label,
-          image: "linode/ubuntu24.04",
-          root_pass: rootPass,
-          booted: true,
-          tags: ["aipoweredsites"],
-        }),
+        body: JSON.stringify(linodePayload),
       });
 
       const data = await response.json();
       if (!response.ok) {
         return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to provision server" });
       }
-
-      const sanitizedCustomerId = customerId && customerId !== "none" ? customerId : null;
 
       const server = await storage.createLinodeServer({
         linodeId: data.id,
@@ -3624,9 +3886,10 @@ ${urls}
         disk: data.specs?.disk || null,
         monthlyPriceCents,
         markupPercent: 50,
-      });
+        sshPublicKey: authorizedKeys || null,
+      }, preGeneratedId);
 
-      res.json(server);
+      res.json({ ...server, rootPassword: rootPass, setupCommand, autoSetup });
     } catch (err: any) {
       console.error("Linode provision error:", err.message);
       res.status(500).json({ error: err.message || "Failed to provision server" });
@@ -4162,6 +4425,100 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  app.get("/api/knowledge-base/categories/list", isAuthenticated, async (_req, res) => {
+    try {
+      const categories = await storage.getKnowledgeBaseCategories();
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  app.post("/api/knowledge-base/categories", isAuthenticated, async (req, res) => {
+    try {
+      const { name, icon, sortOrder } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      const category = await storage.createKnowledgeBaseCategory({
+        name: name.trim(), icon: icon || "Folder", sortOrder: sortOrder || 0,
+      });
+      res.json(category);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create category" });
+    }
+  });
+
+  app.patch("/api/knowledge-base/categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { name, icon, sortOrder } = req.body;
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (icon !== undefined) updates.icon = icon;
+      if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+      const category = await storage.updateKnowledgeBaseCategory(req.params.id, updates);
+      res.json(category);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update category" });
+    }
+  });
+
+  app.delete("/api/knowledge-base/categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteKnowledgeBaseCategory(req.params.id);
+      res.json({ success: deleted });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete category" });
+    }
+  });
+
+  app.get("/api/knowledge-base/tags/list", isAuthenticated, async (_req, res) => {
+    try {
+      const tags = await storage.getKnowledgeBaseTags();
+      res.json(tags);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch tags" });
+    }
+  });
+
+  app.post("/api/knowledge-base/tags", isAuthenticated, async (req, res) => {
+    try {
+      const { name, icon, color } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      const tag = await storage.createKnowledgeBaseTag({
+        name: name.trim(), icon: icon || "Tag", color: color || "gray",
+      });
+      res.json(tag);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create tag" });
+    }
+  });
+
+  app.patch("/api/knowledge-base/tags/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { name, icon, color } = req.body;
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (icon !== undefined) updates.icon = icon;
+      if (color !== undefined) updates.color = color;
+      const tag = await storage.updateKnowledgeBaseTag(req.params.id, updates);
+      res.json(tag);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update tag" });
+    }
+  });
+
+  app.delete("/api/knowledge-base/tags/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteKnowledgeBaseTag(req.params.id);
+      res.json({ success: deleted });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete tag" });
+    }
+  });
+
   app.get("/api/knowledge-base/:id", isAuthenticated, async (req, res) => {
     try {
       const article = await storage.getKnowledgeBaseArticle(req.params.id);
@@ -4174,7 +4531,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
 
   app.post("/api/knowledge-base", isAuthenticated, async (req, res) => {
     try {
-      const { title, content, category, status, sortOrder } = req.body;
+      const { title, content, category, status, sortOrder, tags } = req.body;
       if (!title || typeof title !== "string" || !title.trim()) {
         return res.status(400).json({ error: "Title is required" });
       }
@@ -4184,6 +4541,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       const article = await storage.createKnowledgeBaseArticle({
         title, slug, content: content || "", category: category || "General",
+        tags: Array.isArray(tags) ? tags : [],
         status: status || "draft", sortOrder: sortOrder || 0, notionPageId: null,
       });
 
@@ -4212,7 +4570,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const existing = await storage.getKnowledgeBaseArticle(req.params.id);
       if (!existing) return res.status(404).json({ error: "Article not found" });
 
-      const { title, content, category, status, sortOrder } = req.body;
+      const { title, content, category, status, sortOrder, tags } = req.body;
       const updates: any = {};
       if (title !== undefined) {
         updates.title = title;
@@ -4222,6 +4580,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (category !== undefined) updates.category = category;
       if (status !== undefined) updates.status = status;
       if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+      if (tags !== undefined) updates.tags = Array.isArray(tags) ? tags : [];
 
       const article = await storage.updateKnowledgeBaseArticle(req.params.id, updates);
 
@@ -4257,6 +4616,24 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  app.get("/api/public/knowledge-base/categories", async (_req, res) => {
+    try {
+      const categories = await storage.getKnowledgeBaseCategories();
+      res.json(categories);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  app.get("/api/public/knowledge-base/tags", async (_req, res) => {
+    try {
+      const tags = await storage.getKnowledgeBaseTags();
+      res.json(tags);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch tags" });
+    }
+  });
+
   app.get("/api/public/knowledge-base", async (_req, res) => {
     try {
       const articles = await storage.getPublishedKnowledgeBaseArticles();
@@ -4277,6 +4654,341 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
   });
 
   // Autopilot scheduler - runs every 5 minutes
+  // ═══════════════════ NETLIFY DEPLOY ═══════════════════
+  const netlifyModule = await import("./netlify");
+
+  app.get("/api/netlify/status", isAuthenticated, (_req, res) => {
+    res.json({ configured: netlifyModule.isNetlifyConfigured() });
+  });
+
+  app.post("/api/projects/:id/netlify/create", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (project.netlifySiteId) return res.status(400).json({ message: "Netlify site already exists for this project" });
+
+      const customer = await storage.getCustomer(project.customerId);
+      const siteName = `${customer?.company || customer?.name || "client"}-${project.name}`
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+
+      const site = await netlifyModule.createNetlifySite(siteName);
+
+      const updated = await storage.updateProject(project.id, {
+        netlifySiteId: site.id,
+        netlifySiteUrl: site.url,
+        previewUrl: site.url,
+      });
+
+      res.json({ site, project: updated });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to create Netlify site" });
+    }
+  });
+
+  app.post("/api/projects/:id/netlify/link-github", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.netlifySiteId) return res.status(400).json({ message: "Create Netlify site first" });
+
+      const { repoUrl, branch } = req.body;
+      if (!repoUrl) return res.status(400).json({ message: "GitHub repo URL required" });
+
+      const result = await netlifyModule.linkSiteToGitHub(project.netlifySiteId, repoUrl, branch || "main");
+
+      await storage.updateProject(project.id, {
+        githubRepoUrl: repoUrl,
+        netlifySiteUrl: result.url,
+        previewUrl: result.url,
+      });
+
+      res.json({ url: result.url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to link GitHub repo" });
+    }
+  });
+
+  app.post("/api/projects/:id/netlify/deploy", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.netlifySiteId) return res.status(400).json({ message: "Create Netlify site first" });
+
+      const deploy = await netlifyModule.triggerDeploy(project.netlifySiteId);
+      res.json(deploy);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to trigger deploy" });
+    }
+  });
+
+  app.get("/api/projects/:id/netlify/info", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.netlifySiteId) return res.status(404).json({ message: "No Netlify site linked" });
+
+      const site = await netlifyModule.getNetlifySite(project.netlifySiteId);
+      const deploys = await netlifyModule.getNetlifyDeploys(project.netlifySiteId);
+      res.json({ site, deploys, githubRepoUrl: project.githubRepoUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch Netlify info" });
+    }
+  });
+
+  app.delete("/api/projects/:id/netlify", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.netlifySiteId) return res.status(404).json({ message: "No Netlify site linked" });
+
+      await netlifyModule.deleteNetlifySite(project.netlifySiteId);
+      await storage.updateProject(project.id, {
+        netlifySiteId: null,
+        netlifySiteUrl: null,
+        githubRepoUrl: null,
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete Netlify site" });
+    }
+  });
+
+  // ═══════════════════ VERCEL DEPLOY ═══════════════════
+  const vercelModule = await import("./vercel");
+
+  app.get("/api/vercel/status", isAuthenticated, (_req, res) => {
+    res.json({ configured: vercelModule.isVercelConfigured() });
+  });
+
+  app.post("/api/projects/:id/vercel/create", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (project.vercelProjectId) return res.status(400).json({ message: "Vercel project already exists" });
+
+      const customer = await storage.getCustomer(project.customerId);
+      const siteName = `${customer?.company || customer?.name || "client"}-${project.name}`
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+
+      const result = await vercelModule.createVercelProject(siteName, project.githubRepoUrl || undefined);
+
+      await storage.updateProject(project.id, {
+        vercelProjectId: result.id,
+        vercelProjectUrl: result.url,
+        previewUrl: result.url,
+        deployPlatform: "vercel",
+      });
+
+      res.json({ project: result });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to create Vercel project" });
+    }
+  });
+
+  app.post("/api/projects/:id/vercel/link-github", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.vercelProjectId) return res.status(400).json({ message: "Create Vercel project first" });
+
+      const { repoUrl } = req.body;
+      if (!repoUrl) return res.status(400).json({ message: "GitHub repo URL required" });
+
+      const result = await vercelModule.linkVercelToGitHub(project.vercelProjectId, repoUrl);
+
+      await storage.updateProject(project.id, {
+        githubRepoUrl: repoUrl,
+        vercelProjectUrl: result.url,
+        previewUrl: result.url,
+      });
+
+      res.json({ url: result.url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to link GitHub repo" });
+    }
+  });
+
+  app.post("/api/projects/:id/vercel/deploy", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.vercelProjectId) return res.status(400).json({ message: "Create Vercel project first" });
+
+      const vercelProject = await vercelModule.getVercelProject(project.vercelProjectId);
+      const deploy = await vercelModule.triggerVercelDeploy(vercelProject.id);
+      res.json(deploy);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to trigger deploy" });
+    }
+  });
+
+  app.get("/api/projects/:id/vercel/info", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.vercelProjectId) return res.status(404).json({ message: "No Vercel project linked" });
+
+      const site = await vercelModule.getVercelProject(project.vercelProjectId);
+      const deploys = await vercelModule.getVercelDeploys(project.vercelProjectId);
+      res.json({ site, deploys, githubRepoUrl: project.githubRepoUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch Vercel info" });
+    }
+  });
+
+  app.delete("/api/projects/:id/vercel", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.vercelProjectId) return res.status(404).json({ message: "No Vercel project linked" });
+
+      await vercelModule.deleteVercelProject(project.vercelProjectId);
+      await storage.updateProject(project.id, {
+        vercelProjectId: null,
+        vercelProjectUrl: null,
+        deployPlatform: null,
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete Vercel project" });
+    }
+  });
+
+  // ═══════════════════ RAILWAY DEPLOY ═══════════════════
+  const railwayModule = await import("./railway");
+
+  app.get("/api/railway/status", isAuthenticated, (_req, res) => {
+    res.json({ configured: railwayModule.isRailwayConfigured() });
+  });
+
+  app.post("/api/projects/:id/railway/create", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (project.railwayProjectId) return res.status(400).json({ message: "Railway project already exists" });
+
+      const customer = await storage.getCustomer(project.customerId);
+      const siteName = `${customer?.company || customer?.name || "client"}-${project.name}`
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+
+      const result = await railwayModule.createRailwayProject(siteName, project.githubRepoUrl || undefined);
+
+      let publicUrl = result.url;
+      try {
+        publicUrl = await railwayModule.generateRailwayDomain(result.projectId, result.serviceId);
+      } catch {}
+
+      await storage.updateProject(project.id, {
+        railwayProjectId: result.projectId,
+        railwayServiceId: result.serviceId,
+        railwayProjectUrl: publicUrl,
+        previewUrl: publicUrl,
+        deployPlatform: "railway",
+      });
+
+      res.json({ project: result, publicUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to create Railway project" });
+    }
+  });
+
+  app.post("/api/projects/:id/railway/link-github", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const { repoUrl } = req.body;
+      if (!repoUrl) return res.status(400).json({ message: "GitHub repo URL required" });
+
+      if (project.railwayProjectId) {
+        try { await railwayModule.deleteRailwayProject(project.railwayProjectId); } catch {}
+      }
+
+      const customer = await storage.getCustomer(project.customerId);
+      const siteName = `${customer?.company || customer?.name || "client"}-${project.name}`
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+
+      const result = await railwayModule.createRailwayProject(siteName, repoUrl);
+
+      let publicUrl = result.url;
+      try {
+        publicUrl = await railwayModule.generateRailwayDomain(result.projectId, result.serviceId);
+      } catch {}
+
+      await storage.updateProject(project.id, {
+        githubRepoUrl: repoUrl,
+        railwayProjectId: result.projectId,
+        railwayServiceId: result.serviceId,
+        railwayProjectUrl: publicUrl,
+        previewUrl: publicUrl,
+      });
+
+      res.json({ url: publicUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to link GitHub repo" });
+    }
+  });
+
+  app.post("/api/projects/:id/railway/deploy", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.railwayProjectId || !project.railwayServiceId) return res.status(400).json({ message: "Create Railway project first" });
+
+      const deploy = await railwayModule.triggerRailwayDeploy(project.railwayProjectId, project.railwayServiceId);
+      res.json(deploy);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to trigger deploy" });
+    }
+  });
+
+  app.get("/api/projects/:id/railway/info", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.railwayProjectId) return res.status(404).json({ message: "No Railway project linked" });
+
+      const info = await railwayModule.getRailwayProject(project.railwayProjectId);
+      const deploys = project.railwayServiceId
+        ? await railwayModule.getRailwayDeploys(project.railwayProjectId, project.railwayServiceId)
+        : [];
+      res.json({ site: info, deploys, githubRepoUrl: project.githubRepoUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch Railway info" });
+    }
+  });
+
+  app.delete("/api/projects/:id/railway", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project.railwayProjectId) return res.status(404).json({ message: "No Railway project linked" });
+
+      await railwayModule.deleteRailwayProject(project.railwayProjectId);
+      await storage.updateProject(project.id, {
+        railwayProjectId: null,
+        railwayServiceId: null,
+        railwayProjectUrl: null,
+        deployPlatform: null,
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete Railway project" });
+    }
+  });
+
+  // ═══════════════════ DEPLOY STATUS (ALL PLATFORMS) ═══════════════════
+  app.get("/api/deploy/status", isAuthenticated, (_req, res) => {
+    res.json({
+      netlify: { configured: netlifyModule.isNetlifyConfigured() },
+      vercel: { configured: vercelModule.isVercelConfigured() },
+      railway: { configured: railwayModule.isRailwayConfigured() },
+    });
+  });
+
   setInterval(async () => {
     try {
       const dueConfigs = await storage.getAutopilotDueConfigs();
@@ -4298,6 +5010,224 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       console.error("Autopilot scheduler error:", err);
     }
   }, 5 * 60 * 1000);
+
+  // ============ LICENSE MANAGEMENT ============
+
+  function generateLicenseKey(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = crypto.randomBytes(25);
+    const segments = [];
+    for (let s = 0; s < 5; s++) {
+      let seg = "";
+      for (let i = 0; i < 5; i++) {
+        seg += chars[bytes[s * 5 + i] % chars.length];
+      }
+      segments.push(seg);
+    }
+    return `APS-${segments.join("-")}`;
+  }
+
+  app.get("/api/licenses", isAuthenticated, async (req, res) => {
+    try {
+      const customerId = req.query.customerId as string | undefined;
+      const licenses = await storage.getLicenses(customerId);
+      res.json(licenses);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/licenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const license = await storage.getLicense(req.params.id);
+      if (!license) return res.status(404).json({ error: "License not found" });
+      res.json(license);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/licenses", isAuthenticated, async (req, res) => {
+    try {
+      const { customerId, maxActivations, expiresAt, notes } = req.body;
+      if (!customerId) return res.status(400).json({ error: "Customer ID required" });
+
+      const customer = await storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+
+      const licenseKey = generateLicenseKey();
+      const license = await storage.createLicense({
+        customerId,
+        licenseKey,
+        status: "active",
+        maxActivations: maxActivations || 0,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        notes: notes || null,
+      });
+      res.json(license);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/licenses/:id/reissue", isAuthenticated, async (req, res) => {
+    try {
+      const license = await storage.getLicense(req.params.id);
+      if (!license) return res.status(404).json({ error: "License not found" });
+
+      const activeActivations = await storage.getActiveLicenseActivations(license.id);
+      for (const activation of activeActivations) {
+        await storage.releaseLicenseActivation(activation.id);
+      }
+
+      const newKey = generateLicenseKey();
+      const updated = await storage.updateLicense(req.params.id, {
+        licenseKey: newKey,
+        activationCount: 0,
+      } as any);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/licenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateLicense(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "License not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/licenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteLicense(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "License not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/licenses/:id/activations", isAuthenticated, async (req, res) => {
+    try {
+      const activations = await storage.getLicenseActivations(req.params.id);
+      res.json(activations);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/license/validate", async (req, res) => {
+    try {
+      const { licenseKey, serverIp, hostname } = req.body;
+      if (!licenseKey) return res.status(400).json({ valid: false, error: "License key required" });
+      if (!serverIp || serverIp === "unknown") return res.status(400).json({ valid: false, error: "Server IP address is required for license validation" });
+
+      const license = await storage.getLicenseByKey(licenseKey);
+      if (!license) return res.status(404).json({ valid: false, error: "Invalid license key" });
+
+      if (license.status !== "active") {
+        return res.json({ valid: false, error: `License is ${license.status}` });
+      }
+
+      if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
+        return res.json({ valid: false, error: "License has expired" });
+      }
+
+      const existingActivation = await storage.getLicenseActivationByIp(license.id, serverIp);
+      if (existingActivation) {
+        const customer = await storage.getCustomer(license.customerId);
+        return res.json({
+          valid: true,
+          licensee: customer?.name || "Licensed User",
+          company: customer?.company || "",
+          activationCount: license.activationCount || 0,
+          maxActivations: license.maxActivations || 0,
+          message: "License already activated for this IP",
+        });
+      }
+
+      const activeActivations = await storage.getActiveLicenseActivations(license.id);
+      if (license.maxActivations && license.maxActivations > 0 && activeActivations.length >= license.maxActivations) {
+        const activeIps = activeActivations.map(a => a.serverIp).join(", ");
+        return res.json({
+          valid: false,
+          error: `Maximum activations reached (${activeActivations.length}/${license.maxActivations}). Active IPs: ${activeIps}. Release an IP in your portal or contact support.`,
+        });
+      }
+
+      await storage.incrementLicenseActivation(license.id, serverIp, hostname || "unknown");
+
+      await storage.createLicenseActivation({
+        licenseId: license.id,
+        serverId: null,
+        serverIp: serverIp,
+        hostname: hostname || "unknown",
+        status: "active",
+      });
+
+      const customer = await storage.getCustomer(license.customerId);
+
+      res.json({
+        valid: true,
+        licensee: customer?.name || "Licensed User",
+        company: customer?.company || "",
+        activationCount: (license.activationCount || 0) + 1,
+        maxActivations: license.maxActivations || 0,
+        message: `License activated for IP ${serverIp}`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ valid: false, error: err.message });
+    }
+  });
+
+  app.post("/api/licenses/:id/activations/:activationId/release", isAuthenticated, async (req, res) => {
+    try {
+      const released = await storage.releaseLicenseActivation(req.params.activationId);
+      if (!released) return res.status(404).json({ error: "Activation not found" });
+      res.json({ success: true, released });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/portal/:token/licenses/:licenseId/release/:activationId", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const license = await storage.getLicense(req.params.licenseId);
+      if (!license || license.customerId !== customer.id) {
+        return res.status(404).json({ error: "License not found" });
+      }
+
+      const released = await storage.releaseLicenseActivation(req.params.activationId);
+      if (!released) return res.status(404).json({ error: "Activation not found" });
+      res.json({ success: true, released });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/portal/:token/licenses/:licenseId/activations", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const license = await storage.getLicense(req.params.licenseId);
+      if (!license || license.customerId !== customer.id) {
+        return res.status(404).json({ error: "License not found" });
+      }
+
+      const activations = await storage.getLicenseActivations(req.params.licenseId);
+      res.json(activations);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   return httpServer;
 }

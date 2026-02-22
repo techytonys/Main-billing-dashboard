@@ -6,7 +6,7 @@ import {
   Receipt, Trash2, DollarSign, Layers, TrendingUp,
   ExternalLink, Copy, Link, Check, X, Activity, Send, Milestone,
   Camera, Download, Image, Loader2, Users, ThumbsUp, RotateCcw, Eye, File, Upload,
-  ChevronDown, Building2,
+  ChevronDown, Building2, Rocket, GitBranch, Globe, RefreshCw, Unlink,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -411,6 +411,252 @@ function ProjectsSkeleton() {
             <Skeleton className="h-4 w-36" />
           </Card>
         ))}
+      </div>
+    </div>
+  );
+}
+
+type DeployPlatform = "netlify" | "vercel" | "railway";
+
+const PLATFORM_CONFIG: Record<DeployPlatform, { label: string; color: string; accent: string; description: string; icon: string }> = {
+  netlify: { label: "Netlify", color: "teal", accent: "from-teal-500/5 to-cyan-500/5 border-teal-500/20", description: "Static sites & JAMstack", icon: "N" },
+  vercel: { label: "Vercel", color: "blue", accent: "from-blue-500/5 to-indigo-500/5 border-blue-500/20", description: "Static & serverless apps", icon: "V" },
+  railway: { label: "Railway", color: "purple", accent: "from-purple-500/5 to-pink-500/5 border-purple-500/20", description: "Docker & full-stack apps", icon: "R" },
+};
+
+function PlatformCard({ project, platform, isConnected, platformId, platformUrl }: {
+  project: Project;
+  platform: DeployPlatform;
+  isConnected: boolean;
+  platformId: string | null;
+  platformUrl: string | null;
+}) {
+  const { toast } = useToast();
+  const cfg = PLATFORM_CONFIG[platform];
+  const [repoUrl, setRepoUrl] = useState(project.githubRepoUrl || "");
+  const [showLinkForm, setShowLinkForm] = useState(false);
+
+  const colorClasses = platform === "netlify"
+    ? { bg: "bg-teal-500/10", text: "text-teal-600", darkText: "dark:text-teal-400", heading: "text-teal-700 dark:text-teal-300", border: "border-teal-500/30", link: "text-teal-600 dark:text-teal-400" }
+    : platform === "vercel"
+    ? { bg: "bg-blue-500/10", text: "text-blue-600", darkText: "dark:text-blue-400", heading: "text-blue-700 dark:text-blue-300", border: "border-blue-500/30", link: "text-blue-600 dark:text-blue-400" }
+    : { bg: "bg-purple-500/10", text: "text-purple-600", darkText: "dark:text-purple-400", heading: "text-purple-700 dark:text-purple-300", border: "border-purple-500/30", link: "text-purple-600 dark:text-purple-400" };
+
+  const { data: deployInfo, refetch: refetchInfo } = useQuery<{ site: any; deploys: any[]; githubRepoUrl: string }>({
+    queryKey: ["/api/projects", project.id, `${platform}/info`],
+    enabled: isConnected && !!platformId,
+    retry: false,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/projects/${project.id}/${platform}/create`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: `${cfg.label} project created`, description: "Now link a GitHub repo for auto-deploy." });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const linkGithubMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/projects/${project.id}/${platform}/link-github`, { repoUrl, branch: "main" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      refetchInfo();
+      setShowLinkForm(false);
+      toast({ title: "GitHub linked", description: `Repo connected to ${cfg.label}.` });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deployMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/projects/${project.id}/${platform}/deploy`);
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchInfo();
+      toast({ title: "Deploy triggered", description: `Building on ${cfg.label}...` });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/projects/${project.id}/${platform}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "Disconnected", description: `${cfg.label} removed from this project.` });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (!isConnected) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="justify-start h-auto py-2.5 px-3"
+        onClick={() => createMutation.mutate()}
+        disabled={createMutation.isPending}
+        data-testid={`button-create-${platform}-${project.id}`}
+      >
+        {createMutation.isPending ? (
+          <Loader2 className="w-5 h-5 mr-2.5 animate-spin" />
+        ) : (
+          <span className={`w-6 h-6 rounded text-[11px] font-bold flex items-center justify-center mr-2.5 ${colorClasses.bg} ${colorClasses.text}`}>{cfg.icon}</span>
+        )}
+        <div className="text-left">
+          <div className="text-sm font-medium">{cfg.label}</div>
+          <div className="text-[10px] text-muted-foreground">{cfg.description}</div>
+        </div>
+      </Button>
+    );
+  }
+
+  return (
+    <div className={`p-3 rounded-lg bg-gradient-to-r ${cfg.accent}`} data-testid={`deploy-platform-${platform}-${project.id}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${colorClasses.bg} ${colorClasses.text}`}>{cfg.icon}</span>
+          <span className={`text-xs font-medium uppercase tracking-wider ${colorClasses.heading}`}>{cfg.label}</span>
+          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${colorClasses.border} ${colorClasses.text} ${colorClasses.darkText}`}>Active</Badge>
+        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          onClick={() => {
+            if (confirm(`Disconnect ${cfg.label}? This will remove the project from ${cfg.label}.`)) unlinkMutation.mutate();
+          }}
+          data-testid={`button-unlink-${platform}-${project.id}`}
+        >
+          <Unlink className="w-3 h-3" />
+        </Button>
+      </div>
+
+      {platformUrl && (
+        <div className="flex items-center gap-2 mb-2">
+          <Globe className="w-3 h-3 text-muted-foreground" />
+          <a href={platformUrl} target="_blank" rel="noopener noreferrer" className={`text-xs underline underline-offset-2 truncate ${colorClasses.link}`} data-testid={`link-deploy-url-${platform}-${project.id}`}>
+            {platformUrl}
+          </a>
+        </div>
+      )}
+
+      {project.githubRepoUrl ? (
+        <div className="flex items-center gap-2 mb-2">
+          <GitBranch className="w-3 h-3 text-muted-foreground" />
+          <span className="text-[11px] text-muted-foreground truncate">{project.githubRepoUrl}</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">auto</Badge>
+        </div>
+      ) : showLinkForm ? (
+        <div className="flex items-center gap-2 mb-2">
+          <Input
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            placeholder="https://github.com/user/repo"
+            className="flex-1 text-xs h-7"
+            data-testid={`input-github-repo-${platform}-${project.id}`}
+          />
+          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => linkGithubMutation.mutate()} disabled={linkGithubMutation.isPending || !repoUrl} data-testid={`button-link-github-${platform}-${project.id}`}>
+            {linkGithubMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Link"}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowLinkForm(false)}>Cancel</Button>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setShowLinkForm(true)} className="mb-2 h-7 text-xs" data-testid={`button-show-link-github-${platform}-${project.id}`}>
+          <GitBranch className="w-3.5 h-3.5 mr-1" />
+          Link GitHub Repo
+        </Button>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          onClick={() => deployMutation.mutate()}
+          disabled={deployMutation.isPending}
+          data-testid={`button-deploy-${platform}-${project.id}`}
+        >
+          {deployMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+          Deploy Now
+        </Button>
+        {deployInfo?.deploys?.[0] && (
+          <span className="text-[10px] text-muted-foreground">
+            Last: {new Date(deployInfo.deploys[0].created_at).toLocaleDateString()} — {deployInfo.deploys[0].state}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DeploySection({ project }: { project: Project }) {
+  const { data: deployStatus } = useQuery<{ netlify: { configured: boolean }; vercel: { configured: boolean }; railway: { configured: boolean } }>({
+    queryKey: ["/api/deploy/status"],
+  });
+
+  const configuredPlatforms = Object.entries(deployStatus || {}).filter(([_, v]) => v.configured).map(([k]) => k as DeployPlatform);
+
+  if (configuredPlatforms.length === 0) {
+    return (
+      <div className="p-3 rounded-md bg-muted/40" data-testid={`deploy-section-${project.id}`}>
+        <div className="flex items-center gap-2 mb-2">
+          <Rocket className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deploy</span>
+        </div>
+        <p className="text-xs text-muted-foreground">Add a deploy platform token in Settings to enable deployment (Netlify, Vercel, or Railway).</p>
+      </div>
+    );
+  }
+
+  const getPlatformState = (p: DeployPlatform) => ({
+    isConnected: p === "netlify" ? !!project.netlifySiteId : p === "vercel" ? !!project.vercelProjectId : !!project.railwayProjectId,
+    platformId: p === "netlify" ? project.netlifySiteId : p === "vercel" ? project.vercelProjectId : project.railwayProjectId,
+    platformUrl: p === "netlify" ? project.netlifySiteUrl : p === "vercel" ? project.vercelProjectUrl : project.railwayProjectUrl,
+  });
+
+  const connectedPlatforms = configuredPlatforms.filter(p => getPlatformState(p).isConnected);
+  const availablePlatforms = configuredPlatforms.filter(p => !getPlatformState(p).isConnected);
+
+  return (
+    <div className="p-3 rounded-md bg-muted/40" data-testid={`deploy-section-${project.id}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Rocket className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deploy</span>
+        {connectedPlatforms.length > 0 && (
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{connectedPlatforms.length} active</Badge>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {connectedPlatforms.map(p => {
+          const state = getPlatformState(p);
+          return <PlatformCard key={p} project={project} platform={p} {...state} />;
+        })}
+
+        {availablePlatforms.length > 0 && (
+          <>
+            {connectedPlatforms.length > 0 && (
+              <p className="text-[10px] text-muted-foreground pt-1">Add another platform:</p>
+            )}
+            <div className="grid gap-1.5">
+              {availablePlatforms.map(p => {
+                const state = getPlatformState(p);
+                return <PlatformCard key={p} project={project} platform={p} {...state} />;
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -918,6 +1164,10 @@ export default function Projects() {
                       </div>
                     );
                   })()}
+                </div>
+
+                <div className="mb-4">
+                  <DeploySection project={project} />
                 </div>
 
                 <div className="mb-4">

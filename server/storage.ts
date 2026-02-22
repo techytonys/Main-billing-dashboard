@@ -2,7 +2,7 @@ import { db } from "./db";
 import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
-  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads, knowledgeBaseArticles,
+  conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads, knowledgeBaseArticles, knowledgeBaseCategories, knowledgeBaseTags,
   type User, type InsertUser,
   type Customer, type InsertCustomer,
   type Project, type InsertProject,
@@ -36,6 +36,11 @@ import {
   linodeServers,
   type LinodeServer, type InsertLinodeServer,
   type KnowledgeBaseArticle, type InsertKnowledgeBaseArticle,
+  type KnowledgeBaseCategory, type InsertKnowledgeBaseCategory,
+  type KnowledgeBaseTag, type InsertKnowledgeBaseTag,
+  licenses, licenseActivations,
+  type License, type InsertLicense,
+  type LicenseActivation, type InsertLicenseActivation,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -196,9 +201,23 @@ export interface IStorage {
   getLinodeServer(id: string): Promise<LinodeServer | undefined>;
   getLinodeServerByLinodeId(linodeId: number): Promise<LinodeServer | undefined>;
   getLinodeServersByCustomerId(customerId: string): Promise<LinodeServer[]>;
-  createLinodeServer(server: InsertLinodeServer): Promise<LinodeServer>;
+  createLinodeServer(server: InsertLinodeServer, id?: string): Promise<LinodeServer>;
   updateLinodeServer(id: string, updates: Partial<InsertLinodeServer>): Promise<LinodeServer | undefined>;
   deleteLinodeServer(id: string): Promise<boolean>;
+
+  getLicenses(customerId?: string): Promise<License[]>;
+  getLicense(id: string): Promise<License | undefined>;
+  getLicenseByKey(key: string): Promise<License | undefined>;
+  createLicense(license: InsertLicense): Promise<License>;
+  updateLicense(id: string, updates: Partial<InsertLicense>): Promise<License | undefined>;
+  deleteLicense(id: string): Promise<boolean>;
+  incrementLicenseActivation(id: string, ip: string, hostname: string): Promise<License | undefined>;
+  getLicenseActivations(licenseId: string): Promise<LicenseActivation[]>;
+  getActiveLicenseActivations(licenseId: string): Promise<LicenseActivation[]>;
+  getLicenseActivationByIp(licenseId: string, ip: string): Promise<LicenseActivation | undefined>;
+  createLicenseActivation(activation: InsertLicenseActivation): Promise<LicenseActivation>;
+  releaseLicenseActivation(id: string): Promise<LicenseActivation | undefined>;
+  releaseLicenseActivationsByServerId(serverId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1073,8 +1092,9 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(linodeServers).where(eq(linodeServers.customerId, customerId)).orderBy(desc(linodeServers.createdAt));
   }
 
-  async createLinodeServer(server: InsertLinodeServer): Promise<LinodeServer> {
-    const [created] = await db.insert(linodeServers).values(server).returning();
+  async createLinodeServer(server: InsertLinodeServer, id?: string): Promise<LinodeServer> {
+    const values = id ? { ...server, id } : server;
+    const [created] = await db.insert(linodeServers).values(values).returning();
     return created;
   }
 
@@ -1119,6 +1139,146 @@ export class DatabaseStorage implements IStorage {
   async deleteKnowledgeBaseArticle(id: string): Promise<boolean> {
     const result = await db.delete(knowledgeBaseArticles).where(eq(knowledgeBaseArticles.id, id)).returning();
     return result.length > 0;
+  }
+
+  async getKnowledgeBaseCategories(): Promise<KnowledgeBaseCategory[]> {
+    return db.select().from(knowledgeBaseCategories).orderBy(knowledgeBaseCategories.sortOrder, knowledgeBaseCategories.createdAt);
+  }
+
+  async createKnowledgeBaseCategory(data: InsertKnowledgeBaseCategory): Promise<KnowledgeBaseCategory> {
+    const [created] = await db.insert(knowledgeBaseCategories).values(data).returning();
+    return created;
+  }
+
+  async updateKnowledgeBaseCategory(id: string, updates: Partial<InsertKnowledgeBaseCategory>): Promise<KnowledgeBaseCategory | undefined> {
+    const [updated] = await db.update(knowledgeBaseCategories).set(updates).where(eq(knowledgeBaseCategories.id, id)).returning();
+    return updated;
+  }
+
+  async deleteKnowledgeBaseCategory(id: string): Promise<boolean> {
+    const result = await db.delete(knowledgeBaseCategories).where(eq(knowledgeBaseCategories.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getKnowledgeBaseTags(): Promise<KnowledgeBaseTag[]> {
+    return db.select().from(knowledgeBaseTags).orderBy(knowledgeBaseTags.createdAt);
+  }
+
+  async createKnowledgeBaseTag(data: InsertKnowledgeBaseTag): Promise<KnowledgeBaseTag> {
+    const [created] = await db.insert(knowledgeBaseTags).values(data).returning();
+    return created;
+  }
+
+  async updateKnowledgeBaseTag(id: string, updates: Partial<InsertKnowledgeBaseTag>): Promise<KnowledgeBaseTag | undefined> {
+    const [updated] = await db.update(knowledgeBaseTags).set(updates).where(eq(knowledgeBaseTags.id, id)).returning();
+    return updated;
+  }
+
+  async deleteKnowledgeBaseTag(id: string): Promise<boolean> {
+    const result = await db.delete(knowledgeBaseTags).where(eq(knowledgeBaseTags.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getLicenses(customerId?: string): Promise<License[]> {
+    if (customerId) {
+      return db.select().from(licenses).where(eq(licenses.customerId, customerId)).orderBy(desc(licenses.createdAt));
+    }
+    return db.select().from(licenses).orderBy(desc(licenses.createdAt));
+  }
+
+  async getLicense(id: string): Promise<License | undefined> {
+    const [license] = await db.select().from(licenses).where(eq(licenses.id, id));
+    return license;
+  }
+
+  async getLicenseByKey(key: string): Promise<License | undefined> {
+    const [license] = await db.select().from(licenses).where(eq(licenses.licenseKey, key));
+    return license;
+  }
+
+  async createLicense(license: InsertLicense): Promise<License> {
+    const [created] = await db.insert(licenses).values(license).returning();
+    return created;
+  }
+
+  async updateLicense(id: string, updates: Partial<InsertLicense>): Promise<License | undefined> {
+    const [updated] = await db.update(licenses).set(updates).where(eq(licenses.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLicense(id: string): Promise<boolean> {
+    const result = await db.delete(licenses).where(eq(licenses.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async incrementLicenseActivation(id: string, ip: string, hostname: string): Promise<License | undefined> {
+    const [updated] = await db.update(licenses).set({
+      activationCount: sql`${licenses.activationCount} + 1`,
+      lastActivatedAt: new Date(),
+      lastActivatedIp: ip,
+      lastActivatedHostname: hostname,
+    }).where(eq(licenses.id, id)).returning();
+    return updated;
+  }
+
+  async getLicenseActivations(licenseId: string): Promise<LicenseActivation[]> {
+    return db.select().from(licenseActivations).where(eq(licenseActivations.licenseId, licenseId)).orderBy(desc(licenseActivations.activatedAt));
+  }
+
+  async getActiveLicenseActivations(licenseId: string): Promise<LicenseActivation[]> {
+    return db.select().from(licenseActivations)
+      .where(and(eq(licenseActivations.licenseId, licenseId), eq(licenseActivations.status, "active")))
+      .orderBy(desc(licenseActivations.activatedAt));
+  }
+
+  async getLicenseActivationByIp(licenseId: string, ip: string): Promise<LicenseActivation | undefined> {
+    const [activation] = await db.select().from(licenseActivations)
+      .where(and(
+        eq(licenseActivations.licenseId, licenseId),
+        eq(licenseActivations.serverIp, ip),
+        eq(licenseActivations.status, "active")
+      ));
+    return activation;
+  }
+
+  async createLicenseActivation(activation: InsertLicenseActivation): Promise<LicenseActivation> {
+    const [created] = await db.insert(licenseActivations).values(activation).returning();
+    return created;
+  }
+
+  async releaseLicenseActivation(id: string): Promise<LicenseActivation | undefined> {
+    const [updated] = await db.update(licenseActivations).set({
+      status: "released",
+      releasedAt: new Date(),
+    }).where(eq(licenseActivations.id, id)).returning();
+    if (updated) {
+      const license = await this.getLicense(updated.licenseId);
+      if (license && (license.activationCount || 0) > 0) {
+        await db.update(licenses).set({
+          activationCount: sql`GREATEST(${licenses.activationCount} - 1, 0)`,
+        }).where(eq(licenses.id, updated.licenseId));
+      }
+    }
+    return updated;
+  }
+
+  async releaseLicenseActivationsByServerId(serverId: string): Promise<number> {
+    const result = await db.update(licenseActivations).set({
+      status: "released",
+      releasedAt: new Date(),
+    }).where(and(
+      eq(licenseActivations.serverId, serverId),
+      eq(licenseActivations.status, "active")
+    )).returning();
+    for (const activation of result) {
+      const license = await this.getLicense(activation.licenseId);
+      if (license && (license.activationCount || 0) > 0) {
+        await db.update(licenses).set({
+          activationCount: sql`GREATEST(${licenses.activationCount} - 1, 0)`,
+        }).where(eq(licenses.id, activation.licenseId));
+      }
+    }
+    return result.length;
   }
 }
 

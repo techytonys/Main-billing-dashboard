@@ -38,6 +38,7 @@ import CodeBackups from "@/pages/code-backups";
 import LeadGenerator from "@/pages/lead-generator";
 import LinodeServers from "@/pages/linode-servers";
 import KnowledgeBase from "@/pages/knowledge-base";
+import Licenses from "@/pages/licenses";
 import PublicHelp from "@/pages/public-help";
 import LoginPage from "@/pages/login";
 
@@ -60,6 +61,7 @@ function DashboardRouter() {
       <Route path="/admin/lead-generator" component={LeadGenerator} />
       <Route path="/admin/servers" component={LinodeServers} />
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
+      <Route path="/admin/licenses" component={Licenses} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

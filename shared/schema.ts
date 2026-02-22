@@ -26,6 +26,15 @@ export const projects = pgTable("projects", {
   status: text("status").notNull().default("active"),
   previewUrl: text("preview_url"),
   progressUrl: text("progress_url"),
+  netlifySiteId: text("netlify_site_id"),
+  netlifySiteUrl: text("netlify_site_url"),
+  githubRepoUrl: text("github_repo_url"),
+  vercelProjectId: text("vercel_project_id"),
+  vercelProjectUrl: text("vercel_project_url"),
+  railwayProjectId: text("railway_project_id"),
+  railwayServiceId: text("railway_service_id"),
+  railwayProjectUrl: text("railway_project_url"),
+  deployPlatform: text("deploy_platform"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -471,6 +480,10 @@ export const linodeServers = pgTable("linode_servers", {
   networkOut: numeric("network_out"),
   cpuUsage: numeric("cpu_usage"),
   lastInvoiceAt: timestamp("last_invoice_at"),
+  sshUser: text("ssh_user"),
+  sshPort: integer("ssh_port"),
+  sshPublicKey: text("ssh_public_key"),
+  serverSetupComplete: boolean("server_setup_complete").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -479,12 +492,73 @@ export const insertLinodeServerSchema = createInsertSchema(linodeServers).omit({
 export type LinodeServer = typeof linodeServers.$inferSelect;
 export type InsertLinodeServer = z.infer<typeof insertLinodeServerSchema>;
 
+export const licenses = pgTable("licenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").notNull(),
+  licenseKey: text("license_key").notNull().unique(),
+  status: text("status").notNull().default("active"),
+  maxActivations: integer("max_activations").default(0),
+  activationCount: integer("activation_count").default(0),
+  lastActivatedAt: timestamp("last_activated_at"),
+  lastActivatedIp: text("last_activated_ip"),
+  lastActivatedHostname: text("last_activated_hostname"),
+  expiresAt: timestamp("expires_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLicenseSchema = createInsertSchema(licenses).omit({ id: true, createdAt: true, activationCount: true, lastActivatedAt: true, lastActivatedIp: true, lastActivatedHostname: true });
+
+export type License = typeof licenses.$inferSelect;
+export type InsertLicense = z.infer<typeof insertLicenseSchema>;
+
+export const licenseActivations = pgTable("license_activations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  licenseId: varchar("license_id").notNull(),
+  serverId: varchar("server_id"),
+  serverIp: text("server_ip"),
+  hostname: text("hostname"),
+  status: text("status").notNull().default("active"),
+  activatedAt: timestamp("activated_at").defaultNow(),
+  releasedAt: timestamp("released_at"),
+});
+
+export const insertLicenseActivationSchema = createInsertSchema(licenseActivations).omit({ id: true, activatedAt: true, releasedAt: true });
+
+export type LicenseActivation = typeof licenseActivations.$inferSelect;
+export type InsertLicenseActivation = z.infer<typeof insertLicenseActivationSchema>;
+
+export const knowledgeBaseCategories = pgTable("knowledge_base_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  icon: text("icon").notNull().default("Folder"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertKnowledgeBaseCategorySchema = createInsertSchema(knowledgeBaseCategories).omit({ id: true, createdAt: true });
+export type KnowledgeBaseCategory = typeof knowledgeBaseCategories.$inferSelect;
+export type InsertKnowledgeBaseCategory = z.infer<typeof insertKnowledgeBaseCategorySchema>;
+
+export const knowledgeBaseTags = pgTable("knowledge_base_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  icon: text("icon").notNull().default("Tag"),
+  color: text("color").notNull().default("gray"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertKnowledgeBaseTagSchema = createInsertSchema(knowledgeBaseTags).omit({ id: true, createdAt: true });
+export type KnowledgeBaseTag = typeof knowledgeBaseTags.$inferSelect;
+export type InsertKnowledgeBaseTag = z.infer<typeof insertKnowledgeBaseTagSchema>;
+
 export const knowledgeBaseArticles = pgTable("knowledge_base_articles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
   slug: text("slug").notNull(),
   content: text("content").notNull().default(""),
   category: text("category").notNull().default("General"),
+  tags: text("tags").array().default(sql`'{}'::text[]`),
   status: text("status").notNull().default("draft"),
   notionPageId: text("notion_page_id"),
   sortOrder: integer("sort_order").default(0),
