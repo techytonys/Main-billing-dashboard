@@ -1,3 +1,64 @@
+-- Knowledge base articles table
+CREATE TABLE IF NOT EXISTS knowledge_base_articles (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'General',
+  status TEXT NOT NULL DEFAULT 'draft',
+  notion_page_id TEXT,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  tags TEXT[] DEFAULT '{}'
+);
+
+-- Knowledge base categories table
+CREATE TABLE IF NOT EXISTS knowledge_base_categories (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT 'Folder',
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Knowledge base tags table
+CREATE TABLE IF NOT EXISTS knowledge_base_tags (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT 'Tag',
+  color TEXT NOT NULL DEFAULT 'gray',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Licenses table
+CREATE TABLE IF NOT EXISTS licenses (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id VARCHAR NOT NULL,
+  license_key TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active',
+  max_activations INTEGER DEFAULT 0,
+  activation_count INTEGER DEFAULT 0,
+  last_activated_at TIMESTAMP,
+  last_activated_ip TEXT,
+  last_activated_hostname TEXT,
+  expires_at TIMESTAMP,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- License activations table
+CREATE TABLE IF NOT EXISTS license_activations (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  license_id VARCHAR NOT NULL,
+  server_id VARCHAR,
+  server_ip TEXT,
+  hostname TEXT,
+  activated_at TIMESTAMP DEFAULT NOW(),
+  status TEXT NOT NULL DEFAULT 'active',
+  released_at TIMESTAMP
+);
+
 -- Leads table
 CREATE TABLE IF NOT EXISTS leads (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
