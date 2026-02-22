@@ -81,6 +81,13 @@ function DashboardLayout() {
   const { user, isLoading, isAuthenticated: isLoggedIn } = useAuth();
   const { toast } = useToast();
 
+  const { data: notifData } = useQuery<{ count: number }>({
+    queryKey: ["/api/community/notifications/unread-count"],
+    refetchInterval: 15000,
+    enabled: isLoggedIn,
+  });
+  const unreadCount = notifData?.count || 0;
+
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
       toast({ title: "Unauthorized", description: "Please sign in to access the dashboard.", variant: "destructive" });
@@ -101,12 +108,6 @@ function DashboardLayout() {
   }
 
   const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join("").toUpperCase() || "U";
-
-  const { data: notifData } = useQuery<{ count: number }>({
-    queryKey: ["/api/community/notifications/unread-count"],
-    refetchInterval: 15000,
-  });
-  const unreadCount = notifData?.count || 0;
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>

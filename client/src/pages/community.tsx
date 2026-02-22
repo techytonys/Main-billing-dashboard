@@ -217,7 +217,7 @@ function getAvatarGradient(name: string): string {
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i;
 
 function renderRichText(text: string) {
-  const combined = /(?<url>https?:\/\/[^\s<]+)|@(?<handle>\w+)/g;
+  const combined = /(https?:\/\/[^\s<]+)|@(\w+)/g;
   const parts: Array<{ type: "text" | "link" | "image" | "mention"; value: string }> = [];
   let lastIndex = 0;
   let match;
@@ -226,16 +226,16 @@ function renderRichText(text: string) {
     if (match.index > lastIndex) {
       parts.push({ type: "text", value: text.slice(lastIndex, match.index) });
     }
-    if (match.groups?.url) {
-      const url = match.groups.url.replace(/[.,;:!?)]+$/, "");
+    if (match[1]) {
+      const url = match[1].replace(/[.,;:!?)]+$/, "");
       if (IMAGE_EXTENSIONS.test(url)) {
         parts.push({ type: "image", value: url });
       } else {
         parts.push({ type: "link", value: url });
       }
       combined.lastIndex = match.index + url.length;
-    } else if (match.groups?.handle) {
-      parts.push({ type: "mention", value: match.groups.handle });
+    } else if (match[2]) {
+      parts.push({ type: "mention", value: match[2] });
     }
     lastIndex = combined.lastIndex;
   }
