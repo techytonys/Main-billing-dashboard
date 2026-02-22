@@ -162,7 +162,10 @@ CREATE TABLE IF NOT EXISTS quote_comments (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Ensure all project deployment columns exist
+-- Ensure all project columns exist
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS preview_url TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress_url TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_repo_url TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS deploy_platform TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS netlify_site_id TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS netlify_site_url TEXT;
