@@ -1882,6 +1882,20 @@ function LeftSidebar({
     },
   });
 
+  const removeMember = useMutation({
+    mutationFn: async (memberId: string) => {
+      await apiRequest("DELETE", `/api/community/members/${memberId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/community/posts"] });
+      toast({ title: "Member removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to remove member", variant: "destructive" });
+    },
+  });
+
   return (
     <div className="space-y-4 sticky top-6 z-40">
       <div className="bg-card rounded-xl border p-5">
@@ -2055,7 +2069,7 @@ function LeftSidebar({
                     <p className="text-[11px] text-muted-foreground">Joined {getRelativeTime(member.createdAt)}</p>
                   </div>
                   {isLoggedIn && !isSelf && (
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex items-center gap-0.5">
                       {isFriend ? (
                         <span className="text-[11px] text-green-600 dark:text-green-400 font-medium flex items-center gap-0.5" data-testid={`badge-friend-${member.id}`}>
                           <UserCheck className="w-3 h-3" />
@@ -2074,6 +2088,22 @@ function LeftSidebar({
                           data-testid={`button-add-friend-${member.id}`}
                         >
                           <UserPlus2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            if (confirm(`Remove ${member.displayName} from the community? This will delete all their posts, comments, and data.`)) {
+                              removeMember.mutate(member.id);
+                            }
+                          }}
+                          disabled={removeMember.isPending}
+                          data-testid={`button-remove-member-${member.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       )}
                     </div>
