@@ -75,11 +75,18 @@ if $IS_UPDATE; then
   ok
 
   step 2 "Pulling latest code"
-  git fetch origin main -q
-  git reset --hard origin/main -q
+  TARBALL_URL="https://api.github.com/repos/techytonys/Main-billing-dashboard/tarball/main"
+  TMP_TAR="/tmp/aips_update.tar.gz"
+  TMP_DIR="/tmp/aips_extract"
+  curl -fsSL -o "$TMP_TAR" "$TARBALL_URL"
+  rm -rf "$TMP_DIR"
+  mkdir -p "$TMP_DIR"
+  tar xzf "$TMP_TAR" -C "$TMP_DIR" --strip-components=1
+  rsync -a --exclude='.env' --exclude='backups' --exclude='node_modules' "$TMP_DIR/" "$APP_DIR/"
+  rm -rf "$TMP_TAR" "$TMP_DIR"
   cp -f "$ENV_BACKUP" "$APP_DIR/.env"
-  COMMIT=$(git rev-parse --short HEAD)
-  echo -e "  ${DIM}Now at commit ${COMMIT}${RESET}"
+  COMMIT="latest"
+  echo -e "  ${DIM}Code updated${RESET}"
   ok
 
   step 3 "Running migrations"
@@ -229,20 +236,20 @@ UPGEOF
   ok
 
   step 7 "Pulling code"
-  if [ -d "$APP_DIR/.git" ]; then
-    cd "$APP_DIR"
-    git fetch origin main -q
-    git reset --hard origin/main -q
-    echo -e "  ${DIM}Updated to latest${RESET}"
-  else
-    rm -rf "$APP_DIR"
-    git clone -q "$REPO_URL" "$APP_DIR"
-    cd "$APP_DIR"
-  fi
-  # Always restore .env from backup after git operations
+  TARBALL_URL="https://api.github.com/repos/techytonys/Main-billing-dashboard/tarball/main"
+  TMP_TAR="/tmp/aips_update.tar.gz"
+  TMP_DIR="/tmp/aips_extract"
+  curl -fsSL -o "$TMP_TAR" "$TARBALL_URL"
+  rm -rf "$TMP_DIR"
+  mkdir -p "$TMP_DIR" "$APP_DIR"
+  tar xzf "$TMP_TAR" -C "$TMP_DIR" --strip-components=1
+  rsync -a --exclude='.env' --exclude='backups' "$TMP_DIR/" "$APP_DIR/"
+  rm -rf "$TMP_TAR" "$TMP_DIR"
+  cd "$APP_DIR"
   if [ -f "$ENV_BACKUP" ]; then
     cp -f "$ENV_BACKUP" "$APP_DIR/.env"
   fi
+  echo -e "  ${DIM}Code downloaded${RESET}"
   ok
 
   step 8 "Environment"
