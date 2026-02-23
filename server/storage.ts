@@ -41,6 +41,7 @@ import {
   licenses, licenseActivations,
   type License, type InsertLicense,
   type LicenseActivation, type InsertLicenseActivation,
+  passwordResetTokens, type PasswordResetToken,
   communityUsers, communitySessions, type CommunitySession, communityMessages,
   communityPosts, communityComments, communityReactions, communityNotifications,
   communityFriendships, communityGroups, communityGroupMembers,
@@ -243,6 +244,11 @@ export interface IStorage {
   deleteExpiredCommunitySessions(): Promise<void>;
   getCommunityUserSessions(userId: string): Promise<CommunitySession[]>;
   searchCommunityUsers(query: string, limit?: number): Promise<CommunityUser[]>;
+
+  createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markPasswordResetTokenUsed(token: string): Promise<void>;
+  deleteExpiredPasswordResetTokens(): Promise<void>;
 
   getCommunityMessages(status?: string): Promise<CommunityMessage[]>;
   getCommunityMessage(id: string): Promise<CommunityMessage | undefined>;
@@ -1640,6 +1646,24 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(communityUsers.displayName)
       .limit(limit);
+  }
+
+  async createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken> {
+    const [t] = await db.insert(passwordResetTokens).values({ userId, token, expiresAt }).returning();
+    return t;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [t] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    return t;
+  }
+
+  async markPasswordResetTokenUsed(token: string): Promise<void> {
+    await db.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.token, token));
+  }
+
+  async deleteExpiredPasswordResetTokens(): Promise<void> {
+    await db.delete(passwordResetTokens).where(lt(passwordResetTokens.expiresAt, new Date()));
   }
 
   async getCommunityFriendships(userId: string): Promise<CommunityFriendship[]> {

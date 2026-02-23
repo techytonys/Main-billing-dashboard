@@ -2,7 +2,7 @@
 set -e
 
 APP_DIR="/opt/aipoweredsites"
-REPO_URL="https://github.com/techytonys/Main-billing-dashboard.git"
+REPO_URL="https://github.com/techytonys/billing-hub.git"
 ENV_BACKUP="/root/.aips_env_backup"
 
 BOLD='\033[1m'
@@ -407,5 +407,5 @@ echo ""
 echo -e "  ${WHITE}  sudo bash /opt/aipoweredsites/deploy/deploy.sh${RESET}"
 echo ""
 echo -e "  ${DIM}Or remotely:${RESET}"
-echo -e "  ${WHITE}  curl -fsSL https://raw.githubusercontent.com/techytonys/Main-billing-dashboard/main/deploy/deploy.sh | sudo bash${RESET}"
+echo -e "  ${WHITE}  curl -fsSL https://raw.githubusercontent.com/techytonys/billing-hub/main/deploy/deploy.sh | sudo bash${RESET}"
 echo ""

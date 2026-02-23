@@ -1233,6 +1233,9 @@ function AuthDialog({ open, onOpenChange, auth }: {
   const [error, setError] = useState("");
   const [needs2fa, setNeeds2fa] = useState(false);
   const [totpCode, setTotpCode] = useState("");
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const resetForm = () => {
     setEmail("");
@@ -1241,6 +1244,35 @@ function AuthDialog({ open, onOpenChange, auth }: {
     setError("");
     setNeeds2fa(false);
     setTotpCode("");
+    setForgotMode(false);
+    setForgotSent(false);
+    setForgotLoading(false);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError("Please enter your email address");
+      return;
+    }
+    setForgotLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/community/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong");
+      } else {
+        setForgotSent(true);
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   const handleSignIn = async () => {
@@ -1298,7 +1330,40 @@ function AuthDialog({ open, onOpenChange, auth }: {
             <TabsTrigger value="signup" data-testid="tab-signup">Sign Up</TabsTrigger>
           </TabsList>
           <TabsContent value="signin" className="space-y-3 mt-4">
-            {!needs2fa ? (
+            {forgotMode ? (
+              forgotSent ? (
+                <div className="space-y-3 text-center py-2">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <Mail className="w-6 h-6 text-green-500" />
+                  </div>
+                  <p className="text-sm font-medium" data-testid="text-reset-sent">Check your email</p>
+                  <p className="text-xs text-muted-foreground">We've sent a password reset link to <strong>{email}</strong>. It expires in 1 hour.</p>
+                  <Button variant="ghost" size="sm" onClick={() => { setForgotMode(false); setForgotSent(false); setError(""); }} data-testid="button-back-to-signin" className="text-xs">
+                    Back to sign in
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Enter your email and we'll send you a link to reset your password.</p>
+                  <Input
+                    type="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleForgotPassword(); }}
+                    data-testid="input-forgot-email"
+                  />
+                  {error && <p className="text-sm text-destructive" data-testid="text-auth-error">{error}</p>}
+                  <Button onClick={handleForgotPassword} disabled={!email || forgotLoading} className="w-full gap-2" data-testid="button-send-reset">
+                    <Mail className="w-4 h-4" />
+                    {forgotLoading ? "Sending..." : "Send Reset Link"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setForgotMode(false); setError(""); }} className="w-full text-xs" data-testid="button-back-to-signin">
+                    Back to sign in
+                  </Button>
+                </div>
+              )
+            ) : !needs2fa ? (
               <>
                 <Input
                   type="email"
@@ -1315,6 +1380,16 @@ function AuthDialog({ open, onOpenChange, auth }: {
                   onKeyDown={(e) => { if (e.key === "Enter") handleSignIn(); }}
                   data-testid="input-signin-password"
                 />
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => { setForgotMode(true); setError(""); }}
+                    className="text-xs text-primary hover:underline"
+                    data-testid="link-forgot-password"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
               </>
             ) : (
               <div className="space-y-3">
@@ -1348,16 +1423,18 @@ function AuthDialog({ open, onOpenChange, auth }: {
                 </Button>
               </div>
             )}
-            {error && <p className="text-sm text-destructive" data-testid="text-auth-error">{error}</p>}
-            <Button
-              onClick={handleSignIn}
-              disabled={!email || !password || (needs2fa && totpCode.length !== 6) || auth.login.isPending}
-              className="w-full gap-2"
-              data-testid="button-signin"
-            >
-              <LogIn className="w-4 h-4" />
-              {auth.login.isPending ? "Signing in..." : needs2fa ? "Verify & Sign In" : "Sign In"}
-            </Button>
+            {error && !forgotMode && <p className="text-sm text-destructive" data-testid="text-auth-error">{error}</p>}
+            {!forgotMode && (
+              <Button
+                onClick={handleSignIn}
+                disabled={!email || !password || (needs2fa && totpCode.length !== 6) || auth.login.isPending}
+                className="w-full gap-2"
+                data-testid="button-signin"
+              >
+                <LogIn className="w-4 h-4" />
+                {auth.login.isPending ? "Signing in..." : needs2fa ? "Verify & Sign In" : "Sign In"}
+              </Button>
+            )}
           </TabsContent>
           <TabsContent value="signup" className="space-y-3 mt-4">
             <Input

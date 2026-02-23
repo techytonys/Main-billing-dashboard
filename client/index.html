@@ -28,28 +28,111 @@
     <meta name="twitter:description" content="AI web design agency offering custom website development for small businesses and startups. Affordable AI-powered web solutions delivered in days, not months." />
     <meta name="twitter:image" content="https://aipoweredsites.com/images/og-cover.png" />
 
-    <!-- Structured Data: Organization -->
+    <!-- Structured Data: ProfessionalService (main business entity with @id) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "ProfessionalService",
+      "@id": "https://aipoweredsites.com/#organization",
       "name": "AI Powered Sites",
+      "alternateName": "AIPoweredSites",
       "url": "https://aipoweredsites.com",
-      "logo": "https://aipoweredsites.com/favicon.png",
-      "description": "Premium AI-powered web design and development services. Custom websites, community forums, backend systems, Docker solutions, and more.",
+      "logo": {
+        "@type": "ImageObject",
+        "@id": "https://aipoweredsites.com/#logo",
+        "url": "https://aipoweredsites.com/favicon.png",
+        "width": 512,
+        "height": 512,
+        "caption": "AI Powered Sites Logo"
+      },
+      "image": "https://aipoweredsites.com/images/og-cover.png",
+      "description": "Premium AI-powered web design and development agency delivering custom websites, community platforms, backend systems, and Docker solutions for businesses worldwide.",
       "email": "hello@aipoweredsites.com",
       "priceRange": "$$",
-      "serviceType": ["Web Design", "Web Development", "AI Solutions", "Docker Deployment", "Backend Development"],
+      "currenciesAccepted": "USD",
+      "paymentAccepted": "Credit Card, Stripe",
+      "foundingDate": "2025",
+      "slogan": "AI-Powered Web Solutions Delivered in Days, Not Months",
+      "knowsAbout": ["Web Design", "Web Development", "Artificial Intelligence", "React", "Node.js", "PostgreSQL", "Docker", "API Development", "UI/UX Design"],
+      "serviceType": ["Web Design", "Web Development", "AI Solutions", "Docker Deployment", "Backend Development", "Community Forum Development", "Support Portal Development"],
       "areaServed": {
         "@type": "Place",
         "name": "Worldwide"
       },
+      "founder": {
+        "@type": "Person",
+        "@id": "https://aipoweredsites.com/#founder",
+        "name": "Anthony Jackson",
+        "jobTitle": "Founder & Lead Developer"
+      },
+      "numberOfEmployees": {
+        "@type": "QuantitativeValue",
+        "minValue": 1,
+        "maxValue": 10
+      },
+      "openingHoursSpecification": {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        "opens": "00:00",
+        "closes": "23:59"
+      },
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "email": "hello@aipoweredsites.com",
+          "contactType": "customer service",
+          "availableLanguage": "English",
+          "areaServed": "Worldwide"
+        },
+        {
+          "@type": "ContactPoint",
+          "email": "hello@aipoweredsites.com",
+          "contactType": "sales",
+          "availableLanguage": "English",
+          "areaServed": "Worldwide"
+        },
+        {
+          "@type": "ContactPoint",
+          "email": "hello@aipoweredsites.com",
+          "contactType": "technical support",
+          "availableLanguage": "English",
+          "areaServed": "Worldwide"
+        }
+      ],
       "aggregateRating": {
         "@type": "AggregateRating",
+        "itemReviewed": { "@id": "https://aipoweredsites.com/#organization" },
         "ratingValue": "5.0",
         "reviewCount": "150",
-        "bestRating": "5"
+        "bestRating": "5",
+        "worstRating": "1"
       },
+      "review": [
+        {
+          "@type": "Review",
+          "itemReviewed": { "@id": "https://aipoweredsites.com/#organization" },
+          "author": { "@type": "Person", "name": "Sarah Chen" },
+          "datePublished": "2025-12-01",
+          "reviewBody": "They turned our vision into reality in under two weeks. The AI-powered features they built into our platform have tripled our user engagement.",
+          "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" }
+        },
+        {
+          "@type": "Review",
+          "itemReviewed": { "@id": "https://aipoweredsites.com/#organization" },
+          "author": { "@type": "Person", "name": "Marcus Rivera" },
+          "datePublished": "2025-11-15",
+          "reviewBody": "Incredible attention to detail and communication throughout the entire project. Our new site is fast, beautiful, and converts like crazy.",
+          "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" }
+        },
+        {
+          "@type": "Review",
+          "itemReviewed": { "@id": "https://aipoweredsites.com/#organization" },
+          "author": { "@type": "Person", "name": "Emily Nakamura" },
+          "datePublished": "2025-10-20",
+          "reviewBody": "We needed a complex billing dashboard and support portal fast. They delivered both ahead of schedule and the quality blew us away.",
+          "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" }
+        }
+      ],
       "hasOfferCatalog": {
         "@type": "OfferCatalog",
         "name": "Web Development Services",
@@ -93,9 +176,22 @@
               "name": "Support Portals",
               "description": "Customer support portals with ticket systems and real-time communication."
             }
+          },
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Service",
+              "name": "AI-Powered Website Audit",
+              "description": "Free comprehensive website audit analyzing performance, SEO, accessibility, security, and mobile responsiveness."
+            },
+            "price": "0",
+            "priceCurrency": "USD"
           }
         ]
-      }
+      },
+      "sameAs": [
+        "https://www.facebook.com/profile.php?id=61583287991945"
+      ]
     }
     </script>
 
@@ -104,47 +200,54 @@
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
+      "@id": "https://aipoweredsites.com/#website",
       "name": "AI Powered Sites",
       "url": "https://aipoweredsites.com",
+      "description": "AI-powered web design and development agency. Custom websites, community forums, backend systems, and Docker solutions.",
+      "publisher": { "@id": "https://aipoweredsites.com/#organization" },
+      "inLanguage": "en-US",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": "https://aipoweredsites.com/questions?q={search_term_string}",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://aipoweredsites.com/questions?q={search_term_string}"
+        },
         "query-input": "required name=search_term_string"
       }
     }
     </script>
 
-    <!-- Structured Data: Reviews -->
+    <!-- Structured Data: WebPage (homepage) -->
     <script type="application/ld+json">
-    [
-      {
-        "@context": "https://schema.org",
-        "@type": "Review",
-        "author": { "@type": "Person", "name": "Sarah Chen" },
-        "reviewBody": "They turned our vision into reality in under two weeks. The AI-powered features they built into our platform have tripled our user engagement.",
-        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
-        "itemReviewed": { "@type": "ProfessionalService", "name": "AI Powered Sites" }
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": "https://aipoweredsites.com/#webpage",
+      "name": "AI Web Design Agency — Custom AI-Powered Websites & Web Development",
+      "url": "https://aipoweredsites.com",
+      "description": "AI web design agency offering custom website development, community forums, backend systems, Docker deployment, and support portals for small businesses and startups.",
+      "isPartOf": { "@id": "https://aipoweredsites.com/#website" },
+      "about": { "@id": "https://aipoweredsites.com/#organization" },
+      "mainEntity": { "@id": "https://aipoweredsites.com/#organization" },
+      "inLanguage": "en-US",
+      "datePublished": "2025-01-01",
+      "dateModified": "2026-02-23",
+      "primaryImageOfPage": {
+        "@type": "ImageObject",
+        "url": "https://aipoweredsites.com/images/og-cover.png"
       },
-      {
-        "@context": "https://schema.org",
-        "@type": "Review",
-        "author": { "@type": "Person", "name": "Marcus Rivera" },
-        "reviewBody": "Incredible attention to detail and communication throughout the entire project. Our new site is fast, beautiful, and converts like crazy.",
-        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
-        "itemReviewed": { "@type": "ProfessionalService", "name": "AI Powered Sites" }
-      },
-      {
-        "@context": "https://schema.org",
-        "@type": "Review",
-        "author": { "@type": "Person", "name": "Emily Nakamura" },
-        "reviewBody": "We needed a complex billing dashboard and support portal fast. They delivered both ahead of schedule and the quality blew us away.",
-        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
-        "itemReviewed": { "@type": "ProfessionalService", "name": "AI Powered Sites" }
-      }
-    ]
+      "significantLink": [
+        "https://aipoweredsites.com/#services",
+        "https://aipoweredsites.com/#pricing",
+        "https://aipoweredsites.com/questions",
+        "https://aipoweredsites.com/community",
+        "https://aipoweredsites.com/api/docs",
+        "https://aipoweredsites.com/help"
+      ]
+    }
     </script>
 
-    <!-- Structured Data: FAQ (from Q&A section) -->
+    <!-- Structured Data: FAQPage (visible on landing page) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -197,12 +300,28 @@
             "@type": "Answer",
             "text": "Yes. We build custom web applications, REST APIs, billing dashboards, support portals, community forums, and more. We also offer Docker deployment services for self-hosted infrastructure."
           }
+        },
+        {
+          "@type": "Question",
+          "name": "What is included in the free website audit?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Our free AI-powered website audit analyzes your site's performance, SEO, accessibility, security, mobile responsiveness, and provides actionable recommendations with a downloadable PDF report."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do you offer payment plans for larger projects?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. We offer flexible payment plans through Stripe so you can spread costs across multiple installments. We work with your budget to find an arrangement that works for both sides."
+          }
         }
       ]
     }
     </script>
 
-    <!-- Structured Data: HowTo (our 4-step process) -->
+    <!-- Structured Data: HowTo (4-step process visible on page) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -210,6 +329,7 @@
       "name": "How to Get a Custom AI-Powered Website Built",
       "description": "Our simple 4-step process to go from idea to a live, AI-powered web solution.",
       "totalTime": "P14D",
+      "image": "https://aipoweredsites.com/images/og-cover.png",
       "step": [
         {
           "@type": "HowToStep",
@@ -243,7 +363,7 @@
     }
     </script>
 
-    <!-- Structured Data: ItemList (services carousel) -->
+    <!-- Structured Data: ItemList (services carousel visible on page) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -277,26 +397,149 @@
         { "@type": "ListItem", "position": 4, "name": "Why Choose Us", "item": "https://aipoweredsites.com/#features" },
         { "@type": "ListItem", "position": 5, "name": "Pricing", "item": "https://aipoweredsites.com/#pricing" },
         { "@type": "ListItem", "position": 6, "name": "Q&A", "item": "https://aipoweredsites.com/questions" },
-        { "@type": "ListItem", "position": 7, "name": "API Documentation", "item": "https://aipoweredsites.com/api/docs" }
+        { "@type": "ListItem", "position": 7, "name": "Community", "item": "https://aipoweredsites.com/community" },
+        { "@type": "ListItem", "position": 8, "name": "Help Center", "item": "https://aipoweredsites.com/help" },
+        { "@type": "ListItem", "position": 9, "name": "API Documentation", "item": "https://aipoweredsites.com/api/docs" }
       ]
     }
     </script>
 
-    <!-- Structured Data: ContactPoint -->
+    <!-- Structured Data: Individual Service details (all visible on page) -->
+    <script type="application/ld+json">
+    [
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "Custom Website Design & Development",
+        "provider": { "@id": "https://aipoweredsites.com/#organization" },
+        "url": "https://aipoweredsites.com/#services",
+        "description": "Stunning, responsive websites built with cutting-edge AI technology. Mobile-first design with modern frameworks like React and Node.js.",
+        "serviceType": "Web Design",
+        "areaServed": { "@type": "Place", "name": "Worldwide" },
+        "hasOfferCatalog": {
+          "@type": "OfferCatalog",
+          "name": "Website Packages",
+          "itemListElement": [
+            {
+              "@type": "Offer",
+              "itemOffered": { "@type": "Service", "name": "Landing Page Design" },
+              "description": "Single-page responsive website with modern design"
+            },
+            {
+              "@type": "Offer",
+              "itemOffered": { "@type": "Service", "name": "Multi-Page Website" },
+              "description": "Full website with multiple pages, navigation, and responsive design"
+            },
+            {
+              "@type": "Offer",
+              "itemOffered": { "@type": "Service", "name": "E-Commerce Website" },
+              "description": "Online store with product listings, cart, and payment processing"
+            }
+          ]
+        }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "Community Forum Development",
+        "provider": { "@id": "https://aipoweredsites.com/#organization" },
+        "url": "https://aipoweredsites.com/#services",
+        "description": "Powerful, AI-moderated community forums with user profiles, messaging, groups, reactions, and real-time notifications.",
+        "serviceType": "Web Application Development",
+        "areaServed": { "@type": "Place", "name": "Worldwide" }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "Backend System Development",
+        "provider": { "@id": "https://aipoweredsites.com/#organization" },
+        "url": "https://aipoweredsites.com/#services",
+        "description": "Robust, scalable backend infrastructure with REST APIs, PostgreSQL databases, authentication, and third-party integrations.",
+        "serviceType": "Software Development",
+        "areaServed": { "@type": "Place", "name": "Worldwide" }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "Docker Deployment & DevOps",
+        "provider": { "@id": "https://aipoweredsites.com/#organization" },
+        "url": "https://aipoweredsites.com/#services",
+        "description": "Containerized deployments with Docker for scalable, portable application infrastructure. Zero-downtime deployments and automated CI/CD.",
+        "serviceType": "Cloud Computing Services",
+        "areaServed": { "@type": "Place", "name": "Worldwide" }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "Support Portal Development",
+        "provider": { "@id": "https://aipoweredsites.com/#organization" },
+        "url": "https://aipoweredsites.com/#services",
+        "description": "Customer support portals with ticket systems, knowledge bases, real-time communication, and automated notifications.",
+        "serviceType": "Customer Service Solutions",
+        "areaServed": { "@type": "Place", "name": "Worldwide" }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": "AI-Powered Website Audit",
+        "provider": { "@id": "https://aipoweredsites.com/#organization" },
+        "url": "https://aipoweredsites.com",
+        "description": "Free comprehensive AI-powered website audit analyzing performance, SEO, accessibility, security, and mobile responsiveness with actionable recommendations.",
+        "serviceType": "Website Analysis",
+        "areaServed": { "@type": "Place", "name": "Worldwide" },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Free AI-powered website audit report",
+          "availability": "https://schema.org/InStock"
+        }
+      }
+    ]
+    </script>
+
+    <!-- Structured Data: Person (founder visible in testimonials/about) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "AI Powered Sites",
+      "@type": "Person",
+      "@id": "https://aipoweredsites.com/#founder",
+      "name": "Anthony Jackson",
+      "jobTitle": "Founder & Lead Developer",
+      "worksFor": { "@id": "https://aipoweredsites.com/#organization" },
+      "knowsAbout": ["Web Development", "Artificial Intelligence", "React", "Node.js", "Docker", "PostgreSQL", "API Development"],
+      "sameAs": [
+        "https://www.facebook.com/profile.php?id=61583287991945"
+      ]
+    }
+    </script>
+
+    <!-- Structured Data: SoftwareApplication (free audit tool visible on page) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "AI Website Audit Tool",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Web",
       "url": "https://aipoweredsites.com",
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "email": "hello@aipoweredsites.com",
-        "contactType": "customer service",
-        "availableLanguage": "English",
-        "areaServed": "Worldwide"
+      "description": "Free AI-powered website audit tool that analyzes performance, SEO, accessibility, security, and mobile responsiveness. Get a comprehensive PDF report with actionable recommendations.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock"
       },
-      "sameAs": []
+      "featureList": [
+        "Performance Analysis",
+        "SEO Audit",
+        "Accessibility Check",
+        "Security Scan",
+        "Mobile Responsiveness Test",
+        "PDF Report Generation",
+        "Actionable Recommendations"
+      ],
+      "author": { "@id": "https://aipoweredsites.com/#organization" }
     }
     </script>
 

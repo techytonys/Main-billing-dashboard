@@ -105,6 +105,8 @@ export async function registerRoutes(
 `User-agent: *
 Allow: /
 Allow: /questions
+Allow: /community
+Allow: /help
 Allow: /quote/
 Allow: /conversation/
 Allow: /progress/
@@ -138,7 +140,9 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     const staticPages = [
       { loc: "/", changefreq: "weekly", priority: "1.0" },
+      { loc: "/community", changefreq: "daily", priority: "0.9" },
       { loc: "/questions", changefreq: "daily", priority: "0.8" },
+      { loc: "/help", changefreq: "weekly", priority: "0.7" },
       { loc: "/api/docs", changefreq: "monthly", priority: "0.6" },
     ];
 
@@ -5640,6 +5644,102 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+      const user = await storage.getCommunityUserByEmail(email.toLowerCase());
+      if (!user) {
+        return res.json({ success: true, message: "If an account exists with that email, a reset link has been sent." });
+      }
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(48).toString("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      await storage.createPasswordResetToken(user.id, token, expiresAt);
+      const siteUrl = process.env.SITE_URL || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://aipoweredsites.com");
+      const resetUrl = `${siteUrl}/community/reset-password?token=${token}`;
+      const { sendEmail } = await import("./email");
+      const emailResult = await sendEmail({
+        to: user.email,
+        subject: "Reset Your Password — AI Powered Sites Community",
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 0;">
+            <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; padding: 40px 32px; text-align: center;">
+              <h1 style="color: #f8fafc; font-size: 22px; margin: 0 0 8px 0;">Password Reset</h1>
+              <p style="color: #94a3b8; font-size: 14px; margin: 0 0 28px 0;">We received a request to reset your password.</p>
+              <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px;">Reset Password</a>
+              <p style="color: #64748b; font-size: 12px; margin: 28px 0 0 0;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+            </div>
+          </div>
+        `,
+      });
+      if (!emailResult.success) {
+        console.error("Failed to send password reset email:", emailResult.error);
+      }
+      res.json({ success: true, message: "If an account exists with that email, a reset link has been sent." });
+    } catch (err: any) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ error: "Something went wrong. Please try again." });
+    }
+  });
+
+  app.post("/api/community/auth/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ error: "Token and new password are required" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      const resetToken = await storage.getPasswordResetToken(token);
+      if (!resetToken) {
+        return res.status(400).json({ error: "Invalid or expired reset link. Please request a new one." });
+      }
+      if (resetToken.usedAt) {
+        return res.status(400).json({ error: "This reset link has already been used. Please request a new one." });
+      }
+      if (new Date() > new Date(resetToken.expiresAt)) {
+        return res.status(400).json({ error: "This reset link has expired. Please request a new one." });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 12);
+      await storage.updateCommunityUser(resetToken.userId, { passwordHash });
+      await storage.markPasswordResetTokenUsed(token);
+      res.json({ success: true, message: "Password has been reset successfully. You can now sign in." });
+    } catch (err: any) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ error: "Something went wrong. Please try again." });
+    }
+  });
+
+  app.post("/api/community/auth/change-password", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current password and new password are required" });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: "New password must be at least 6 characters" });
+      }
+      const bcrypt = await import("bcryptjs");
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await storage.updateCommunityUser(user.id, { passwordHash });
+      res.json({ success: true, message: "Password changed successfully" });
+    } catch (err: any) {
+      console.error("Change password error:", err);
+      res.status(500).json({ error: "Something went wrong. Please try again." });
     }
   });
 

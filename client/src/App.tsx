@@ -45,6 +45,7 @@ import Licenses from "@/pages/licenses";
 import PublicHelp from "@/pages/public-help";
 import Community from "@/pages/community";
 import CommunityAccount from "@/pages/community-account";
+import CommunityResetPassword from "@/pages/community-reset-password";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -222,6 +223,7 @@ function AppRouter() {
       <Route path="/help" component={PublicHelp} />
       <Route path="/community">{() => <Community />}</Route>
       <Route path="/community/account" component={CommunityAccount} />
+      <Route path="/community/reset-password" component={CommunityResetPassword} />
       <Route path="/login" component={LoginPage} />
       <Route path="/admin/:rest*">
         <DashboardLayout />

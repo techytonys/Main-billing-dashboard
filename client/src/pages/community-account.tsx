@@ -159,6 +159,103 @@ function formatMemberSince(dateStr: string): string {
   });
 }
 
+function ChangePasswordForm() {
+  const { toast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleChangePassword = async () => {
+    setError("");
+    if (newPassword.length < 6) {
+      setError("New password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/community/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong");
+      } else {
+        toast({ title: "Password changed successfully" });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Lock className="w-4 h-4" />
+          Change Password
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPasswords(!showPasswords)}
+          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          data-testid="button-toggle-show-passwords"
+        >
+          {showPasswords ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+          {showPasswords ? "Hide" : "Show"}
+        </button>
+      </div>
+      <Input
+        type={showPasswords ? "text" : "password"}
+        placeholder="Current password"
+        value={currentPassword}
+        onChange={(e) => setCurrentPassword(e.target.value)}
+        data-testid="input-current-password"
+      />
+      <Input
+        type={showPasswords ? "text" : "password"}
+        placeholder="New password"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        data-testid="input-new-password"
+      />
+      <Input
+        type={showPasswords ? "text" : "password"}
+        placeholder="Confirm new password"
+        value={confirmPassword}
+        onChange={(e) => setConfirmPassword(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleChangePassword(); }}
+        data-testid="input-confirm-new-password"
+      />
+      {error && <p className="text-sm text-destructive" data-testid="text-change-password-error">{error}</p>}
+      <Button
+        onClick={handleChangePassword}
+        disabled={!currentPassword || !newPassword || !confirmPassword || loading}
+        size="sm"
+        className="gap-2"
+        data-testid="button-change-password"
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+        {loading ? "Changing..." : "Change Password"}
+      </Button>
+    </div>
+  );
+}
+
 export default function CommunityAccount() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -956,15 +1053,7 @@ export default function CommunityAccount() {
 
             <Separator />
 
-            <div className="rounded-lg border border-dashed p-4 bg-muted/20 dark:bg-muted/10">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Lock className="w-4 h-4" />
-                Change Password
-              </div>
-              <p className="text-xs text-muted-foreground mt-1" data-testid="text-password-placeholder">
-                Password change coming soon
-              </p>
-            </div>
+            <ChangePasswordForm />
           </CardContent>
         </Card>
       </div>
