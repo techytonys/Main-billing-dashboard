@@ -43,12 +43,16 @@ import {
   type LicenseActivation, type InsertLicenseActivation,
   communityUsers, communitySessions, type CommunitySession, communityMessages,
   communityPosts, communityComments, communityReactions, communityNotifications,
+  communityFriendships, communityGroups, communityGroupMembers,
   type CommunityUser, type InsertCommunityUser,
   type CommunityMessage, type InsertCommunityMessage,
   type CommunityPost, type InsertCommunityPost,
   type CommunityComment, type InsertCommunityComment,
   type CommunityReaction, type InsertCommunityReaction,
   type CommunityNotification, type InsertCommunityNotification,
+  type CommunityFriendship, type InsertCommunityFriendship,
+  type CommunityGroup, type InsertCommunityGroup,
+  type CommunityGroupMember, type InsertCommunityGroupMember,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -262,6 +266,24 @@ export interface IStorage {
   createCommunityNotification(notification: InsertCommunityNotification): Promise<CommunityNotification>;
   markCommunityNotificationRead(id: string): Promise<CommunityNotification | undefined>;
   markAllCommunityNotificationsRead(recipientType: string, recipientId?: string): Promise<number>;
+
+  getCommunityFriendships(userId: string): Promise<CommunityFriendship[]>;
+  getCommunityFriendship(requesterId: string, addresseeId: string): Promise<CommunityFriendship | undefined>;
+  createCommunityFriendship(friendship: InsertCommunityFriendship): Promise<CommunityFriendship>;
+  updateCommunityFriendship(id: string, status: string): Promise<CommunityFriendship | undefined>;
+  deleteCommunityFriendship(id: string): Promise<boolean>;
+  getCommunityFriends(userId: string): Promise<string[]>;
+
+  getCommunityGroups(): Promise<CommunityGroup[]>;
+  getCommunityGroup(id: string): Promise<CommunityGroup | undefined>;
+  createCommunityGroup(group: InsertCommunityGroup): Promise<CommunityGroup>;
+  updateCommunityGroup(id: string, updates: Partial<CommunityGroup>): Promise<CommunityGroup | undefined>;
+  deleteCommunityGroup(id: string): Promise<boolean>;
+  getCommunityGroupMembers(groupId: string): Promise<CommunityGroupMember[]>;
+  addCommunityGroupMember(member: InsertCommunityGroupMember): Promise<CommunityGroupMember>;
+  removeCommunityGroupMember(groupId: string, userId: string): Promise<boolean>;
+  isGroupMember(groupId: string, userId: string): Promise<boolean>;
+  getCommunityGroupPosts(groupId: string, limit?: number): Promise<CommunityPost[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1547,6 +1569,14 @@ export class DatabaseStorage implements IStorage {
       displayName: communityUsers.displayName,
       avatarUrl: communityUsers.avatarUrl,
       bio: communityUsers.bio,
+      websiteUrl: communityUsers.websiteUrl,
+      facebookUrl: communityUsers.facebookUrl,
+      twitterUrl: communityUsers.twitterUrl,
+      linkedinUrl: communityUsers.linkedinUrl,
+      instagramUrl: communityUsers.instagramUrl,
+      youtubeUrl: communityUsers.youtubeUrl,
+      githubUrl: communityUsers.githubUrl,
+      tiktokUrl: communityUsers.tiktokUrl,
       customerId: communityUsers.customerId,
       isActive: communityUsers.isActive,
       lastSeenAt: communityUsers.lastSeenAt,
@@ -1613,6 +1643,104 @@ export class DatabaseStorage implements IStorage {
         sql`LOWER(${communityUsers.displayName}) LIKE ${'%' + query.toLowerCase() + '%'}`
       ))
       .orderBy(communityUsers.displayName)
+      .limit(limit);
+  }
+
+  async getCommunityFriendships(userId: string): Promise<CommunityFriendship[]> {
+    return db.select().from(communityFriendships)
+      .where(sql`${communityFriendships.requesterId} = ${userId} OR ${communityFriendships.addresseeId} = ${userId}`)
+      .orderBy(desc(communityFriendships.createdAt));
+  }
+
+  async getCommunityFriendship(requesterId: string, addresseeId: string): Promise<CommunityFriendship | undefined> {
+    const [f] = await db.select().from(communityFriendships)
+      .where(sql`(${communityFriendships.requesterId} = ${requesterId} AND ${communityFriendships.addresseeId} = ${addresseeId}) OR (${communityFriendships.requesterId} = ${addresseeId} AND ${communityFriendships.addresseeId} = ${requesterId})`);
+    return f;
+  }
+
+  async createCommunityFriendship(friendship: InsertCommunityFriendship): Promise<CommunityFriendship> {
+    const [created] = await db.insert(communityFriendships).values(friendship).returning();
+    return created;
+  }
+
+  async updateCommunityFriendship(id: string, status: string): Promise<CommunityFriendship | undefined> {
+    const [updated] = await db.update(communityFriendships)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(communityFriendships.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCommunityFriendship(id: string): Promise<boolean> {
+    const result = await db.delete(communityFriendships).where(eq(communityFriendships.id, id));
+    return true;
+  }
+
+  async getCommunityFriends(userId: string): Promise<string[]> {
+    const friendships = await db.select().from(communityFriendships)
+      .where(and(
+        eq(communityFriendships.status, "accepted"),
+        sql`${communityFriendships.requesterId} = ${userId} OR ${communityFriendships.addresseeId} = ${userId}`
+      ));
+    return friendships.map(f => f.requesterId === userId ? f.addresseeId : f.requesterId);
+  }
+
+  async getCommunityGroups(): Promise<CommunityGroup[]> {
+    return db.select().from(communityGroups).orderBy(communityGroups.name);
+  }
+
+  async getCommunityGroup(id: string): Promise<CommunityGroup | undefined> {
+    const [group] = await db.select().from(communityGroups).where(eq(communityGroups.id, id));
+    return group;
+  }
+
+  async createCommunityGroup(group: InsertCommunityGroup): Promise<CommunityGroup> {
+    const [created] = await db.insert(communityGroups).values(group).returning();
+    return created;
+  }
+
+  async updateCommunityGroup(id: string, updates: Partial<CommunityGroup>): Promise<CommunityGroup | undefined> {
+    const [updated] = await db.update(communityGroups).set(updates).where(eq(communityGroups.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCommunityGroup(id: string): Promise<boolean> {
+    await db.delete(communityGroupMembers).where(eq(communityGroupMembers.groupId, id));
+    await db.delete(communityGroups).where(eq(communityGroups.id, id));
+    return true;
+  }
+
+  async getCommunityGroupMembers(groupId: string): Promise<CommunityGroupMember[]> {
+    return db.select().from(communityGroupMembers).where(eq(communityGroupMembers.groupId, groupId));
+  }
+
+  async addCommunityGroupMember(member: InsertCommunityGroupMember): Promise<CommunityGroupMember> {
+    const [created] = await db.insert(communityGroupMembers).values(member).returning();
+    await db.update(communityGroups)
+      .set({ memberCount: sql`member_count + 1` })
+      .where(eq(communityGroups.id, member.groupId));
+    return created;
+  }
+
+  async removeCommunityGroupMember(groupId: string, userId: string): Promise<boolean> {
+    await db.delete(communityGroupMembers)
+      .where(and(eq(communityGroupMembers.groupId, groupId), eq(communityGroupMembers.userId, userId)));
+    await db.update(communityGroups)
+      .set({ memberCount: sql`GREATEST(member_count - 1, 0)` })
+      .where(eq(communityGroups.id, groupId));
+    return true;
+  }
+
+  async isGroupMember(groupId: string, userId: string): Promise<boolean> {
+    const [member] = await db.select().from(communityGroupMembers)
+      .where(and(eq(communityGroupMembers.groupId, groupId), eq(communityGroupMembers.userId, userId)));
+    return !!member;
+  }
+
+  async getCommunityGroupPosts(groupId: string, limit = 50): Promise<CommunityPost[]> {
+    return db.select().from(communityPosts)
+      .where(eq(communityPosts.groupId, groupId))
+      .orderBy(desc(communityPosts.createdAt))
       .limit(limit);
   }
 }

@@ -578,6 +578,16 @@ export const communityUsers = pgTable("community_users", {
   displayName: text("display_name").notNull(),
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
+  websiteUrl: text("website_url"),
+  facebookUrl: text("facebook_url"),
+  twitterUrl: text("twitter_url"),
+  linkedinUrl: text("linkedin_url"),
+  instagramUrl: text("instagram_url"),
+  youtubeUrl: text("youtube_url"),
+  githubUrl: text("github_url"),
+  tiktokUrl: text("tiktok_url"),
+  totpSecret: text("totp_secret"),
+  twoFactorEnabled: boolean("two_factor_enabled").default(false),
   customerId: varchar("customer_id"),
   isActive: boolean("is_active").default(true),
   lastSeenAt: timestamp("last_seen_at").defaultNow(),
@@ -635,6 +645,7 @@ export const communityPosts = pgTable("community_posts", {
   commentsCount: integer("comments_count").default(0),
   sharesCount: integer("shares_count").default(0),
   mentions: text("mentions").array(),
+  groupId: varchar("group_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -693,3 +704,45 @@ export const communityNotifications = pgTable("community_notifications", {
 export const insertCommunityNotificationSchema = createInsertSchema(communityNotifications).omit({ id: true, createdAt: true });
 export type CommunityNotification = typeof communityNotifications.$inferSelect;
 export type InsertCommunityNotification = z.infer<typeof insertCommunityNotificationSchema>;
+
+export const communityFriendships = pgTable("community_friendships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requesterId: varchar("requester_id").notNull(),
+  addresseeId: varchar("addressee_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCommunityFriendshipSchema = createInsertSchema(communityFriendships).omit({ id: true, createdAt: true, updatedAt: true });
+export type CommunityFriendship = typeof communityFriendships.$inferSelect;
+export type InsertCommunityFriendship = z.infer<typeof insertCommunityFriendshipSchema>;
+
+export const communityGroups = pgTable("community_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon").default("users"),
+  color: text("color").default("blue"),
+  isPrivate: boolean("is_private").default(false),
+  createdBy: varchar("created_by"),
+  memberCount: integer("member_count").default(0),
+  postCount: integer("post_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityGroupSchema = createInsertSchema(communityGroups).omit({ id: true, createdAt: true, memberCount: true, postCount: true });
+export type CommunityGroup = typeof communityGroups.$inferSelect;
+export type InsertCommunityGroup = z.infer<typeof insertCommunityGroupSchema>;
+
+export const communityGroupMembers = pgTable("community_group_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  role: text("role").notNull().default("member"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityGroupMemberSchema = createInsertSchema(communityGroupMembers).omit({ id: true, createdAt: true });
+export type CommunityGroupMember = typeof communityGroupMembers.$inferSelect;
+export type InsertCommunityGroupMember = z.infer<typeof insertCommunityGroupMemberSchema>;

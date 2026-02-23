@@ -9,6 +9,7 @@ import {
   Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
   FolderGit2, Github, GitBranch, Zap, Play, HelpCircle, DollarSign,
   Server, Cpu, HardDrive, MemoryStick, Terminal, Copy, MapPin, BookOpen, Search, ChevronRight, ArrowUpDown,
+  Users,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Invoice, InvoiceLineItem, Project, SupportTicket, TicketMessage, PaymentPlan, ProjectScreenshot, ProjectClientFile } from "@shared/schema";
 import { useUpload } from "@/hooks/use-upload";
+import Community from "@/pages/community";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
@@ -700,7 +702,7 @@ function PortalScreenshots({ token, projectId }: { token: string; projectId: str
   );
 }
 
-type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "servers" | "help";
+type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "servers" | "help" | "community";
 
 interface PortalNotification {
   id: string;
@@ -1956,6 +1958,7 @@ export default function ClientPortal() {
     { id: "backups", label: "Backups", icon: FolderGit2 },
     { id: "servers", label: "Servers", icon: Server },
     { id: "help", label: "Help Center", icon: BookOpen },
+    { id: "community", label: "Community", icon: Users },
   ];
 
   return (
@@ -2991,6 +2994,12 @@ export default function ClientPortal() {
 
           {activeTab === "help" && (
             <PortalHelpTab articles={kbArticles || []} />
+          )}
+
+          {activeTab === "community" && (
+            <div className="-mx-4 -mt-2" data-testid="section-community">
+              <Community portalToken={params.token} />
+            </div>
           )}
 
           {activeTab === "backups" && (

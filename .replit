@@ -1,0 +1,53 @@
+modules = ["nodejs-20", "web", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[env]
+PORT = "5000"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["node", "./dist/index.cjs"]
+build = ["npm", "run", "build"]
+publicDir = "dist/public"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[agent]
+integrations = ["resend:1.0.0", "javascript_log_in_with_replit:2.0.0", "stripe:2.0.0", "javascript_stripe:1.0.0", "javascript_object_storage:2.0.0", "github:1.0.0", "javascript_openai_ai_integrations:2.0.0", "notion:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+RESEND_AUDIENCE_ID = "f2598d50-ee09-40eb-9939-163ea6e7f938"
+VAPID_PUBLIC_KEY = "BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y"
+VAPID_PRIVATE_KEY = "7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ"
+VAPID_SUBJECT = "mailto:hello@aipoweredsites.com"
+VITE_VAPID_PUBLIC_KEY = "BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y"
+SITE_URL = "https://aipoweredsites.com"

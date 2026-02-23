@@ -18,6 +18,8 @@ import {
   Smartphone,
   Globe,
   Shield,
+  ShieldCheck,
+  ShieldOff,
   Lock,
   Mail,
   Calendar,
@@ -25,7 +27,24 @@ import {
   ArrowLeft,
   User,
   X,
+  Link2,
+  ExternalLink,
+  QrCode,
+  Copy,
+  Check,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
+import {
+  SiFacebook,
+  SiX,
+  SiLinkedin,
+  SiInstagram,
+  SiYoutube,
+  SiGithub,
+  SiTiktok,
+} from "react-icons/si";
 
 interface CommunityUser {
   id: string;
@@ -33,6 +52,15 @@ interface CommunityUser {
   displayName: string;
   avatarUrl?: string | null;
   bio?: string | null;
+  websiteUrl?: string | null;
+  facebookUrl?: string | null;
+  twitterUrl?: string | null;
+  linkedinUrl?: string | null;
+  instagramUrl?: string | null;
+  youtubeUrl?: string | null;
+  githubUrl?: string | null;
+  tiktokUrl?: string | null;
+  twoFactorEnabled?: boolean;
   customerId?: string | null;
   isActive?: boolean;
   lastSeenAt?: string | null;
@@ -138,7 +166,21 @@ export default function CommunityAccount() {
 
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [facebookUrl, setFacebookUrl] = useState("");
+  const [twitterUrl, setTwitterUrl] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [tiktokUrl, setTiktokUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [twoFaSetupData, setTwoFaSetupData] = useState<{ secret: string; qrCode: string } | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [secretCopied, setSecretCopied] = useState(false);
+  const [disablePassword, setDisablePassword] = useState("");
+  const [showDisable2fa, setShowDisable2fa] = useState(false);
 
   const { data: user, isLoading: userLoading } = useQuery<CommunityUser | null>({
     queryKey: ["/api/community/auth/me"],
@@ -155,6 +197,14 @@ export default function CommunityAccount() {
     if (user) {
       setDisplayName(user.displayName || "");
       setBio(user.bio || "");
+      setWebsiteUrl(user.websiteUrl || "");
+      setFacebookUrl(user.facebookUrl || "");
+      setTwitterUrl(user.twitterUrl || "");
+      setLinkedinUrl(user.linkedinUrl || "");
+      setInstagramUrl(user.instagramUrl || "");
+      setYoutubeUrl(user.youtubeUrl || "");
+      setGithubUrl(user.githubUrl || "");
+      setTiktokUrl(user.tiktokUrl || "");
     }
   }, [user]);
 
@@ -166,10 +216,19 @@ export default function CommunityAccount() {
 
   const hasChanges =
     user &&
-    (displayName !== (user.displayName || "") || bio !== (user.bio || ""));
+    (displayName !== (user.displayName || "") ||
+      bio !== (user.bio || "") ||
+      websiteUrl !== (user.websiteUrl || "") ||
+      facebookUrl !== (user.facebookUrl || "") ||
+      twitterUrl !== (user.twitterUrl || "") ||
+      linkedinUrl !== (user.linkedinUrl || "") ||
+      instagramUrl !== (user.instagramUrl || "") ||
+      youtubeUrl !== (user.youtubeUrl || "") ||
+      githubUrl !== (user.githubUrl || "") ||
+      tiktokUrl !== (user.tiktokUrl || ""));
 
   const updateProfileMutation = useMutation({
-    mutationFn: async (data: { displayName?: string; bio?: string; avatarUrl?: string }) => {
+    mutationFn: async (data: Record<string, string | undefined>) => {
       const res = await apiRequest("PATCH", "/api/community/auth/profile", data);
       return res.json();
     },
@@ -179,6 +238,54 @@ export default function CommunityAccount() {
     },
     onError: () => {
       toast({ title: "Failed to update profile", variant: "destructive" });
+    },
+  });
+
+  const setup2faMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/community/auth/2fa/setup");
+      return res.json();
+    },
+    onSuccess: (data: { secret: string; qrCode: string }) => {
+      setTwoFaSetupData(data);
+      setTwoFaCode("");
+      setShowSecret(false);
+      setSecretCopied(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to set up 2FA", variant: "destructive" });
+    },
+  });
+
+  const verify2faMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await apiRequest("POST", "/api/community/auth/2fa/verify", { code });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/auth/me"] });
+      setTwoFaSetupData(null);
+      setTwoFaCode("");
+      toast({ title: "Two-factor authentication enabled!" });
+    },
+    onError: () => {
+      toast({ title: "Invalid code. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const disable2faMutation = useMutation({
+    mutationFn: async (password: string) => {
+      const res = await apiRequest("POST", "/api/community/auth/2fa/disable", { password });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/auth/me"] });
+      setShowDisable2fa(false);
+      setDisablePassword("");
+      toast({ title: "Two-factor authentication disabled" });
+    },
+    onError: () => {
+      toast({ title: "Incorrect password", variant: "destructive" });
     },
   });
 
@@ -199,6 +306,14 @@ export default function CommunityAccount() {
     updateProfileMutation.mutate({
       displayName: displayName.trim(),
       bio: bio.trim(),
+      websiteUrl: websiteUrl.trim(),
+      facebookUrl: facebookUrl.trim(),
+      twitterUrl: twitterUrl.trim(),
+      linkedinUrl: linkedinUrl.trim(),
+      instagramUrl: instagramUrl.trim(),
+      youtubeUrl: youtubeUrl.trim(),
+      githubUrl: githubUrl.trim(),
+      tiktokUrl: tiktokUrl.trim(),
     });
   };
 
@@ -406,6 +521,116 @@ export default function CommunityAccount() {
                 />
               </div>
 
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Link2 className="w-5 h-5 text-primary" />
+                  <h3 className="text-sm font-semibold">Website & Social Profiles</h3>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Add your links and they'll appear as icons next to your name in the community
+                </p>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <Globe className="w-4 h-4 text-foreground/70" />
+                    </div>
+                    <Input
+                      value={websiteUrl}
+                      onChange={(e) => setWebsiteUrl(e.target.value)}
+                      placeholder="https://yourwebsite.com"
+                      data-testid="input-website-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiFacebook className="w-4 h-4 text-[#1877F2]" />
+                    </div>
+                    <Input
+                      value={facebookUrl}
+                      onChange={(e) => setFacebookUrl(e.target.value)}
+                      placeholder="https://facebook.com/yourprofile"
+                      data-testid="input-facebook-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiX className="w-4 h-4 text-foreground" />
+                    </div>
+                    <Input
+                      value={twitterUrl}
+                      onChange={(e) => setTwitterUrl(e.target.value)}
+                      placeholder="https://x.com/yourhandle"
+                      data-testid="input-twitter-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiLinkedin className="w-4 h-4 text-[#0A66C2]" />
+                    </div>
+                    <Input
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      placeholder="https://linkedin.com/in/yourprofile"
+                      data-testid="input-linkedin-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiInstagram className="w-4 h-4 text-[#E4405F]" />
+                    </div>
+                    <Input
+                      value={instagramUrl}
+                      onChange={(e) => setInstagramUrl(e.target.value)}
+                      placeholder="https://instagram.com/yourhandle"
+                      data-testid="input-instagram-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiYoutube className="w-4 h-4 text-[#FF0000]" />
+                    </div>
+                    <Input
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      placeholder="https://youtube.com/@yourchannel"
+                      data-testid="input-youtube-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiGithub className="w-4 h-4 text-foreground" />
+                    </div>
+                    <Input
+                      value={githubUrl}
+                      onChange={(e) => setGithubUrl(e.target.value)}
+                      placeholder="https://github.com/yourusername"
+                      data-testid="input-github-url"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg border-2 border-foreground/20 bg-muted/30 flex items-center justify-center shrink-0">
+                      <SiTiktok className="w-4 h-4 text-foreground" />
+                    </div>
+                    <Input
+                      value={tiktokUrl}
+                      onChange={(e) => setTiktokUrl(e.target.value)}
+                      placeholder="https://tiktok.com/@yourhandle"
+                      data-testid="input-tiktok-url"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="flex justify-end">
                 <Button
                   onClick={handleSaveProfile}
@@ -422,6 +647,191 @@ export default function CommunityAccount() {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-2fa">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <KeyRound className="w-5 h-5" />
+              Two-Factor Authentication
+            </CardTitle>
+            <CardDescription>
+              Add an extra layer of security to your account using an authenticator app
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {user.twoFactorEnabled ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <ShieldCheck className="w-6 h-6 text-emerald-500 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Two-factor authentication is enabled</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Your account is protected with an authenticator app</p>
+                  </div>
+                </div>
+                {!showDisable2fa ? (
+                  <Button
+                    variant="outline"
+                    className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => setShowDisable2fa(true)}
+                    data-testid="button-show-disable-2fa"
+                  >
+                    <ShieldOff className="w-4 h-4" />
+                    Disable 2FA
+                  </Button>
+                ) : (
+                  <div className="space-y-3 p-4 rounded-lg border border-destructive/20 bg-destructive/5">
+                    <p className="text-sm font-medium">Enter your password to disable 2FA</p>
+                    <Input
+                      type="password"
+                      value={disablePassword}
+                      onChange={(e) => setDisablePassword(e.target.value)}
+                      placeholder="Your password"
+                      data-testid="input-disable-2fa-password"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => disable2faMutation.mutate(disablePassword)}
+                        disabled={!disablePassword || disable2faMutation.isPending}
+                        data-testid="button-confirm-disable-2fa"
+                      >
+                        {disable2faMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm Disable"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setShowDisable2fa(false); setDisablePassword(""); }}
+                        data-testid="button-cancel-disable-2fa"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : twoFaSetupData ? (
+              <div className="space-y-5">
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <QrCode className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-700 dark:text-amber-400">Scan this QR code with your authenticator app</p>
+                    <p className="text-xs text-muted-foreground mt-1">Use Google Authenticator, Authy, Microsoft Authenticator, or any TOTP-compatible app</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-center p-6 bg-white rounded-xl border-2 border-dashed border-muted-foreground/20">
+                  <img
+                    src={twoFaSetupData.qrCode}
+                    alt="2FA QR Code"
+                    className="w-48 h-48"
+                    data-testid="img-2fa-qr-code"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Manual entry key</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setShowSecret(!showSecret)}
+                      data-testid="button-toggle-secret"
+                    >
+                      {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                  {showSecret && (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 font-mono text-sm">
+                      <code className="flex-1 break-all select-all" data-testid="text-2fa-secret">{twoFaSetupData.secret}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(twoFaSetupData.secret);
+                          setSecretCopied(true);
+                          setTimeout(() => setSecretCopied(false), 2000);
+                        }}
+                        data-testid="button-copy-secret"
+                      >
+                        {secretCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <label className="text-sm font-medium" htmlFor="totpCode">
+                    Enter the 6-digit code from your app to verify
+                  </label>
+                  <div className="flex gap-3">
+                    <Input
+                      id="totpCode"
+                      value={twoFaCode}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        setTwoFaCode(val);
+                      }}
+                      placeholder="000000"
+                      className="font-mono text-center text-lg tracking-[0.5em] max-w-[200px]"
+                      maxLength={6}
+                      data-testid="input-2fa-verify-code"
+                    />
+                    <Button
+                      onClick={() => verify2faMutation.mutate(twoFaCode)}
+                      disabled={twoFaCode.length !== 6 || verify2faMutation.isPending}
+                      className="gap-2"
+                      data-testid="button-verify-2fa"
+                    >
+                      {verify2faMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4" />
+                      )}
+                      Verify & Enable
+                    </Button>
+                  </div>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setTwoFaSetupData(null); setTwoFaCode(""); }}
+                  data-testid="button-cancel-2fa-setup"
+                >
+                  Cancel Setup
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border">
+                  <Shield className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="text-sm text-muted-foreground">
+                    <p>Two-factor authentication adds an extra layer of security. When enabled, you'll need to enter a code from your authenticator app each time you log in.</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setup2faMutation.mutate()}
+                  disabled={setup2faMutation.isPending}
+                  className="gap-2"
+                  data-testid="button-setup-2fa"
+                >
+                  {setup2faMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <QrCode className="w-4 h-4" />
+                  )}
+                  Set Up Two-Factor Authentication
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 

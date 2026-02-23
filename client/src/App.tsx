@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -11,9 +11,11 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LogOut, Bell } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LogOut, Bell, AtSign, Heart, MessageCircle, Share2, Check, CheckCheck } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import NotFound from "@/pages/not-found";
 import Overview from "@/pages/overview";
 import Customers from "@/pages/customers";
@@ -88,6 +90,12 @@ function DashboardLayout() {
   });
   const unreadCount = notifData?.count || 0;
 
+  const [bellOpen, setBellOpen] = useState(false);
+  const { data: notifications = [] } = useQuery<any[]>({
+    queryKey: ["/api/community/notifications"],
+    enabled: isLoggedIn && bellOpen,
+  });
+
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {
       toast({ title: "Unauthorized", description: "Please sign in to access the dashboard.", variant: "destructive" });
@@ -117,16 +125,64 @@ function DashboardLayout() {
           <header className="flex items-center justify-between gap-3 flex-wrap px-4 py-2 border-b sticky top-0 z-50 bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-3">
-              <a href="/admin/community" className="relative" data-testid="link-community-notifications">
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="w-4 h-4" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none" data-testid="badge-notification-count">
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </a>
+              <Popover open={bellOpen} onOpenChange={(open) => {
+                setBellOpen(open);
+                if (open) {
+                  queryClient.invalidateQueries({ queryKey: ["/api/community/notifications"] });
+                }
+              }}>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications-bell">
+                    <Bell className="w-4 h-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none" data-testid="badge-notification-count">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 p-0 max-h-96 overflow-hidden" data-testid="popover-notifications">
+                  <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+                    <h4 className="text-sm font-semibold">Notifications</h4>
+                    {unreadCount > 0 && (
+                      <Button variant="ghost" size="sm" className="text-xs h-7 px-2" data-testid="button-mark-all-read"
+                        onClick={async () => {
+                          await apiRequest("POST", "/api/community/notifications/read-all");
+                          queryClient.invalidateQueries({ queryKey: ["/api/community/notifications/unread-count"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/community/notifications"] });
+                        }}>
+                        <CheckCheck className="w-3 h-3 mr-1" /> Mark all read
+                      </Button>
+                    )}
+                  </div>
+                  <div className="overflow-y-auto max-h-72">
+                    {notifications.length === 0 ? (
+                      <div className="text-sm text-muted-foreground text-center py-8">No notifications yet</div>
+                    ) : (
+                      notifications.slice(0, 20).map((n: any) => {
+                        const iconMap: Record<string, any> = { mention: AtSign, comment: MessageCircle, like: Heart, heart: Heart, share: Share2 };
+                        const colorMap: Record<string, string> = { mention: "text-blue-500", comment: "text-green-500", like: "text-pink-500", heart: "text-pink-500", share: "text-purple-500", friend_request: "text-orange-500", friend_accepted: "text-emerald-500" };
+                        const Icon = iconMap[n.type] || Bell;
+                        return (
+                          <div key={n.id} className={`px-4 py-3 border-b last:border-0 flex items-start gap-3 hover:bg-muted/30 transition-colors ${!n.isRead ? "bg-primary/5" : ""}`} data-testid={`notification-item-${n.id}`}>
+                            <div className={`mt-0.5 ${colorMap[n.type] || "text-muted-foreground"}`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm leading-snug">{n.message}</p>
+                              <p className="text-xs text-muted-foreground mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ""}</p>
+                            </div>
+                            {!n.isRead && <div className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <a href="/admin/community" className="block px-4 py-2.5 text-center text-xs text-primary hover:bg-muted/50 border-t font-medium" data-testid="link-view-all-notifications">
+                    View Community
+                  </a>
+                </PopoverContent>
+              </Popover>
               <div className="flex items-center gap-2">
                 <Avatar className="w-7 h-7" data-testid="img-user-avatar">
                   <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />

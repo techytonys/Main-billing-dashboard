@@ -5296,7 +5296,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: "/",
       });
-      const { passwordHash: _, ...safeUser } = user;
+      const { passwordHash: _, totpSecret: _ts, ...safeUser } = user;
       res.status(201).json(safeUser);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -5305,7 +5305,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
 
   app.post("/api/community/auth/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, totpCode } = req.body;
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password are required" });
       }
@@ -5317,6 +5317,17 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const valid = await bcrypt.compare(password, user.passwordHash);
       if (!valid) {
         return res.status(401).json({ error: "Invalid email or password" });
+      }
+      if (user.twoFactorEnabled && user.totpSecret) {
+        if (!totpCode) {
+          return res.status(403).json({ error: "2fa_required", message: "Two-factor authentication code required" });
+        }
+        const { TOTP } = await import("otpauth");
+        const totp = new TOTP({ secret: user.totpSecret, algorithm: "SHA1", digits: 6, period: 30 });
+        const delta = totp.validate({ token: totpCode, window: 1 });
+        if (delta === null) {
+          return res.status(401).json({ error: "Invalid two-factor authentication code" });
+        }
       }
       await storage.updateCommunityUser(user.id, { lastSeenAt: new Date() });
       const crypto = await import("crypto");
@@ -5332,7 +5343,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: "/",
       });
-      const { passwordHash: _, ...safeUser } = user;
+      const { passwordHash: _, totpSecret: _ts, ...safeUser } = user;
       res.json(safeUser);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -5359,8 +5370,8 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
         return res.status(401).json({ error: "Not authenticated" });
       }
       await storage.updateCommunityUser(user.id, { lastSeenAt: new Date() });
-      const { passwordHash: _, ...safeUser } = user;
-      res.json(safeUser);
+      const { passwordHash: _, totpSecret: _ts, ...safeUser } = user;
+      res.json({ ...safeUser, twoFactorEnabled: !!user.twoFactorEnabled });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -5370,14 +5381,152 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     try {
       const user = await getCommunityUser(req);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const { displayName, bio, avatarUrl } = req.body;
+      const { displayName, bio, avatarUrl, websiteUrl, facebookUrl, twitterUrl, linkedinUrl, instagramUrl, youtubeUrl, githubUrl, tiktokUrl } = req.body;
       const updated = await storage.updateCommunityUser(user.id, {
         ...(displayName && { displayName }),
         ...(bio !== undefined && { bio }),
         ...(avatarUrl !== undefined && { avatarUrl }),
+        ...(websiteUrl !== undefined && { websiteUrl }),
+        ...(facebookUrl !== undefined && { facebookUrl }),
+        ...(twitterUrl !== undefined && { twitterUrl }),
+        ...(linkedinUrl !== undefined && { linkedinUrl }),
+        ...(instagramUrl !== undefined && { instagramUrl }),
+        ...(youtubeUrl !== undefined && { youtubeUrl }),
+        ...(githubUrl !== undefined && { githubUrl }),
+        ...(tiktokUrl !== undefined && { tiktokUrl }),
       });
       if (!updated) return res.status(404).json({ error: "User not found" });
-      const { passwordHash: _, ...safeUser } = updated;
+      const { passwordHash: _, totpSecret: _ts, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Two-Factor Authentication ====================
+  app.post("/api/community/auth/2fa/setup", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      if (user.twoFactorEnabled) return res.status(400).json({ error: "Two-factor authentication is already enabled" });
+
+      const { TOTP, Secret } = await import("otpauth");
+      const secret = new Secret({ size: 20 });
+      const totp = new TOTP({
+        issuer: "AI Powered Sites Community",
+        label: user.email,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret,
+      });
+
+      await storage.updateCommunityUser(user.id, { totpSecret: secret.base32 });
+      const otpauthUrl = totp.toString();
+      const QRCode = await import("qrcode");
+      const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+      res.json({
+        secret: secret.base32,
+        qrCode: qrCodeDataUrl,
+        otpauthUrl,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/auth/2fa/verify", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      if (user.twoFactorEnabled) return res.status(400).json({ error: "Two-factor authentication is already enabled" });
+      if (!user.totpSecret) return res.status(400).json({ error: "Please set up 2FA first" });
+
+      const { code } = req.body;
+      if (!code) return res.status(400).json({ error: "Verification code is required" });
+
+      const { TOTP } = await import("otpauth");
+      const totp = new TOTP({ secret: user.totpSecret, algorithm: "SHA1", digits: 6, period: 30 });
+      const delta = totp.validate({ token: code, window: 1 });
+
+      if (delta === null) {
+        return res.status(400).json({ error: "Invalid verification code. Please try again." });
+      }
+
+      await storage.updateCommunityUser(user.id, { twoFactorEnabled: true });
+      res.json({ success: true, message: "Two-factor authentication enabled successfully" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/auth/2fa/disable", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      if (!user.twoFactorEnabled) return res.status(400).json({ error: "Two-factor authentication is not enabled" });
+
+      const { password } = req.body;
+      if (!password) return res.status(400).json({ error: "Password is required to disable 2FA" });
+
+      const bcrypt = await import("bcryptjs");
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) return res.status(401).json({ error: "Incorrect password" });
+
+      await storage.updateCommunityUser(user.id, { twoFactorEnabled: false, totpSecret: null });
+      res.json({ success: true, message: "Two-factor authentication disabled" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Admin Auto-Login to Community ====================
+  app.post("/api/community/auth/admin-auto-login", isAuthenticated, async (req, res) => {
+    try {
+      const adminUser = req.user as any;
+      if (!adminUser) return res.status(401).json({ error: "Not authenticated as admin" });
+
+      const adminEmail = adminUser.email || `admin-${adminUser.id}@admin.local`;
+      const adminDisplayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || "Admin";
+      const adminAvatar = adminUser.profileImageUrl || null;
+
+      let communityUser = await storage.getCommunityUserByEmail(adminEmail);
+      if (!communityUser) {
+        const bcrypt = await import("bcryptjs");
+        const randomPass = require("crypto").randomBytes(32).toString("hex");
+        const passwordHash = await bcrypt.hash(randomPass, 12);
+        communityUser = await storage.createCommunityUser({
+          email: adminEmail,
+          passwordHash,
+          displayName: adminDisplayName,
+          avatarUrl: adminAvatar,
+          isActive: true,
+        });
+      } else {
+        await storage.updateCommunityUser(communityUser.id, {
+          displayName: adminDisplayName,
+          avatarUrl: adminAvatar,
+          lastSeenAt: new Date(),
+        });
+      }
+
+      const crypto = await import("crypto");
+      const sessionToken = crypto.randomBytes(48).toString("hex");
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+      const userAgentStr = req.headers["user-agent"] || "";
+      await storage.createCommunitySession(communityUser.id, sessionToken, expiresAt, ipAddress, userAgentStr);
+
+      res.cookie("community_session", sessionToken, {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+
+      const { passwordHash: _, totpSecret: _ts, ...safeUser } = communityUser;
       res.json(safeUser);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -5806,6 +5955,208 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (!customer) return res.status(404).json({ message: "Invalid portal link" });
       const count = await storage.getUnreadCommunityNotificationCount("client", customer.id);
       res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Friendships ====================
+
+  app.get("/api/community/friendships", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const friendships = await storage.getCommunityFriendships(user.id);
+      res.json(friendships);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/friendships", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { addresseeId } = req.body;
+      if (!addresseeId) return res.status(400).json({ error: "addresseeId required" });
+      const existing = await storage.getCommunityFriendship(user.id, addresseeId);
+      if (existing) return res.status(400).json({ error: "Friend request already exists" });
+      const friendship = await storage.createCommunityFriendship({
+        requesterId: user.id,
+        addresseeId,
+        status: "pending",
+      });
+      const addressee = await storage.getCommunityUser(addresseeId);
+      if (addressee) {
+        await storage.createCommunityNotification({
+          recipientType: "community_user",
+          recipientUserId: addresseeId,
+          type: "friend_request",
+          message: `${user.displayName} sent you a friend request`,
+          actorName: user.displayName,
+        });
+      }
+      res.json(friendship);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/friendships/:id/accept", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const updated = await storage.updateCommunityFriendship(req.params.id, "accepted");
+      if (updated) {
+        await storage.createCommunityNotification({
+          recipientType: "community_user",
+          recipientUserId: updated.requesterId,
+          type: "friend_accepted",
+          message: `${user.displayName} accepted your friend request`,
+          actorName: user.displayName,
+        });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/friendships/:id/decline", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      await storage.deleteCommunityFriendship(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/community/friendships/:id", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      await storage.deleteCommunityFriendship(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/friends", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const friendIds = await storage.getCommunityFriends(user.id);
+      const friends = await Promise.all(friendIds.map(id => storage.getCommunityUser(id)));
+      res.json(friends.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Groups ====================
+
+  app.get("/api/community/groups", async (req, res) => {
+    try {
+      const groups = await storage.getCommunityGroups();
+      res.json(groups);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/groups/:id", async (req, res) => {
+    try {
+      const group = await storage.getCommunityGroup(req.params.id);
+      if (!group) return res.status(404).json({ error: "Group not found" });
+      res.json(group);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/groups", isAuthenticated, async (req, res) => {
+    try {
+      const group = await storage.createCommunityGroup(req.body);
+      res.json(group);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/community/groups/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateCommunityGroup(req.params.id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/community/groups/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteCommunityGroup(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/groups/:id/members", async (req, res) => {
+    try {
+      const members = await storage.getCommunityGroupMembers(req.params.id);
+      res.json(members);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/groups/:id/join", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const isMember = await storage.isGroupMember(req.params.id, user.id);
+      if (isMember) return res.status(400).json({ error: "Already a member" });
+      const member = await storage.addCommunityGroupMember({
+        groupId: req.params.id,
+        userId: user.id,
+        role: "member",
+      });
+      res.json(member);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/groups/:id/leave", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      await storage.removeCommunityGroupMember(req.params.id, user.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/groups/:id/posts", async (req, res) => {
+    try {
+      const posts = await storage.getCommunityGroupPosts(req.params.id);
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin friendships endpoint (for admin panel)
+  app.get("/api/community/admin/friendships", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.query.userId as string;
+      if (!userId) return res.status(400).json({ error: "userId required" });
+      const friendships = await storage.getCommunityFriendships(userId);
+      res.json(friendships);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

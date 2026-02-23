@@ -45,6 +45,16 @@ import {
   ExternalLink,
   User,
   AtSign,
+  UserPlus2,
+  UsersRound,
+  Hash,
+  Layers,
+  Plus,
+  UserCheck,
+  UserX,
+  Filter,
+  X,
+  Shield,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -52,6 +62,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  SiFacebook,
+  SiX,
+  SiLinkedin,
+  SiInstagram,
+  SiYoutube,
+  SiGithub,
+  SiTiktok,
+} from "react-icons/si";
 
 type ReactionType = "like" | "heart" | "haha" | "angry";
 
@@ -61,6 +80,14 @@ interface CommunityUser {
   displayName: string;
   avatarUrl?: string | null;
   bio?: string | null;
+  websiteUrl?: string | null;
+  facebookUrl?: string | null;
+  twitterUrl?: string | null;
+  linkedinUrl?: string | null;
+  instagramUrl?: string | null;
+  youtubeUrl?: string | null;
+  githubUrl?: string | null;
+  tiktokUrl?: string | null;
   createdAt: string;
 }
 
@@ -81,6 +108,14 @@ interface CommunityMember {
   displayName: string;
   avatarUrl?: string | null;
   bio?: string | null;
+  websiteUrl?: string | null;
+  facebookUrl?: string | null;
+  twitterUrl?: string | null;
+  linkedinUrl?: string | null;
+  instagramUrl?: string | null;
+  youtubeUrl?: string | null;
+  githubUrl?: string | null;
+  tiktokUrl?: string | null;
   createdAt: string;
 }
 
@@ -115,6 +150,35 @@ interface CommunityComment {
   createdAt: string;
 }
 
+interface CommunityGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  memberCount?: number;
+  createdAt: string;
+}
+
+interface CommunityFriendship {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: string;
+  requesterName?: string;
+  addresseeName?: string;
+  createdAt: string;
+}
+
+interface CommunityFriend {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  createdAt: string;
+}
+
 function useCommunityAuth(skip: boolean) {
   const { data: user, isLoading, refetch } = useQuery<CommunityUser | null>({
     queryKey: ["/api/community/auth/me"],
@@ -126,7 +190,7 @@ function useCommunityAuth(skip: boolean) {
   const isLoggedIn = !!user;
 
   const loginMutation = useMutation({
-    mutationFn: async (data: { email: string; password: string }) => {
+    mutationFn: async (data: { email: string; password: string; totpCode?: string }) => {
       const res = await apiRequest("POST", "/api/community/auth/login", data);
       return res.json();
     },
@@ -786,19 +850,69 @@ function ReactionSummary({ counts, commentsCount }: ReactionSummaryProps) {
   );
 }
 
+interface SocialIconsProps {
+  member?: CommunityMember | null;
+  size?: "sm" | "md";
+}
+
+function SocialIcons({ member, size = "sm" }: SocialIconsProps) {
+  if (!member) return null;
+
+  const iconSize = size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
+  const containerSize = size === "sm" ? "w-6 h-6" : "w-7 h-7";
+
+  const socials = [
+    { url: member.websiteUrl, icon: Globe, color: "#6366F1", label: "Website" },
+    { url: member.facebookUrl, icon: SiFacebook, color: "#1877F2", label: "Facebook" },
+    { url: member.twitterUrl, icon: SiX, color: "#000000", label: "X" },
+    { url: member.linkedinUrl, icon: SiLinkedin, color: "#0A66C2", label: "LinkedIn" },
+    { url: member.instagramUrl, icon: SiInstagram, color: "#E4405F", label: "Instagram" },
+    { url: member.youtubeUrl, icon: SiYoutube, color: "#FF0000", label: "YouTube" },
+    { url: member.githubUrl, icon: SiGithub, color: "#333333", label: "GitHub" },
+    { url: member.tiktokUrl, icon: SiTiktok, color: "#000000", label: "TikTok" },
+  ].filter((s) => s.url);
+
+  if (socials.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {socials.map((social) => {
+        const Icon = social.icon;
+        return (
+          <a
+            key={social.label}
+            href={social.url!.startsWith("http") ? social.url! : `https://${social.url}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={social.label}
+            className={`${containerSize} rounded-md border-2 border-black dark:border-black/80 bg-background flex items-center justify-center transition-all duration-200 hover:brightness-110 hover:shadow-md`}
+            style={{
+              boxShadow: "inset 0 1px 2px rgba(255,255,255,0.4), 0 1px 3px rgba(0,0,0,0.2)",
+            }}
+            data-testid={`social-icon-${social.label.toLowerCase()}`}
+          >
+            <Icon className={iconSize} style={{ color: social.color }} />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 interface PostCardProps {
   post: CommunityPost;
   isAdmin: boolean;
   displayName: string;
   authorType: string;
   userAvatar?: string;
+  members?: CommunityMember[];
   onNeedName: () => void;
   onDelete: (id: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onEdit: (post: CommunityPost) => void;
 }
 
-function PostCard({ post, isAdmin, displayName, authorType, userAvatar, onNeedName, onDelete, onPin, onEdit }: PostCardProps) {
+function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members = [], onNeedName, onDelete, onPin, onEdit }: PostCardProps) {
   const { toast } = useToast();
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -843,6 +957,8 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, onNeedNa
       queryClient.invalidateQueries({ queryKey: ["/api/community/posts"] });
     },
   });
+
+  const authorMember = post.authorUserId ? members.find((m) => m.id === post.authorUserId) : null;
 
   const handleReaction = (type: ReactionType) => {
     if (!displayName) {
@@ -927,6 +1043,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, onNeedNa
                     Admin
                   </Badge>
                 )}
+                <SocialIcons member={authorMember} />
               </div>
               <div className="flex items-center gap-1.5">
                 <Clock className="w-3 h-3 text-muted-foreground" />
@@ -1105,24 +1222,34 @@ function AuthDialog({ open, onOpenChange, auth }: {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
+  const [needs2fa, setNeeds2fa] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
 
   const resetForm = () => {
     setEmail("");
     setPassword("");
     setDisplayName("");
     setError("");
+    setNeeds2fa(false);
+    setTotpCode("");
   };
 
   const handleSignIn = async () => {
     setError("");
     try {
-      await auth.login.mutateAsync({ email, password });
+      await auth.login.mutateAsync({ email, password, totpCode: needs2fa ? totpCode : undefined });
       resetForm();
       onOpenChange(false);
       toast({ title: "Signed in successfully" });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Sign in failed";
-      setError(msg.replace(/^\d+:\s*/, ""));
+      const cleanMsg = msg.replace(/^\d+:\s*/, "");
+      if (cleanMsg.includes("2fa_required") || cleanMsg.includes("Two-factor")) {
+        setNeeds2fa(true);
+        setError("");
+      } else {
+        setError(cleanMsg);
+      }
     }
   };
 
@@ -1162,30 +1289,65 @@ function AuthDialog({ open, onOpenChange, auth }: {
             <TabsTrigger value="signup" data-testid="tab-signup">Sign Up</TabsTrigger>
           </TabsList>
           <TabsContent value="signin" className="space-y-3 mt-4">
-            <Input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              data-testid="input-signin-email"
-            />
-            <Input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSignIn(); }}
-              data-testid="input-signin-password"
-            />
+            {!needs2fa ? (
+              <>
+                <Input
+                  type="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  data-testid="input-signin-email"
+                />
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSignIn(); }}
+                  data-testid="input-signin-password"
+                />
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <Shield className="w-5 h-5 text-primary shrink-0" />
+                  <p className="text-sm">Enter the 6-digit code from your authenticator app</p>
+                </div>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="000000"
+                  value={totpCode}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    setTotpCode(val);
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && totpCode.length === 6) handleSignIn(); }}
+                  className="font-mono text-center text-lg tracking-[0.5em]"
+                  maxLength={6}
+                  autoFocus
+                  data-testid="input-signin-2fa-code"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setNeeds2fa(false); setTotpCode(""); setError(""); }}
+                  className="text-xs"
+                  data-testid="button-back-to-login"
+                >
+                  Back to login
+                </Button>
+              </div>
+            )}
             {error && <p className="text-sm text-destructive" data-testid="text-auth-error">{error}</p>}
             <Button
               onClick={handleSignIn}
-              disabled={!email || !password || auth.login.isPending}
+              disabled={!email || !password || (needs2fa && totpCode.length !== 6) || auth.login.isPending}
               className="w-full gap-2"
               data-testid="button-signin"
             >
               <LogIn className="w-4 h-4" />
-              {auth.login.isPending ? "Signing in..." : "Sign In"}
+              {auth.login.isPending ? "Signing in..." : needs2fa ? "Verify & Sign In" : "Sign In"}
             </Button>
           </TabsContent>
           <TabsContent value="signup" className="space-y-3 mt-4">
@@ -1300,8 +1462,8 @@ function NotificationBell() {
           </div>
         ) : (
           notifications.slice(0, 20).map((n) => {
-            const NotifIcon = n.type === "mention" ? AtSign : n.type === "comment" ? MessageCircle : n.type === "reaction" ? Heart : n.type === "share" ? Share2 : Bell;
-            const iconColor = n.type === "mention" ? "text-blue-500" : n.type === "comment" ? "text-green-500" : n.type === "reaction" ? "text-pink-500" : n.type === "share" ? "text-purple-500" : "text-muted-foreground";
+            const NotifIcon = n.type === "mention" ? AtSign : n.type === "comment" ? MessageCircle : n.type === "reaction" ? Heart : n.type === "share" ? Share2 : n.type === "friend_request" ? UserPlus : n.type === "friend_accepted" ? UserCheck : Bell;
+            const iconColor = n.type === "mention" ? "text-blue-500" : n.type === "comment" ? "text-green-500" : n.type === "reaction" ? "text-pink-500" : n.type === "share" ? "text-purple-500" : n.type === "friend_request" ? "text-orange-500" : n.type === "friend_accepted" ? "text-emerald-500" : "text-muted-foreground";
             return (
               <DropdownMenuItem
                 key={n.id}
@@ -1413,9 +1575,302 @@ function ContactDialog({ open, onOpenChange, prefillName, prefillEmail }: {
   );
 }
 
-function LeftSidebar({ postCount, isLoggedIn }: { postCount: number; isLoggedIn: boolean }) {
+const GROUP_COLORS = [
+  { name: "Blue", value: "#3B82F6" },
+  { name: "Green", value: "#10B981" },
+  { name: "Purple", value: "#8B5CF6" },
+  { name: "Orange", value: "#F97316" },
+  { name: "Pink", value: "#EC4899" },
+  { name: "Cyan", value: "#06B6D4" },
+  { name: "Red", value: "#EF4444" },
+  { name: "Amber", value: "#F59E0B" },
+];
+
+const GROUP_ICONS = ["Hash", "Star", "Zap", "Globe", "Megaphone", "Layers", "Users", "MessageCircle"];
+
+function getGroupIcon(iconName?: string | null) {
+  switch (iconName) {
+    case "Star": return Star;
+    case "Zap": return Zap;
+    case "Globe": return Globe;
+    case "Megaphone": return Megaphone;
+    case "Layers": return Layers;
+    case "Users": return UsersRound;
+    case "MessageCircle": return MessageCircle;
+    default: return Hash;
+  }
+}
+
+function CreateGroupDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedIcon, setSelectedIcon] = useState("Hash");
+  const [selectedColor, setSelectedColor] = useState("#3B82F6");
+
+  const createGroup = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/community/groups", {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        icon: selectedIcon,
+        color: selectedColor,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/groups"] });
+      toast({ title: "Group created" });
+      setName("");
+      setDescription("");
+      setSelectedIcon("Hash");
+      setSelectedColor("#3B82F6");
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to create group", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px]" data-testid="dialog-create-group">
+        <DialogHeader>
+          <DialogTitle className="text-xl flex items-center gap-2">
+            <Plus className="w-5 h-5" />
+            Create Group
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Create a new group for community discussions.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Group Name</label>
+            <Input
+              placeholder="e.g. General Discussion"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="input-group-name"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Description</label>
+            <Textarea
+              placeholder="What is this group about?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="min-h-[80px] resize-none"
+              data-testid="textarea-group-description"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Icon</label>
+            <div className="flex flex-wrap gap-2">
+              {GROUP_ICONS.map((iconName) => {
+                const IconComp = getGroupIcon(iconName);
+                return (
+                  <button
+                    key={iconName}
+                    onClick={() => setSelectedIcon(iconName)}
+                    className={`h-9 w-9 rounded-lg flex items-center justify-center border transition-colors ${
+                      selectedIcon === iconName ? "border-primary bg-primary/10" : "border-border hover-elevate"
+                    }`}
+                    data-testid={`button-icon-${iconName}`}
+                  >
+                    <IconComp className="w-4 h-4" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Color</label>
+            <div className="flex flex-wrap gap-2">
+              {GROUP_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  onClick={() => setSelectedColor(color.value)}
+                  className={`h-8 w-8 rounded-full border-2 transition-transform ${
+                    selectedColor === color.value ? "border-foreground scale-110" : "border-transparent"
+                  }`}
+                  style={{ backgroundColor: color.value }}
+                  title={color.name}
+                  data-testid={`button-color-${color.name}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-group">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => createGroup.mutate()}
+            disabled={!name.trim() || createGroup.isPending}
+            className="gap-1.5"
+            data-testid="button-save-group"
+          >
+            <Plus className="w-4 h-4" />
+            {createGroup.isPending ? "Creating..." : "Create Group"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FriendRequestsPanel({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+
+  const { data: friendships = [] } = useQuery<CommunityFriendship[]>({
+    queryKey: ["/api/community/friendships"],
+  });
+
+  const pendingRequests = friendships.filter((f) => f.status === "pending");
+
+  const acceptRequest = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/community/friendships/${id}/accept`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/friendships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/community/friends"] });
+      toast({ title: "Friend request accepted" });
+    },
+  });
+
+  const declineRequest = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/community/friendships/${id}/decline`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/friendships"] });
+      toast({ title: "Friend request declined" });
+    },
+  });
+
+  return (
+    <div className="bg-card rounded-xl border p-5" data-testid="panel-friend-requests">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <UserPlus2 className="w-3.5 h-3.5" />
+          Friend Requests
+        </h4>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} data-testid="button-close-friend-requests">
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      {pendingRequests.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-3" data-testid="text-no-friend-requests">
+          No pending requests
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          {pendingRequests.map((req) => (
+            <div key={req.id} className="flex items-center justify-between gap-2" data-testid={`friend-request-${req.id}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar className="h-7 w-7 shrink-0 ring-1 ring-background">
+                  <AvatarFallback className={`bg-gradient-to-br ${getAvatarGradient(req.requesterName || "User")} text-white text-[9px] font-bold`}>
+                    {getInitials(req.requesterName || "U")}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium truncate" data-testid={`text-requester-name-${req.id}`}>
+                  {req.requesterName || "Someone"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => acceptRequest.mutate(req.id)}
+                  disabled={acceptRequest.isPending}
+                  className="h-7 w-7 text-green-600 dark:text-green-400"
+                  data-testid={`button-accept-friend-${req.id}`}
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => declineRequest.mutate(req.id)}
+                  disabled={declineRequest.isPending}
+                  className="h-7 w-7 text-destructive/60"
+                  data-testid={`button-decline-friend-${req.id}`}
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeftSidebar({
+  postCount,
+  isLoggedIn,
+  selectedGroupId,
+  onSelectGroup,
+  onCreateGroup,
+  feedFilter,
+  onFeedFilterChange,
+  currentUserId,
+  isAdmin,
+}: {
+  postCount: number;
+  isLoggedIn: boolean;
+  selectedGroupId: string | null;
+  onSelectGroup: (id: string | null) => void;
+  onCreateGroup: () => void;
+  isAdmin?: boolean;
+  feedFilter: string;
+  onFeedFilterChange: (filter: string) => void;
+  currentUserId?: string;
+}) {
+  const { toast } = useToast();
+  const [showFriendRequests, setShowFriendRequests] = useState(false);
+
   const { data: members = [] } = useQuery<CommunityMember[]>({
     queryKey: ["/api/community/members"],
+  });
+
+  const { data: groups = [] } = useQuery<CommunityGroup[]>({
+    queryKey: ["/api/community/groups"],
+  });
+
+  const { data: friendships = [] } = useQuery<CommunityFriendship[]>({
+    queryKey: ["/api/community/friendships"],
+    enabled: isLoggedIn,
+  });
+
+  const { data: friends = [] } = useQuery<CommunityFriend[]>({
+    queryKey: ["/api/community/friends"],
+    enabled: isLoggedIn,
+  });
+
+  const pendingRequestCount = friendships.filter((f) => f.status === "pending").length;
+  const friendIds = new Set(friends.map((f) => f.id));
+  const pendingOutgoing = new Set(
+    friendships
+      .filter((f) => f.status === "pending" && f.requesterId === currentUserId)
+      .map((f) => f.addresseeId)
+  );
+
+  const sendFriendRequest = useMutation({
+    mutationFn: async (addresseeId: string) => {
+      await apiRequest("POST", "/api/community/friendships", { addresseeId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/friendships"] });
+      toast({ title: "Friend request sent" });
+    },
+    onError: () => {
+      toast({ title: "Failed to send friend request", variant: "destructive" });
+    },
   });
 
   return (
@@ -1426,7 +1881,7 @@ function LeftSidebar({ postCount, isLoggedIn }: { postCount: number; isLoggedIn:
             <Users className="w-5 h-5 text-primary-foreground" />
           </div>
           <div>
-            <h3 className="font-semibold text-sm">Community Members</h3>
+            <h3 className="font-semibold text-sm">Community</h3>
             <p className="text-xs text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""}</p>
           </div>
         </div>
@@ -1450,33 +1905,173 @@ function LeftSidebar({ postCount, isLoggedIn }: { postCount: number; isLoggedIn:
               <p className="text-[11px] text-muted-foreground">Posts</p>
             </div>
           </div>
+          {isLoggedIn && (
+            <div className="flex items-center gap-3" data-testid="stat-friends">
+              <div className="h-8 w-8 rounded-lg bg-muted/60 dark:bg-muted/30 flex items-center justify-center">
+                <UsersRound className="w-4 h-4 text-foreground/60" />
+              </div>
+              <div>
+                <p className="text-sm font-medium" data-testid="text-friend-count">{friends.length}</p>
+                <p className="text-[11px] text-muted-foreground">Friends</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      <div className="bg-card rounded-xl border p-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5" />
+            Groups
+          </h4>
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onCreateGroup}
+              data-testid="button-create-group"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+        <button
+          onClick={() => { onSelectGroup(null); onFeedFilterChange("all"); }}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
+            !selectedGroupId && feedFilter === "all" ? "bg-primary/10 text-primary font-semibold" : "hover-elevate text-foreground/80"
+          }`}
+          data-testid="button-filter-all-posts"
+        >
+          <Globe className="w-4 h-4 shrink-0" />
+          <span>All Posts</span>
+        </button>
+        {isLoggedIn && (
+          <button
+            onClick={() => { onSelectGroup(null); onFeedFilterChange("friends"); }}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors mb-1 ${
+              feedFilter === "friends" ? "bg-primary/10 text-primary font-semibold" : "hover-elevate text-foreground/80"
+            }`}
+            data-testid="button-filter-friends"
+          >
+            <UsersRound className="w-4 h-4 shrink-0" />
+            <span>Friends</span>
+            {pendingRequestCount > 0 && (
+              <Badge variant="secondary" className="ml-auto text-[10px] h-5 min-w-[20px] justify-center" data-testid="badge-friend-requests">
+                {pendingRequestCount}
+              </Badge>
+            )}
+          </button>
+        )}
+        {groups.length > 0 && (
+          <div className="space-y-0.5 mt-1">
+            {groups.map((group) => {
+              const GroupIcon = getGroupIcon(group.icon);
+              const isSelected = selectedGroupId === group.id;
+              return (
+                <button
+                  key={group.id}
+                  onClick={() => {
+                    onSelectGroup(isSelected ? null : group.id);
+                    onFeedFilterChange(isSelected ? "all" : "group");
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    isSelected ? "bg-primary/10 font-semibold" : "hover-elevate"
+                  }`}
+                  data-testid={`button-group-${group.id}`}
+                >
+                  <span
+                    className="h-5 w-5 rounded-md flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${group.color || "#3B82F6"}20` }}
+                  >
+                    <GroupIcon className="w-3 h-3" style={{ color: group.color || "#3B82F6" }} />
+                  </span>
+                  <span className="truncate flex-1 text-left">{group.name}</span>
+                  {group.memberCount != null && (
+                    <span className="text-[11px] text-muted-foreground shrink-0">{group.memberCount}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {groups.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-2" data-testid="text-no-groups">No groups yet</p>
+        )}
+      </div>
+
+      {isLoggedIn && showFriendRequests && (
+        <FriendRequestsPanel onClose={() => setShowFriendRequests(false)} />
+      )}
+
+      {isLoggedIn && pendingRequestCount > 0 && !showFriendRequests && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-1.5 text-xs"
+          onClick={() => setShowFriendRequests(true)}
+          data-testid="button-show-friend-requests"
+        >
+          <UserPlus2 className="w-3.5 h-3.5" />
+          {pendingRequestCount} Friend Request{pendingRequestCount !== 1 ? "s" : ""}
+        </Button>
+      )}
 
       {members.length > 0 && (
         <div className="bg-card rounded-xl border p-5">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Members</h4>
           <div className="space-y-2.5 max-h-[300px] overflow-y-auto">
-            {members.slice(0, 20).map((member) => (
-              <div
-                key={member.id}
-                className="flex items-center gap-2.5"
-                data-testid={`member-${member.id}`}
-              >
-                <Avatar className="h-8 w-8 shrink-0 ring-1 ring-background">
-                  {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.displayName} />}
-                  <AvatarFallback
-                    className={`bg-gradient-to-br ${getAvatarGradient(member.displayName)} text-white text-[10px] font-bold`}
-                  >
-                    {getInitials(member.displayName)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate" data-testid={`text-member-name-${member.id}`}>{member.displayName}</p>
-                  <p className="text-[11px] text-muted-foreground">Joined {getRelativeTime(member.createdAt)}</p>
+            {members.slice(0, 20).map((member) => {
+              const isFriend = friendIds.has(member.id);
+              const isPendingOut = pendingOutgoing.has(member.id);
+              const isSelf = member.id === currentUserId;
+
+              return (
+                <div
+                  key={member.id}
+                  className="flex items-center gap-2.5"
+                  data-testid={`member-${member.id}`}
+                >
+                  <Avatar className="h-8 w-8 shrink-0 ring-1 ring-background">
+                    {member.avatarUrl && <AvatarImage src={member.avatarUrl} alt={member.displayName} />}
+                    <AvatarFallback
+                      className={`bg-gradient-to-br ${getAvatarGradient(member.displayName)} text-white text-[10px] font-bold`}
+                    >
+                      {getInitials(member.displayName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate" data-testid={`text-member-name-${member.id}`}>{member.displayName}</p>
+                    <p className="text-[11px] text-muted-foreground">Joined {getRelativeTime(member.createdAt)}</p>
+                  </div>
+                  {isLoggedIn && !isSelf && (
+                    <div className="shrink-0">
+                      {isFriend ? (
+                        <span className="text-[11px] text-green-600 dark:text-green-400 font-medium flex items-center gap-0.5" data-testid={`badge-friend-${member.id}`}>
+                          <UserCheck className="w-3 h-3" />
+                        </span>
+                      ) : isPendingOut ? (
+                        <span className="text-[11px] text-muted-foreground font-medium" data-testid={`badge-pending-${member.id}`}>
+                          Pending
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground"
+                          onClick={() => sendFriendRequest.mutate(member.id)}
+                          disabled={sendFriendRequest.isPending}
+                          data-testid={`button-add-friend-${member.id}`}
+                        >
+                          <UserPlus2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1611,10 +2206,24 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
   const { toast } = useToast();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
+  const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [feedFilter, setFeedFilter] = useState<string>("all");
+  const [adminAutoLoggedIn, setAdminAutoLoggedIn] = useState(false);
 
   const adminAuth = useAuth();
-  const skipAuth = isAdmin || !!portalToken;
-  const auth = useCommunityAuth(skipAuth);
+  const auth = useCommunityAuth(false);
+
+  useEffect(() => {
+    if (isAdmin && adminAuth.user && !adminAutoLoggedIn && !auth.isLoggedIn) {
+      apiRequest("POST", "/api/community/auth/admin-auto-login")
+        .then(() => {
+          setAdminAutoLoggedIn(true);
+          auth.refetch();
+        })
+        .catch(() => {});
+    }
+  }, [isAdmin, adminAuth.user, adminAutoLoggedIn, auth.isLoggedIn]);
 
   const { data: portalData } = useQuery<{ customer: { name: string } }>({
     queryKey: ["/api/portal", portalToken],
@@ -1628,23 +2237,41 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
 
   const displayName = isAdmin
     ? [adminAuth.user?.firstName, adminAuth.user?.lastName].filter(Boolean).join(" ") || "Admin"
-    : portalToken && portalData?.customer?.name
-      ? portalData.customer.name
-      : auth.user?.displayName || "";
+    : auth.user?.displayName || "";
 
-  const authorType = isAdmin ? "admin" : portalToken ? "client" : "member";
+  const authorType = isAdmin ? "admin" : "member";
 
   const { data: posts = [], isLoading } = useQuery<CommunityPost[]>({
     queryKey: ["/api/community/posts"],
     refetchInterval: 30000,
   });
 
+  const { data: groupPosts = [] } = useQuery<CommunityPost[]>({
+    queryKey: ["/api/community/groups", selectedGroupId, "posts"],
+    enabled: !!selectedGroupId,
+  });
+
+  const { data: friends = [] } = useQuery<CommunityFriend[]>({
+    queryKey: ["/api/community/friends"],
+    enabled: auth.isLoggedIn || (isAdmin && adminAutoLoggedIn),
+  });
+
+  const { data: groups = [] } = useQuery<CommunityGroup[]>({
+    queryKey: ["/api/community/groups"],
+  });
+
+  const { data: allMembers = [] } = useQuery<CommunityMember[]>({
+    queryKey: ["/api/community/members"],
+  });
+
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId) || null;
+
   const [editingPost, setEditingPost] = useState<CommunityPost | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
 
-  const userAvatar = isAdmin ? (adminAuth.user?.profileImageUrl || "") : (auth.user?.avatarUrl || "");
+  const userAvatar = isAdmin ? (adminAuth.user?.profileImageUrl || auth.user?.avatarUrl || "") : (auth.user?.avatarUrl || "");
 
   const createPost = useMutation({
     mutationFn: async (data: { title?: string; body: string; imageUrl?: string }) => {
@@ -1654,11 +2281,15 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
         authorAvatar: userAvatar || undefined,
         authorType: authorType,
         authorRole: isAdmin ? "admin" : "member",
+        ...(selectedGroupId ? { groupId: selectedGroupId } : {}),
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/community/posts"] });
+      if (selectedGroupId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/community/groups", selectedGroupId, "posts"] });
+      }
       toast({ title: "Post published" });
     },
     onError: () => {
@@ -1710,7 +2341,19 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
     }
   };
 
-  const sortedPosts = [...posts].sort((a, b) => {
+  const friendUserIds = new Set(friends.map((f) => f.id));
+
+  const filteredPosts = (() => {
+    if (feedFilter === "group" && selectedGroupId) {
+      return groupPosts;
+    }
+    if (feedFilter === "friends") {
+      return posts.filter((p) => p.authorUserId && friendUserIds.has(p.authorUserId));
+    }
+    return posts;
+  })();
+
+  const sortedPosts = [...filteredPosts].sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1;
     if (!a.isPinned && b.isPinned) return 1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -1739,10 +2382,10 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                {auth.isLoggedIn && !skipAuth && (
+                {auth.isLoggedIn && (
                   <NotificationBell />
                 )}
-                {!skipAuth && auth.isLoggedIn && auth.user ? (
+                {auth.isLoggedIn && auth.user ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="gap-2" data-testid="button-user-menu">
@@ -1773,7 +2416,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                ) : !skipAuth ? (
+                ) : (
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
@@ -1796,7 +2439,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
                       <span className="hidden sm:inline">Sign Up</span>
                     </Button>
                   </div>
-                ) : null}
+                )}
               </div>
             </div>
             <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
@@ -1829,13 +2472,94 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
 
       <div className={`max-w-7xl mx-auto ${isAdmin ? "" : "px-4 py-6"}`}>
         <div className="flex gap-6">
-          {!isAdmin && (
-            <div className="hidden lg:block w-[260px] shrink-0">
-              <LeftSidebar postCount={posts.length} isLoggedIn={auth.isLoggedIn} />
-            </div>
-          )}
+          <div className="hidden lg:block w-[260px] shrink-0">
+            <LeftSidebar
+              postCount={posts.length}
+              isLoggedIn={auth.isLoggedIn}
+              isAdmin={isAdmin}
+              selectedGroupId={selectedGroupId}
+              onSelectGroup={setSelectedGroupId}
+              onCreateGroup={() => setCreateGroupDialogOpen(true)}
+              feedFilter={feedFilter}
+              onFeedFilterChange={setFeedFilter}
+              currentUserId={auth.user?.id}
+            />
+          </div>
 
-          <div className={`flex-1 min-w-0 ${isAdmin ? "max-w-[680px]" : ""} space-y-5`}>
+          <div className={`flex-1 min-w-0 space-y-5`}>
+            <div className="flex items-center gap-2 flex-wrap" data-testid="feed-filter-tabs">
+                <Button
+                  variant={feedFilter === "all" && !selectedGroupId ? "default" : "outline"}
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => { setFeedFilter("all"); setSelectedGroupId(null); }}
+                  data-testid="button-feed-all"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  All Posts
+                </Button>
+                {auth.isLoggedIn && (
+                  <Button
+                    variant={feedFilter === "friends" ? "default" : "outline"}
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    onClick={() => { setFeedFilter("friends"); setSelectedGroupId(null); }}
+                    data-testid="button-feed-friends"
+                  >
+                    <UsersRound className="w-3.5 h-3.5" />
+                    Friends
+                  </Button>
+                )}
+                {selectedGroup && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="gap-1.5 text-xs"
+                    data-testid="button-feed-group"
+                  >
+                    <Hash className="w-3.5 h-3.5" />
+                    {selectedGroup.name}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSelectedGroupId(null); setFeedFilter("all"); }}
+                      className="ml-1"
+                      data-testid="button-clear-group-filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Button>
+                )}
+              </div>
+
+            {selectedGroup && (
+              <div
+                className="bg-card rounded-xl border overflow-visible"
+                data-testid={`group-header-${selectedGroup.id}`}
+              >
+                <div
+                  className="h-16 rounded-t-xl flex items-end"
+                  style={{ backgroundColor: `${selectedGroup.color || "#3B82F6"}15` }}
+                >
+                  <div className="px-5 pb-3 flex items-center gap-3">
+                    <span
+                      className="h-9 w-9 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: `${selectedGroup.color || "#3B82F6"}25` }}
+                    >
+                      {(() => {
+                        const GIcon = getGroupIcon(selectedGroup.icon);
+                        return <GIcon className="w-5 h-5" style={{ color: selectedGroup.color || "#3B82F6" }} />;
+                      })()}
+                    </span>
+                    <div>
+                      <h3 className="font-semibold text-base" data-testid={`text-group-name-${selectedGroup.id}`}>{selectedGroup.name}</h3>
+                      {selectedGroup.description && (
+                        <p className="text-xs text-muted-foreground" data-testid={`text-group-desc-${selectedGroup.id}`}>{selectedGroup.description}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {displayName ? (
               <PostComposer
                 onPost={(data) => createPost.mutate(data)}
@@ -1867,9 +2591,15 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
                 <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
                   <MessageCircle className="w-8 h-8 text-muted-foreground/40" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2">No posts yet</h3>
+                <h3 className="font-semibold text-lg mb-2">
+                  {feedFilter === "friends" ? "No posts from friends" : feedFilter === "group" ? "No posts in this group" : "No posts yet"}
+                </h3>
                 <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                  Be the first to share something with the community!
+                  {feedFilter === "friends"
+                    ? "Add friends or wait for them to post!"
+                    : feedFilter === "group"
+                    ? "Be the first to post in this group!"
+                    : "Be the first to share something with the community!"}
                 </p>
               </div>
             ) : (
@@ -1882,6 +2612,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
                     displayName={displayName}
                     authorType={authorType}
                     userAvatar={userAvatar}
+                    members={allMembers}
                     onNeedName={handleNeedName}
                     onDelete={(id) => deletePost.mutate(id)}
                     onPin={(id, isPinned) => pinPost.mutate({ id, isPinned })}
@@ -1897,16 +2628,14 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
             )}
           </div>
 
-          {!isAdmin && (
-            <div className="hidden xl:block w-[300px] shrink-0">
-              <RightSidebar
-                posts={posts}
-                isLoggedIn={auth.isLoggedIn}
-                onContactOpen={() => setContactDialogOpen(true)}
-                portalUrl={portalUrl}
-              />
-            </div>
-          )}
+          <div className="hidden xl:block w-[300px] shrink-0">
+            <RightSidebar
+              posts={posts}
+              isLoggedIn={auth.isLoggedIn}
+              onContactOpen={() => setContactDialogOpen(true)}
+              portalUrl={portalUrl}
+            />
+          </div>
         </div>
       </div>
 
@@ -1921,6 +2650,11 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
         onOpenChange={setContactDialogOpen}
         prefillName={auth.user?.displayName}
         prefillEmail={auth.user?.email}
+      />
+
+      <CreateGroupDialog
+        open={createGroupDialogOpen}
+        onOpenChange={setCreateGroupDialogOpen}
       />
 
       <Dialog open={!!editingPost} onOpenChange={(open) => !open && setEditingPost(null)}>
