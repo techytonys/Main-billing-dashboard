@@ -323,32 +323,37 @@ export default function CommunityAccount() {
 
     setIsUploading(true);
     try {
-      const res = await fetch("/api/uploads/request-url", {
+      let avatarUrl = "";
+
+      const presignRes = await fetch("/api/uploads/request-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          name: file.name,
-          size: file.size,
-          contentType: file.type,
-        }),
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
 
-      if (!res.ok) throw new Error("Failed to get upload URL");
+      if (presignRes.ok) {
+        const { uploadURL, objectPath } = await presignRes.json();
+        const uploadRes = await fetch(uploadURL, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error("Failed to upload file");
+        avatarUrl = objectPath;
+      } else {
+        const localRes = await fetch("/api/uploads/local", {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          credentials: "include",
+          body: file,
+        });
+        if (!localRes.ok) throw new Error("Failed to upload file");
+        const { url } = await localRes.json();
+        avatarUrl = url;
+      }
 
-      const { uploadURL, objectPath } = await res.json();
-
-      const uploadRes = await fetch(uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-
-      if (!uploadRes.ok) throw new Error("Failed to upload file");
-
-      await apiRequest("PATCH", "/api/community/auth/profile", {
-        avatarUrl: objectPath,
-      });
+      await apiRequest("PATCH", "/api/community/auth/profile", { avatarUrl });
 
       queryClient.invalidateQueries({ queryKey: ["/api/community/auth/me"] });
       toast({ title: "Avatar updated" });
