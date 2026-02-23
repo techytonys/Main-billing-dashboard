@@ -264,7 +264,15 @@ UPGEOF
   SESS_SECRET=$(openssl rand -hex 32)
   DB_PASS=$(openssl rand -hex 16)
 
-  if $HAS_ENV; then
+  ENV_FOUND=false
+  if [ -f "$APP_DIR/.env" ]; then
+    ENV_FOUND=true
+  elif [ -f "/tmp/.env.aips.bak" ]; then
+    cp /tmp/.env.aips.bak "$APP_DIR/.env"
+    ENV_FOUND=true
+  fi
+
+  if $ENV_FOUND; then
     STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     STRIPE_WH=$(grep "^STRIPE_WEBHOOK_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
