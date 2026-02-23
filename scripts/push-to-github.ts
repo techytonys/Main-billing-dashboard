@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = `Deploy ${new Date().toISOString().split('T')[0]}: Usage-based pricing, uptime display, customer assignment, pricing cache`;
+const COMMIT_MESSAGE = `Deploy ${new Date().toISOString().split('T')[0]}: PWA support, Schema.org structured data, service worker caching`;
 
 let connectionSettings: any;
 

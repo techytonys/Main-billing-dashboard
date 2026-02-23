@@ -1,3 +1,46 @@
+const CACHE_NAME = "aips-v1";
+const STATIC_ASSETS = [
+  "/",
+  "/favicon.png",
+  "/manifest.json",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (request.method !== "GET") return;
+  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/ws")) return;
+
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (response.ok && response.type === "basic") {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request).then((cached) => cached || caches.match("/")))
+  );
+});
+
 self.addEventListener("push", (event) => {
   let data = { title: "AI Powered Sites", body: "You have a new notification" };
   try {
@@ -34,8 +77,4 @@ self.addEventListener("notificationclick", (event) => {
       return clients.openWindow(url);
     })
   );
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
 });

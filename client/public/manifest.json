@@ -1,0 +1,57 @@
+{
+  "name": "AI Powered Sites",
+  "short_name": "AIPowered",
+  "description": "AI-powered web design and development agency. Custom websites, community forums, backend systems, and Docker solutions delivered in days.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#6366f1",
+  "orientation": "any",
+  "scope": "/",
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/og-cover.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "AI Powered Sites Homepage"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Community",
+      "short_name": "Community",
+      "url": "/community",
+      "description": "Visit the community forums"
+    },
+    {
+      "name": "Website Audit",
+      "short_name": "Audit",
+      "url": "/#audit",
+      "description": "Run a free AI website audit"
+    },
+    {
+      "name": "Help Center",
+      "short_name": "Help",
+      "url": "/help",
+      "description": "Get support and answers"
+    }
+  ]
+}
