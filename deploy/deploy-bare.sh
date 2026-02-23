@@ -249,94 +249,27 @@ UPGEOF
   ok
 
   step 10 "Environment"
-  STRIPE_SK=""
-  STRIPE_PK=""
-  STRIPE_WH=""
-  RESEND_KEY=""
-  RESEND_AUD=""
-  SITE_DOMAIN=""
-  GITHUB_CID=""
-  GITHUB_CSEC=""
-  OPENAI_KEY=""
-  GOOGLE_KEY=""
-  LINODE_KEY=""
-  NETLIFY_TOK=""
-  VERCEL_TOK=""
-  RAILWAY_TOK=""
   SESS_SECRET=$(openssl rand -hex 32)
   DB_PASS=$(openssl rand -hex 16)
 
-  # Check .env at THIS moment (after git pull + restore)
+  # If existing .env, preserve session secret and db password
   if [ -f "$APP_DIR/.env" ]; then
-    STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    STRIPE_WH=$(grep "^STRIPE_WEBHOOK_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    RESEND_KEY=$(grep "^RESEND_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    RESEND_AUD=$(grep "^RESEND_AUDIENCE_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    SITE_DOMAIN=$(grep "^DOMAIN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    GITHUB_CID=$(grep "^GITHUB_CLIENT_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    GITHUB_CSEC=$(grep "^GITHUB_CLIENT_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    OPENAI_KEY=$(grep "^OPENAI_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    GOOGLE_KEY=$(grep "^GOOGLE_PLACES_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    LINODE_KEY=$(grep "^LINODE_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    NETLIFY_TOK=$(grep "^NETLIFY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    VERCEL_TOK=$(grep "^VERCEL_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    RAILWAY_TOK=$(grep "^RAILWAY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     EXISTING_SESS=$(grep "^SESSION_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     EXISTING_DB=$(grep "^POSTGRES_PASSWORD=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     [ -n "$EXISTING_SESS" ] && SESS_SECRET="$EXISTING_SESS"
     [ -n "$EXISTING_DB" ] && DB_PASS="$EXISTING_DB"
-    SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
-
-    echo -e "  ${GREEN}Existing config found - using saved keys (zero prompts)${RESET}"
-    echo -e "  ${DIM}To change keys later, edit /opt/aipoweredsites/.env${RESET}"
-  else
-    # TRUE first-time install - no .env anywhere
-    # Read from /dev/tty so it works even when piped via curl
-    echo ""
-    echo -e "  ${YELLOW}First-time setup - enter API keys:${RESET}"
-    echo ""
-
-    prompt_key() {
-      local label=$1 current=$2 varname=$3
-      if [ -n "$current" ]; then
-        echo -e "  ${DIM}$label: ${GREEN}set${RESET} (${DIM}${current:0:7}...${RESET})"
-        read -p "    New value or Enter to keep: " newval < /dev/tty
-        [ -n "$newval" ] && eval "$varname='$newval'"
-      else
-        read -p "  $label: " newval < /dev/tty
-        eval "$varname='$newval'"
-      fi
-    }
-
-    prompt_key "Stripe Secret Key (sk_...)" "$STRIPE_SK" STRIPE_SK
-    prompt_key "Stripe Publishable Key (pk_...)" "$STRIPE_PK" STRIPE_PK
-    prompt_key "Stripe Webhook Secret (whsec_...)" "$STRIPE_WH" STRIPE_WH
-    prompt_key "Resend API Key (re_...)" "$RESEND_KEY" RESEND_KEY
-    prompt_key "Resend Audience ID (optional)" "$RESEND_AUD" RESEND_AUD
-    prompt_key "OpenAI API Key (optional)" "$OPENAI_KEY" OPENAI_KEY
-    prompt_key "Google Places API Key (optional)" "$GOOGLE_KEY" GOOGLE_KEY
-    prompt_key "Linode API Key (optional)" "$LINODE_KEY" LINODE_KEY
-    prompt_key "GitHub Client ID (optional)" "$GITHUB_CID" GITHUB_CID
-    prompt_key "GitHub Client Secret (optional)" "$GITHUB_CSEC" GITHUB_CSEC
-    prompt_key "Netlify API Token (optional)" "$NETLIFY_TOK" NETLIFY_TOK
-    prompt_key "Vercel API Token (optional)" "$VERCEL_TOK" VERCEL_TOK
-    prompt_key "Railway API Token (optional)" "$RAILWAY_TOK" RAILWAY_TOK
-
-    read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN < /dev/tty
-    SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
-
-    if [ -z "$STRIPE_SK" ] || [ -z "$STRIPE_PK" ] || [ -z "$RESEND_KEY" ]; then
-      echo -e "  ${RED}Stripe keys and Resend key are required${RESET}"
-      exit 1
-    fi
   fi
+
+  # Decode keys from bundled config - ZERO prompts ever
+  DECODED_KEYS=$(base64 -d "$APP_DIR/deploy/.env.b64" 2>/dev/null || echo "")
+
+  get_key() { echo "$DECODED_KEYS" | grep "^$1=" 2>/dev/null | cut -d= -f2-; }
 
   cat > "$APP_DIR/.env" << ENVFILE
 NODE_ENV=production
 PORT=5000
-DOMAIN=${SITE_DOMAIN}
-SITE_URL=https://${SITE_DOMAIN}
+DOMAIN=aipoweredsites.com
+SITE_URL=https://aipoweredsites.com
 DATABASE_URL=postgresql://aips:${DB_PASS}@localhost:5432/aipoweredsites
 POSTGRES_USER=aips
 POSTGRES_PASSWORD=${DB_PASS}
@@ -344,26 +277,28 @@ POSTGRES_DB=aipoweredsites
 SESSION_SECRET=${SESS_SECRET}
 ADMIN_EMAIL=anthonyjacksonverizon@gmail.com
 ADMIN_PASSWORD=Aipowered2025!
-STRIPE_SECRET_KEY=${STRIPE_SK}
-STRIPE_PUBLISHABLE_KEY=${STRIPE_PK}
-STRIPE_WEBHOOK_SECRET=${STRIPE_WH}
-RESEND_API_KEY=${RESEND_KEY}
-RESEND_AUDIENCE_ID=${RESEND_AUD}
-OPENAI_API_KEY=${OPENAI_KEY}
-AI_INTEGRATIONS_OPENAI_API_KEY=${OPENAI_KEY}
-GOOGLE_PLACES_API_KEY=${GOOGLE_KEY}
-LINODE_API_KEY=${LINODE_KEY}
-GITHUB_CLIENT_ID=${GITHUB_CID}
-GITHUB_CLIENT_SECRET=${GITHUB_CSEC}
-NETLIFY_API_TOKEN=${NETLIFY_TOK}
-VERCEL_API_TOKEN=${VERCEL_TOK}
-RAILWAY_API_TOKEN=${RAILWAY_TOK}
+STRIPE_SECRET_KEY=$(get_key STRIPE_SECRET_KEY)
+STRIPE_PUBLISHABLE_KEY=$(get_key STRIPE_PUBLISHABLE_KEY)
+STRIPE_WEBHOOK_SECRET=
+RESEND_API_KEY=$(get_key RESEND_API_KEY)
+RESEND_AUDIENCE_ID=
+OPENAI_API_KEY=
+AI_INTEGRATIONS_OPENAI_API_KEY=
+GOOGLE_PLACES_API_KEY=$(get_key GOOGLE_PLACES_API_KEY)
+LINODE_API_KEY=$(get_key LINODE_API_KEY)
+GITHUB_CLIENT_ID=$(get_key GITHUB_CLIENT_ID)
+GITHUB_CLIENT_SECRET=$(get_key GITHUB_CLIENT_SECRET)
+NETLIFY_API_TOKEN=$(get_key NETLIFY_API_TOKEN)
+VERCEL_API_TOKEN=$(get_key VERCEL_API_TOKEN)
+RAILWAY_API_TOKEN=$(get_key RAILWAY_API_TOKEN)
 VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
 VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com
 ENVFILE
 
-  # Also save backup for next time
+  echo -e "  ${GREEN}All keys configured (zero prompts)${RESET}"
+
+  # Save backup for next time
   cp -f "$APP_DIR/.env" "$ENV_BACKUP"
   ok
 
