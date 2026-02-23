@@ -47,12 +47,15 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-step 1 9 "System packages"
+# ---- Step 1: System packages ----
+step 1 11 "System packages"
 apt update -qq > /dev/null 2>&1
+apt upgrade -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" > /dev/null 2>&1
 apt install -y -qq ca-certificates curl gnupg git ufw bc > /dev/null 2>&1
 ok
 
-step 2 9 "Docker"
+# ---- Step 2: Docker ----
+step 2 11 "Docker"
 if ! command -v docker &> /dev/null; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -60,12 +63,16 @@ if ! command -v docker &> /dev/null; then
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${VERSION_CODENAME}") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
   apt update -qq > /dev/null 2>&1
   apt install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null 2>&1
+  echo -e "  ${DIM}Docker installed fresh${RESET}"
+else
+  echo -e "  ${DIM}Docker already installed${RESET}"
 fi
 systemctl enable docker > /dev/null 2>&1
 systemctl start docker
 ok
 
-step 3 9 "Swap space (prevents build OOM)"
+# ---- Step 3: Swap space ----
+step 3 11 "Swap space (prevents build OOM)"
 if [ ! -f /swapfile ]; then
   fallocate -l 2G /swapfile
   chmod 600 /swapfile
@@ -79,14 +86,73 @@ else
 fi
 ok
 
-step 4 9 "Firewall"
+# ---- Step 4: Firewall ----
+step 4 11 "Firewall"
 ufw allow 22/tcp > /dev/null 2>&1
 ufw allow 80/tcp > /dev/null 2>&1
 ufw allow 443/tcp > /dev/null 2>&1
 ufw --force enable > /dev/null 2>&1
+echo -e "  ${DIM}SSH, HTTP, HTTPS allowed - all else blocked${RESET}"
 ok
 
-step 5 9 "Clone repo"
+# ---- Step 5: Fail2Ban (SSH brute force protection) ----
+step 5 11 "Fail2Ban (SSH protection)"
+apt-get install -y -qq fail2ban > /dev/null 2>&1
+
+cat > /etc/fail2ban/jail.local << 'JAILEOF'
+[DEFAULT]
+bantime = -1
+findtime = 3600
+maxretry = 1
+backend = systemd
+banaction = iptables-multiport
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 1
+bantime = -1
+JAILEOF
+
+systemctl enable fail2ban > /dev/null 2>&1
+systemctl restart fail2ban > /dev/null 2>&1
+echo -e "  ${DIM}1 failed SSH login = permanent ban${RESET}"
+ok
+
+# ---- Step 6: Unattended security upgrades ----
+step 6 11 "Automatic security updates"
+apt-get install -y -qq unattended-upgrades apt-listchanges > /dev/null 2>&1
+
+cat > /etc/apt/apt.conf.d/20auto-upgrades << 'AUTOEOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+AUTOEOF
+
+cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'UPGEOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+UPGEOF
+
+systemctl enable unattended-upgrades > /dev/null 2>&1
+systemctl restart unattended-upgrades > /dev/null 2>&1
+echo -e "  ${DIM}Security patches auto-install daily, reboot at 4AM if needed${RESET}"
+ok
+
+# ---- Step 7: Clone repo ----
+step 7 11 "Pulling code"
 if [ -d "$APP_DIR/.git" ]; then
   cd "$APP_DIR"
   git fetch origin main -q
@@ -99,7 +165,8 @@ else
 fi
 ok
 
-step 6 9 "Environment"
+# ---- Step 8: Environment ----
+step 8 11 "Environment"
 
 STRIPE_SK=""
 STRIPE_PK=""
@@ -199,7 +266,8 @@ VAPID_SUBJECT=mailto:hello@aipoweredsites.com
 ENVFILE
 ok
 
-step 7 9 "Building containers"
+# ---- Step 9: Build containers ----
+step 9 11 "Building containers"
 cd "$APP_DIR"
 echo -e "  ${DIM}This takes 3-5 minutes, please wait...${RESET}"
 docker compose build --no-cache 2>&1 | tail -10
@@ -209,7 +277,8 @@ if [ $BUILD_EXIT -ne 0 ]; then
 fi
 ok
 
-step 8 9 "Starting services"
+# ---- Step 10: Start services ----
+step 10 11 "Starting services"
 docker compose up -d
 echo -e "  ${DIM}Waiting for database...${RESET}"
 sleep 10
@@ -227,13 +296,15 @@ if [ $DB_READY -eq 0 ]; then
 fi
 ok
 
-step 9 9 "Database tables"
+# ---- Step 11: Database tables ----
+step 11 11 "Database tables"
 for f in $(ls deploy/migrations/*.sql | sort); do
   echo -e "  ${DIM}Running: $(basename $f)${RESET}"
   docker compose exec -T db psql -U aips -d aipoweredsites < "$f" 2>/dev/null || true
 done
 ok
 
+# ---- Finale ----
 echo ""
 echo ""
 echo -e "${GREEN}"
@@ -259,8 +330,17 @@ echo ""
 echo -e "  ${CYAN}URL:${RESET}    https://${SITE_DOMAIN}"
 echo -e "  ${CYAN}Login:${RESET}  anthonyjacksonverizon@gmail.com / Aipowered2025!"
 echo ""
+echo -e "  ${WHITE}${BOLD}Security Active:${RESET}"
+echo -e "    ${GREEN}+${RESET} Firewall: only SSH/HTTP/HTTPS open"
+echo -e "    ${GREEN}+${RESET} Fail2Ban: 1 failed SSH login = permanent ban"
+echo -e "    ${GREEN}+${RESET} Auto security patches daily"
+echo -e "    ${GREEN}+${RESET} Auto reboot at 4AM if patch requires it"
+echo -e "    ${GREEN}+${RESET} Docker auto-restarts after reboot"
+echo -e "    ${GREEN}+${RESET} 2GB swap prevents out-of-memory crashes"
+echo ""
 echo -e "  ${CYAN}Commands:${RESET}"
-echo -e "    docker compose ps              # status"
-echo -e "    docker compose logs -f app     # app logs"
-echo -e "    bash /opt/aipoweredsites/deploy/u.sh  # update"
+echo -e "    docker compose ps                          # status"
+echo -e "    docker compose logs -f app                 # app logs"
+echo -e "    bash /opt/aipoweredsites/deploy/u.sh       # update"
+echo -e "    sudo fail2ban-client status sshd           # banned IPs"
 echo ""
