@@ -31,6 +31,8 @@ services:
       - RAILWAY_API_TOKEN=${RAILWAY_API_TOKEN:-}
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
       - LINODE_API_KEY=${LINODE_API_KEY:-}
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -78,6 +80,7 @@ volumes:
   pgdata:
   caddy_data:
   caddy_config:
+  uploads_data:
 
 networks:
   internal:
