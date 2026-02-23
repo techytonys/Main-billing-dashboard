@@ -5504,11 +5504,17 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
   // ==================== Admin Auto-Login to Community ====================
   app.post("/api/community/auth/admin-auto-login", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = req.user as any;
-      if (!adminUser) return res.status(401).json({ error: "Not authenticated as admin" });
+      const rawUser = req.user as any;
+      if (!rawUser) return res.status(401).json({ error: "Not authenticated as admin" });
 
-      const adminDisplayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || "Admin";
-      const adminAvatar = adminUser.profileImageUrl || null;
+      const adminId = rawUser.id || rawUser.claims?.sub || "admin-local";
+      const adminEmail = rawUser.email || rawUser.claims?.email || process.env.ADMIN_EMAIL || "admin@admin.local";
+      const adminFirstName = rawUser.firstName || rawUser.claims?.first_name || "Admin";
+      const adminLastName = rawUser.lastName || rawUser.claims?.last_name || "";
+      const adminDisplayName = [adminFirstName, adminLastName].filter(Boolean).join(" ") || "Admin";
+      const adminAvatar = rawUser.profileImageUrl || rawUser.claims?.profile_image_url || null;
+      const adminUser = { id: adminId, email: adminEmail, firstName: adminFirstName, lastName: adminLastName, profileImageUrl: adminAvatar };
+
       const { db: appDb } = await import("./db");
       const { sql: sqlTag } = await import("drizzle-orm");
 
@@ -5516,8 +5522,8 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       let communityUser = linkedResult.rows?.[0] as any;
 
       if (!communityUser) {
-        const adminEmail = adminUser.email || `admin-${adminUser.id}@admin.local`;
-        communityUser = await storage.getCommunityUserByEmail(adminEmail);
+        const lookupEmail = adminUser.email || `admin-${adminUser.id}@admin.local`;
+        communityUser = await storage.getCommunityUserByEmail(lookupEmail);
       }
 
       if (!communityUser) {
