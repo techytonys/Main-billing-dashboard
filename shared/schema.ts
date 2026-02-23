@@ -592,6 +592,7 @@ export const communityUsers = pgTable("community_users", {
   isActive: boolean("is_active").default(true),
   lastSeenAt: timestamp("last_seen_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
+  adminUserId: text("admin_user_id"),
 });
 
 export const insertCommunityUserSchema = createInsertSchema(communityUsers).omit({ id: true, createdAt: true, lastSeenAt: true });

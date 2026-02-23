@@ -5271,7 +5271,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (password.length < 6) {
         return res.status(400).json({ error: "Password must be at least 6 characters" });
       }
-      const existing = await storage.getCommunityUserByEmail(email);
+      const existing = await storage.getCommunityUserByEmail(email.toLowerCase());
       if (existing) {
         return res.status(409).json({ error: "An account with this email already exists" });
       }
@@ -5289,9 +5289,10 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
       const userAgentStr = req.headers["user-agent"] || "";
       await storage.createCommunitySession(user.id, sessionToken, expiresAt, ipAddress, userAgentStr);
+      const isProduction = process.env.NODE_ENV === "production";
       res.cookie("community_session", sessionToken, {
         httpOnly: true,
-        secure: false,
+        secure: isProduction,
         sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: "/",
@@ -5309,7 +5310,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password are required" });
       }
-      const user = await storage.getCommunityUserByEmail(email);
+      const user = await storage.getCommunityUserByEmail(email.toLowerCase());
       if (!user) {
         return res.status(401).json({ error: "Invalid email or password" });
       }
@@ -5336,9 +5337,10 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const ipAddress = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
       const userAgentStr = req.headers["user-agent"] || "";
       await storage.createCommunitySession(user.id, sessionToken, expiresAt, ipAddress, userAgentStr);
+      const isProduction = process.env.NODE_ENV === "production";
       res.cookie("community_session", sessionToken, {
         httpOnly: true,
-        secure: false,
+        secure: isProduction,
         sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
         path: "/",
@@ -5371,7 +5373,8 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       }
       await storage.updateCommunityUser(user.id, { lastSeenAt: new Date() });
       const { passwordHash: _, totpSecret: _ts, ...safeUser } = user;
-      res.json({ ...safeUser, twoFactorEnabled: !!user.twoFactorEnabled });
+      const isCommunityAdmin = !!user.adminUserId;
+      res.json({ ...safeUser, twoFactorEnabled: !!user.twoFactorEnabled, isAdmin: isCommunityAdmin });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -5396,6 +5399,23 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
         ...(tiktokUrl !== undefined && { tiktokUrl }),
       });
       if (!updated) return res.status(404).json({ error: "User not found" });
+
+      if (avatarUrl !== undefined) {
+        try {
+          const { db: appDb } = await import("./db");
+          const { sql: sqlTag } = await import("drizzle-orm");
+          const linkedAdminId = updated.adminUserId;
+          if (linkedAdminId) {
+            await appDb.execute(sqlTag`UPDATE users SET profile_image_url = ${avatarUrl} WHERE id = ${linkedAdminId}`);
+          } else {
+            const adminUser = req.user as any;
+            if (adminUser?.id) {
+              await appDb.execute(sqlTag`UPDATE users SET profile_image_url = ${avatarUrl} WHERE id = ${adminUser.id}`);
+            }
+          }
+        } catch (e) {}
+      }
+
       const { passwordHash: _, totpSecret: _ts, ...safeUser } = updated;
       res.json(safeUser);
     } catch (err: any) {
@@ -5487,12 +5507,21 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const adminUser = req.user as any;
       if (!adminUser) return res.status(401).json({ error: "Not authenticated as admin" });
 
-      const adminEmail = adminUser.email || `admin-${adminUser.id}@admin.local`;
       const adminDisplayName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") || "Admin";
       const adminAvatar = adminUser.profileImageUrl || null;
+      const { db: appDb } = await import("./db");
+      const { sql: sqlTag } = await import("drizzle-orm");
 
-      let communityUser = await storage.getCommunityUserByEmail(adminEmail);
+      const linkedResult = await appDb.execute(sqlTag`SELECT * FROM community_users WHERE admin_user_id = ${adminUser.id} LIMIT 1`);
+      let communityUser = linkedResult.rows?.[0] as any;
+
       if (!communityUser) {
+        const adminEmail = adminUser.email || `admin-${adminUser.id}@admin.local`;
+        communityUser = await storage.getCommunityUserByEmail(adminEmail);
+      }
+
+      if (!communityUser) {
+        const adminEmail = adminUser.email || `admin-${adminUser.id}@admin.local`;
         const bcrypt = await import("bcryptjs");
         const randomPass = require("crypto").randomBytes(32).toString("hex");
         const passwordHash = await bcrypt.hash(randomPass, 12);
@@ -5502,13 +5531,19 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
           displayName: adminDisplayName,
           avatarUrl: adminAvatar,
           isActive: true,
+          adminUserId: adminUser.id,
         });
       } else {
-        await storage.updateCommunityUser(communityUser.id, {
-          displayName: adminDisplayName,
-          avatarUrl: adminAvatar,
-          lastSeenAt: new Date(),
-        });
+        if (!communityUser.admin_user_id && !communityUser.adminUserId) {
+          await appDb.execute(sqlTag`UPDATE community_users SET admin_user_id = ${adminUser.id} WHERE id = ${communityUser.id}`);
+        }
+        const communityAvatar = communityUser.avatar_url || communityUser.avatarUrl;
+        if (communityAvatar && communityAvatar !== adminAvatar) {
+          await appDb.execute(sqlTag`UPDATE users SET profile_image_url = ${communityAvatar} WHERE id = ${adminUser.id}`);
+        } else if (adminAvatar && !communityAvatar) {
+          await storage.updateCommunityUser(communityUser.id, { avatarUrl: adminAvatar });
+        }
+        await storage.updateCommunityUser(communityUser.id, { lastSeenAt: new Date() });
       }
 
       const crypto = await import("crypto");
@@ -5702,7 +5737,18 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const limit = parseInt(req.query.limit as string) || 50;
       const cursor = req.query.cursor as string;
       const posts = await storage.getCommunityPosts(limit, cursor);
-      res.json(posts);
+      const enriched = await Promise.all(posts.map(async (post: any) => {
+        if (post.authorUserId) {
+          try {
+            const user = await storage.getCommunityUser(post.authorUserId);
+            if (user?.avatarUrl) {
+              return { ...post, authorAvatar: user.avatarUrl };
+            }
+          } catch (e) {}
+        }
+        return post;
+      }));
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -5710,8 +5756,16 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
 
   app.get("/api/community/posts/:id", async (req, res) => {
     try {
-      const post = await storage.getCommunityPost(req.params.id);
+      const post = await storage.getCommunityPost(req.params.id) as any;
       if (!post) return res.status(404).json({ error: "Post not found" });
+      if (post.authorUserId) {
+        try {
+          const user = await storage.getCommunityUser(post.authorUserId);
+          if (user?.avatarUrl) {
+            return res.json({ ...post, authorAvatar: user.avatarUrl });
+          }
+        } catch (e) {}
+      }
       res.json(post);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -5742,7 +5796,11 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (!post) return res.status(404).json({ error: "Post not found" });
       const { authorName } = req.body;
       const isAdmin = req.isAuthenticated?.();
-      if (!isAdmin && post.authorName !== authorName) {
+      const communityUser = await getCommunityUser(req);
+      const isAdminCommunityUser = communityUser?.adminUserId || communityUser?.admin_user_id;
+      const isCommunityOwner = communityUser && post.authorUserId && communityUser.id === post.authorUserId;
+      const isNameMatch = post.authorName === authorName;
+      if (!isAdmin && !isAdminCommunityUser && !isCommunityOwner && !isNameMatch) {
         return res.status(403).json({ error: "You can only edit your own posts" });
       }
       const updated = await storage.updateCommunityPost(req.params.id, req.body);
@@ -5758,7 +5816,11 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const post = await storage.getCommunityPost(req.params.id);
       if (!post) return res.status(404).json({ error: "Post not found" });
       const isAdmin = req.isAuthenticated?.();
-      if (!isAdmin && post.authorName !== authorName) {
+      const communityUser = await getCommunityUser(req);
+      const isAdminCommunityUser = communityUser?.adminUserId || communityUser?.admin_user_id;
+      const isCommunityOwner = communityUser && post.authorUserId && communityUser.id === post.authorUserId;
+      const isNameMatch = post.authorName === (authorName as string);
+      if (!isAdmin && !isAdminCommunityUser && !isCommunityOwner && !isNameMatch) {
         return res.status(403).json({ error: "You can only delete your own posts" });
       }
       const deleted = await storage.deleteCommunityPost(req.params.id);
@@ -5772,7 +5834,18 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
   app.get("/api/community/posts/:id/comments", async (req, res) => {
     try {
       const comments = await storage.getCommunityComments(req.params.id);
-      res.json(comments);
+      const enriched = await Promise.all(comments.map(async (comment: any) => {
+        if (comment.authorUserId) {
+          try {
+            const user = await storage.getCommunityUser(comment.authorUserId);
+            if (user?.avatarUrl) {
+              return { ...comment, authorAvatar: user.avatarUrl };
+            }
+          } catch (e) {}
+        }
+        return comment;
+      }));
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -6144,7 +6217,18 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
   app.get("/api/community/groups/:id/posts", async (req, res) => {
     try {
       const posts = await storage.getCommunityGroupPosts(req.params.id);
-      res.json(posts);
+      const enriched = await Promise.all(posts.map(async (post: any) => {
+        if (post.authorUserId) {
+          try {
+            const user = await storage.getCommunityUser(post.authorUserId);
+            if (user?.avatarUrl) {
+              return { ...post, authorAvatar: user.avatarUrl };
+            }
+          } catch (e) {}
+        }
+        return post;
+      }));
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

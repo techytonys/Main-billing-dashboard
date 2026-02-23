@@ -51,12 +51,13 @@ function updateUserSession(
 }
 
 async function upsertUser(claims: any) {
+  const existing = await authStorage.getUser(claims["sub"]);
   await authStorage.upsertUser({
     id: claims["sub"],
     email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
+    firstName: existing?.firstName || claims["first_name"],
+    lastName: existing?.lastName || claims["last_name"],
+    profileImageUrl: existing?.profileImageUrl || claims["profile_image_url"],
   });
 }
 
@@ -90,12 +91,12 @@ export async function setupAuth(app: Express) {
       }
 
       const adminId = "admin-local";
-      await upsertUser({
-        sub: adminId,
+      await authStorage.upsertUser({
+        id: adminId,
         email: adminEmail,
-        first_name: "Admin",
-        last_name: null,
-        profile_image_url: null,
+        firstName: "Anthony",
+        lastName: "Jackson",
+        profileImageUrl: null,
       });
 
       const user: any = {

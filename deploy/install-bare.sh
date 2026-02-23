@@ -190,6 +190,7 @@ step 10 "Environment"
 
 STRIPE_SK=""
 STRIPE_PK=""
+STRIPE_WH=""
 RESEND_KEY=""
 RESEND_AUD=""
 SITE_DOMAIN=""
@@ -198,10 +199,14 @@ GITHUB_CSEC=""
 OPENAI_KEY=""
 GOOGLE_KEY=""
 LINODE_KEY=""
+NETLIFY_TOK=""
+VERCEL_TOK=""
+RAILWAY_TOK=""
 
 if [ -f "$APP_DIR/.env" ]; then
   STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  STRIPE_WH=$(grep "^STRIPE_WEBHOOK_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   RESEND_KEY=$(grep "^RESEND_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   RESEND_AUD=$(grep "^RESEND_AUDIENCE_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   SITE_DOMAIN=$(grep "^DOMAIN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
@@ -210,6 +215,9 @@ if [ -f "$APP_DIR/.env" ]; then
   OPENAI_KEY=$(grep "^OPENAI_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   GOOGLE_KEY=$(grep "^GOOGLE_PLACES_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   LINODE_KEY=$(grep "^LINODE_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  NETLIFY_TOK=$(grep "^NETLIFY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  VERCEL_TOK=$(grep "^VERCEL_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  RAILWAY_TOK=$(grep "^RAILWAY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
 fi
 
 echo ""
@@ -230,6 +238,7 @@ prompt_key() {
 
 prompt_key "Stripe Secret Key (sk_...)" "$STRIPE_SK" STRIPE_SK
 prompt_key "Stripe Publishable Key (pk_...)" "$STRIPE_PK" STRIPE_PK
+prompt_key "Stripe Webhook Secret (whsec_...)" "$STRIPE_WH" STRIPE_WH
 prompt_key "Resend API Key (re_...)" "$RESEND_KEY" RESEND_KEY
 prompt_key "Resend Audience ID (optional)" "$RESEND_AUD" RESEND_AUD
 prompt_key "OpenAI API Key (optional)" "$OPENAI_KEY" OPENAI_KEY
@@ -237,6 +246,9 @@ prompt_key "Google Places API Key (optional)" "$GOOGLE_KEY" GOOGLE_KEY
 prompt_key "Linode API Key (optional)" "$LINODE_KEY" LINODE_KEY
 prompt_key "GitHub Client ID (optional)" "$GITHUB_CID" GITHUB_CID
 prompt_key "GitHub Client Secret (optional)" "$GITHUB_CSEC" GITHUB_CSEC
+prompt_key "Netlify API Token (optional)" "$NETLIFY_TOK" NETLIFY_TOK
+prompt_key "Vercel API Token (optional)" "$VERCEL_TOK" VERCEL_TOK
+prompt_key "Railway API Token (optional)" "$RAILWAY_TOK" RAILWAY_TOK
 
 if [ -z "$SITE_DOMAIN" ]; then
   read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN
@@ -250,15 +262,12 @@ fi
 
 SESS_SECRET=$(openssl rand -hex 32)
 DB_PASS=$(openssl rand -hex 16)
-COMM_SECRET=$(openssl rand -hex 32)
 
 if [ -f "$APP_DIR/.env" ]; then
   EXISTING_SESS=$(grep "^SESSION_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   EXISTING_DB=$(grep "^POSTGRES_PASSWORD=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-  EXISTING_COMM=$(grep "^COMMUNITY_SESSION_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   [ -n "$EXISTING_SESS" ] && SESS_SECRET="$EXISTING_SESS"
   [ -n "$EXISTING_DB" ] && DB_PASS="$EXISTING_DB"
-  [ -n "$EXISTING_COMM" ] && COMM_SECRET="$EXISTING_COMM"
 fi
 
 cat > "$APP_DIR/.env" << ENVFILE
@@ -271,18 +280,22 @@ POSTGRES_USER=aips
 POSTGRES_PASSWORD=${DB_PASS}
 POSTGRES_DB=aipoweredsites
 SESSION_SECRET=${SESS_SECRET}
-COMMUNITY_SESSION_SECRET=${COMM_SECRET}
 ADMIN_EMAIL=anthonyjacksonverizon@gmail.com
 ADMIN_PASSWORD=Aipowered2025!
 STRIPE_SECRET_KEY=${STRIPE_SK}
 STRIPE_PUBLISHABLE_KEY=${STRIPE_PK}
+STRIPE_WEBHOOK_SECRET=${STRIPE_WH}
 RESEND_API_KEY=${RESEND_KEY}
 RESEND_AUDIENCE_ID=${RESEND_AUD}
 OPENAI_API_KEY=${OPENAI_KEY}
+AI_INTEGRATIONS_OPENAI_API_KEY=${OPENAI_KEY}
 GOOGLE_PLACES_API_KEY=${GOOGLE_KEY}
 LINODE_API_KEY=${LINODE_KEY}
 GITHUB_CLIENT_ID=${GITHUB_CID}
 GITHUB_CLIENT_SECRET=${GITHUB_CSEC}
+NETLIFY_API_TOKEN=${NETLIFY_TOK}
+VERCEL_API_TOKEN=${VERCEL_TOK}
+RAILWAY_API_TOKEN=${RAILWAY_TOK}
 VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
 VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com

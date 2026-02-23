@@ -905,6 +905,7 @@ interface PostCardProps {
   displayName: string;
   authorType: string;
   userAvatar?: string;
+  currentUserId?: string;
   members?: CommunityMember[];
   onNeedName: () => void;
   onDelete: (id: string) => void;
@@ -912,7 +913,7 @@ interface PostCardProps {
   onEdit: (post: CommunityPost) => void;
 }
 
-function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members = [], onNeedName, onDelete, onPin, onEdit }: PostCardProps) {
+function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentUserId, members = [], onNeedName, onDelete, onPin, onEdit }: PostCardProps) {
   const { toast } = useToast();
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -928,8 +929,10 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members 
     haha: post.hahaCount || 0,
     angry: post.angryCount || 0,
   });
+  const [isExpanded, setIsExpanded] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const POST_CHAR_LIMIT = 200;
 
   useEffect(() => {
     const newActive = post.userReactions?.like ? "like" :
@@ -1055,7 +1058,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members 
             </div>
           </div>
 
-          {(isAdmin || post.authorName === displayName) && (
+          {(isAdmin || post.authorName === displayName || (currentUserId && post.authorUserId === currentUserId)) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1068,7 +1071,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members 
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
-                {(isAdmin || post.authorName === displayName) && (
+                {(isAdmin || post.authorName === displayName || (currentUserId && post.authorUserId === currentUserId)) && (
                   <DropdownMenuItem onClick={() => onEdit(post)} data-testid={`menu-edit-post-${post.id}`}>
                     <Pencil className="w-4 h-4 mr-2" />
                     Edit
@@ -1080,7 +1083,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members 
                     {post.isPinned ? "Unpin" : "Pin"}
                   </DropdownMenuItem>
                 )}
-                {(isAdmin || post.authorName === displayName) && (
+                {(isAdmin || post.authorName === displayName || (currentUserId && post.authorUserId === currentUserId)) && (
                   <DropdownMenuItem onClick={() => onDelete(post.id)} className="text-destructive focus:text-destructive" data-testid={`menu-delete-post-${post.id}`}>
                     <Trash2 className="w-4 h-4 mr-2" />
                     Delete
@@ -1098,8 +1101,14 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, members 
             </h3>
           )}
           <p className="text-[15px] leading-relaxed whitespace-pre-wrap text-foreground/90" data-testid={`text-post-body-${post.id}`}>
-            {renderWithMentions(post.body)}
+            {post.body.length > POST_CHAR_LIMIT && !isExpanded
+              ? <>{renderWithMentions(post.body.slice(0, POST_CHAR_LIMIT) + "...")}<button onClick={() => setIsExpanded(true)} className="text-primary font-semibold hover:underline ml-1" data-testid={`button-see-more-${post.id}`}>See more</button></>
+              : renderWithMentions(post.body)
+            }
           </p>
+          {isExpanded && post.body.length > POST_CHAR_LIMIT && (
+            <button onClick={() => setIsExpanded(false)} className="text-primary text-sm font-semibold hover:underline mt-1" data-testid={`button-see-less-${post.id}`}>See less</button>
+          )}
         </div>
 
         {post.imageUrl && (
@@ -2202,7 +2211,7 @@ interface CommunityProps {
   portalToken?: string;
 }
 
-export default function Community({ isAdmin = false, portalToken }: CommunityProps) {
+export default function Community({ isAdmin: isAdminProp = false, portalToken }: CommunityProps) {
   const { toast } = useToast();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
@@ -2214,8 +2223,10 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
   const adminAuth = useAuth();
   const auth = useCommunityAuth(false);
 
+  const isAdmin = isAdminProp || !!adminAuth.user || !!(auth.user as any)?.isAdmin;
+
   useEffect(() => {
-    if (isAdmin && adminAuth.user && !adminAutoLoggedIn && !auth.isLoggedIn) {
+    if (adminAuth.user && !adminAutoLoggedIn && !auth.isLoggedIn) {
       apiRequest("POST", "/api/community/auth/admin-auto-login")
         .then(() => {
           setAdminAutoLoggedIn(true);
@@ -2223,7 +2234,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
         })
         .catch(() => {});
     }
-  }, [isAdmin, adminAuth.user, adminAutoLoggedIn, auth.isLoggedIn]);
+  }, [adminAuth.user, adminAutoLoggedIn, auth.isLoggedIn]);
 
   const { data: portalData } = useQuery<{ customer: { name: string } }>({
     queryKey: ["/api/portal", portalToken],
@@ -2458,13 +2469,52 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
 
       {isAdmin && (
         <div className="mb-6">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-              <Users className="w-5 h-5 text-primary-foreground" />
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
+                <Users className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight" data-testid="text-community-title">Community</h1>
+                <p className="text-sm text-muted-foreground" data-testid="text-community-subtitle">Manage posts and engage with your community</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-community-title">Community</h1>
-              <p className="text-sm text-muted-foreground" data-testid="text-community-subtitle">Manage posts and engage with your community</p>
+            <div className="flex items-center gap-2 shrink-0">
+              {auth.isLoggedIn && (
+                <NotificationBell />
+              )}
+              {auth.isLoggedIn && auth.user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="gap-2" data-testid="button-admin-user-menu">
+                      <Avatar className="h-7 w-7 ring-1 ring-border">
+                        {(auth.user.avatarUrl || adminAuth.user?.profileImageUrl) && <AvatarImage src={auth.user.avatarUrl || (adminAuth.user as any)?.profileImageUrl || ""} />}
+                        <AvatarFallback className={`bg-gradient-to-br ${getAvatarGradient(auth.user.displayName)} text-white text-[10px] font-bold`}>
+                          {getInitials(auth.user.displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium hidden sm:inline" data-testid="text-admin-user-name">{auth.user.displayName}</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48" data-testid="dropdown-admin-user-menu">
+                    <DropdownMenuItem
+                      onClick={() => { window.location.href = "/community/account"; }}
+                      data-testid="menu-admin-my-account"
+                    >
+                      <User className="w-4 h-4 mr-2" />
+                      My Account
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => auth.logout.mutate()}
+                      data-testid="menu-admin-signout"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
             </div>
           </div>
         </div>
@@ -2612,6 +2662,7 @@ export default function Community({ isAdmin = false, portalToken }: CommunityPro
                     displayName={displayName}
                     authorType={authorType}
                     userAvatar={userAvatar}
+                    currentUserId={auth.user?.id}
                     members={allMembers}
                     onNeedName={handleNeedName}
                     onDelete={(id) => deletePost.mutate(id)}
