@@ -21,7 +21,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=5000
 
-RUN npm init -y > /dev/null 2>&1 && npm install pdfkit@0.16.0 --save --legacy-peer-deps 2>&1 | tail -3
+RUN npm init -y > /dev/null 2>&1 && npm install pdfkit@0.17.2 --save 2>&1 | tail -3
 
 COPY --from=builder /app/dist ./dist
 COPY deploy/migrations ./deploy/migrations
