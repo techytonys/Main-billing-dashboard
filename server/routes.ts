@@ -2728,6 +2728,282 @@ ${urls}
     }
   });
 
+  // Public API: Create customer
+  app.post("/api/v1/customers", authenticateApiKey, requireScope("write"), async (req: any, res) => {
+    try {
+      const { name, email, phone, company, notes } = req.body;
+      if (!name || !email) return res.status(400).json({ error: "name and email are required" });
+      const customer = await storage.createCustomer({ name, email, phone, company, notes });
+      res.status(201).json({ data: { id: customer.id, name: customer.name, email: customer.email, company: customer.company, createdAt: customer.createdAt } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create customer" });
+    }
+  });
+
+  // Public API: Update customer
+  app.patch("/api/v1/customers/:id", authenticateApiKey, requireScope("write"), async (req: any, res) => {
+    try {
+      if (req.apiKey.customerId && req.params.id !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const customer = await storage.updateCustomer(req.params.id, req.body);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+      res.json({ data: { id: customer.id, name: customer.name, email: customer.email, company: customer.company, createdAt: customer.createdAt } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update customer" });
+    }
+  });
+
+  // Public API: Delete customer
+  app.delete("/api/v1/customers/:id", authenticateApiKey, requireScope("delete"), async (req: any, res) => {
+    try {
+      if (req.apiKey.customerId) return res.status(403).json({ error: "Scoped keys cannot delete customers" });
+      const deleted = await storage.deleteCustomer(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Customer not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete customer" });
+    }
+  });
+
+  // Public API: Create project
+  app.post("/api/v1/projects", authenticateApiKey, requireScope("write"), async (req: any, res) => {
+    try {
+      const { name, description, customerId, status, previewUrl } = req.body;
+      if (!name || !customerId) return res.status(400).json({ error: "name and customerId are required" });
+      if (req.apiKey.customerId && customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const project = await storage.createProject({ name, description, customerId, status: status || "active", previewUrl });
+      res.status(201).json({ data: { id: project.id, name: project.name, description: project.description, status: project.status, customerId: project.customerId, previewUrl: project.previewUrl, createdAt: project.createdAt } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create project" });
+    }
+  });
+
+  // Public API: Update project
+  app.patch("/api/v1/projects/:id", authenticateApiKey, requireScope("write"), async (req: any, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      if (req.apiKey.customerId && project.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const updated = await storage.updateProject(req.params.id, req.body);
+      res.json({ data: { id: updated!.id, name: updated!.name, description: updated!.description, status: updated!.status, customerId: updated!.customerId, previewUrl: updated!.previewUrl, createdAt: updated!.createdAt } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update project" });
+    }
+  });
+
+  // Public API: Delete project
+  app.delete("/api/v1/projects/:id", authenticateApiKey, requireScope("delete"), async (req: any, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      if (req.apiKey.customerId && project.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      await storage.deleteProject(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete project" });
+    }
+  });
+
+  // Public API: Get work entries
+  app.get("/api/v1/work-entries", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const projectId = req.query.projectId;
+      if (!projectId) return res.status(400).json({ error: "projectId query parameter is required" });
+      if (req.apiKey.customerId) {
+        const project = await storage.getProject(projectId);
+        if (!project || project.customerId !== req.apiKey.customerId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+      }
+      const entries = await storage.getWorkEntries({ projectId });
+      res.json({ data: entries });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch work entries" });
+    }
+  });
+
+  // Public API: Get billing rates
+  app.get("/api/v1/billing-rates", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const rates = await storage.getBillingRates();
+      res.json({ data: rates.map((r: any) => ({ id: r.id, name: r.name, description: r.description, rateCents: r.rateCents, unit: r.unit, code: r.code, unitLabel: r.unitLabel, isActive: r.isActive })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch billing rates" });
+    }
+  });
+
+  // Public API: Get quotes
+  app.get("/api/v1/quotes", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const quotes = await storage.getQuotes();
+      let filtered = quotes;
+      if (req.apiKey.customerId) {
+        filtered = quotes.filter((q: any) => q.customerId === req.apiKey.customerId);
+      }
+      res.json({ data: filtered.map((q: any) => ({ id: q.id, quoteNumber: q.quoteNumber, customerId: q.customerId, customerName: q.customerName, status: q.status, totalAmountCents: q.totalAmountCents, expiresAt: q.expiresAt, createdAt: q.createdAt })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch quotes" });
+    }
+  });
+
+  // Public API: Get single quote with line items
+  app.get("/api/v1/quotes/:id", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const quote = await storage.getQuote(req.params.id);
+      if (!quote) return res.status(404).json({ error: "Quote not found" });
+      if (req.apiKey.customerId && quote.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const lineItems = await storage.getQuoteLineItems(req.params.id);
+      res.json({ data: { ...quote, lineItems } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch quote" });
+    }
+  });
+
+  // Public API: Get support tickets
+  app.get("/api/v1/support-tickets", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const tickets = await storage.getSupportTickets();
+      let filtered = tickets;
+      if (req.apiKey.customerId) {
+        filtered = tickets.filter((t: any) => t.customerId === req.apiKey.customerId);
+      }
+      res.json({ data: filtered.map((t: any) => ({ id: t.id, ticketNumber: t.ticketNumber, customerId: t.customerId, projectId: t.projectId, subject: t.subject, status: t.status, priority: t.priority, category: t.category, createdAt: t.createdAt, updatedAt: t.updatedAt })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch support tickets" });
+    }
+  });
+
+  // Public API: Get single support ticket with messages
+  app.get("/api/v1/support-tickets/:id", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+      if (req.apiKey.customerId && ticket.customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const messages = await storage.getTicketMessages(req.params.id);
+      res.json({ data: { ...ticket, messages } });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch support ticket" });
+    }
+  });
+
+  // Public API: Create support ticket
+  app.post("/api/v1/support-tickets", authenticateApiKey, requireScope("write"), async (req: any, res) => {
+    try {
+      const { customerId, projectId, subject, priority, category } = req.body;
+      if (!customerId || !subject) return res.status(400).json({ error: "customerId and subject are required" });
+      if (req.apiKey.customerId && customerId !== req.apiKey.customerId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const ticket = await storage.createSupportTicket({ customerId, projectId, subject, priority: priority || "medium", category });
+      res.status(201).json({ data: ticket });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create support ticket" });
+    }
+  });
+
+  // Public API: Get notifications
+  app.get("/api/v1/notifications", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      if (!req.apiKey.customerId) return res.status(400).json({ error: "Notifications require a customer-scoped API key" });
+      const notifications = await storage.getNotifications(req.apiKey.customerId);
+      res.json({ data: notifications });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  // Public API: Get payment methods
+  app.get("/api/v1/payment-methods", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      if (!req.apiKey.customerId) return res.status(400).json({ error: "Payment methods require a customer-scoped API key" });
+      const methods = await storage.getPaymentMethods(req.apiKey.customerId);
+      res.json({ data: methods.map((m: any) => ({ id: m.id, brand: m.brand, last4: m.last4, expiryMonth: m.expiryMonth, expiryYear: m.expiryYear, isDefault: m.isDefault, type: m.type })) });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch payment methods" });
+    }
+  });
+
+  // Public API: Get payment plans
+  app.get("/api/v1/payment-plans", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      if (!req.apiKey.customerId) return res.status(400).json({ error: "Payment plans require a customer-scoped API key" });
+      const plans = await storage.getPaymentPlansByCustomer(req.apiKey.customerId);
+      res.json({ data: plans });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch payment plans" });
+    }
+  });
+
+  // Public API: Get knowledge base articles
+  app.get("/api/v1/knowledge-base", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const articles = await storage.getKnowledgeBaseArticles();
+      res.json({ data: articles });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch knowledge base articles" });
+    }
+  });
+
+  // Public API: Get community posts
+  app.get("/api/v1/community/posts", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 50;
+      const posts = await storage.getCommunityPosts(limit);
+      res.json({ data: posts });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch community posts" });
+    }
+  });
+
+  // Public API: Get community members
+  app.get("/api/v1/community/members", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 50;
+      const members = await storage.getCommunityMembers(limit);
+      const safeMembers = members.map(({ passwordHash, totpSecret, ...m }: any) => m);
+      res.json({ data: safeMembers });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch community members" });
+    }
+  });
+
+  // Public API: Stats / dashboard summary
+  app.get("/api/v1/stats", authenticateApiKey, requireScope("read"), async (req: any, res) => {
+    try {
+      const customers = await storage.getCustomers();
+      const projects = await storage.getProjects();
+      const invoices = await storage.getInvoices();
+      const tickets = await storage.getSupportTickets();
+      const totalRevenueCents = invoices.filter((i: any) => i.status === "paid").reduce((sum: number, i: any) => sum + (i.totalCents || 0), 0);
+      const overdueInvoices = invoices.filter((i: any) => i.status === "overdue").length;
+      const openTickets = tickets.filter((t: any) => t.status === "open" || t.status === "in_progress").length;
+      res.json({
+        data: {
+          totalCustomers: customers.length,
+          totalProjects: projects.length,
+          totalInvoices: invoices.length,
+          totalRevenueCents,
+          overdueInvoices,
+          openTickets,
+          activeProjects: projects.filter((p: any) => p.status === "active").length,
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
   // ============ GIT BACKUP ROUTES ============
 
   // GitHub OAuth: Start (customer clicks "Connect GitHub" in portal)
