@@ -5633,6 +5633,19 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  app.delete("/api/community/members/:id", isAuthenticated, async (req, res) => {
+    try {
+      const member = await storage.getCommunityUser(req.params.id);
+      if (!member) {
+        return res.status(404).json({ error: "Member not found" });
+      }
+      await storage.deleteCommunityUser(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ==================== Community Messages / Support ====================
 
   app.post("/api/community/messages", async (req, res) => {
