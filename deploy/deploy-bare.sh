@@ -63,8 +63,10 @@ if $IS_UPDATE; then
   swapon /swapfile 2>/dev/null || true
 
   step 1 "Pulling latest code"
+  cp "$APP_DIR/.env" /tmp/.env.aips.bak 2>/dev/null || true
   git fetch origin main -q
   git reset --hard origin/main -q
+  cp /tmp/.env.aips.bak "$APP_DIR/.env" 2>/dev/null || true
   COMMIT=$(git rev-parse --short HEAD)
   echo -e "  ${DIM}Now at commit ${COMMIT}${RESET}"
   ok
@@ -230,9 +232,11 @@ UPGEOF
 
   step 9 "Pulling code"
   if [ -d "$APP_DIR/.git" ]; then
+    cp "$APP_DIR/.env" /tmp/.env.aips.bak 2>/dev/null || true
     cd "$APP_DIR"
     git fetch origin main -q
     git reset --hard origin/main -q
+    cp /tmp/.env.aips.bak "$APP_DIR/.env" 2>/dev/null || true
     echo -e "  ${DIM}Updated to latest${RESET}"
   else
     rm -rf "$APP_DIR"
