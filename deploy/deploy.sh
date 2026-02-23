@@ -295,6 +295,7 @@ ENVFILE
   # Save backup for next time
   cp -f "$APP_DIR/.env" "$ENV_BACKUP"
 
+  SITE_DOMAIN="aipoweredsites.com"
   cat > "$APP_DIR/deploy/Caddyfile" << CADDYEOF
 :80 {
   reverse_proxy app:5000
