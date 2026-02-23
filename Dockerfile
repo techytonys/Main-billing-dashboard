@@ -12,7 +12,7 @@ COPY client ./client
 COPY server ./server
 COPY shared ./shared
 
-RUN npm run build && echo "Build complete - dist contents:" && ls -la dist/
+RUN npm run build && echo "Build OK" && ls -la dist/
 
 FROM node:20-slim
 
@@ -21,8 +21,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=5000
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --legacy-peer-deps --ignore-scripts 2>&1 | tail -5
+RUN npm init -y > /dev/null 2>&1 && npm install pdfkit@0.16.0 --save --legacy-peer-deps 2>&1 | tail -3
 
 COPY --from=builder /app/dist ./dist
 COPY deploy/migrations ./deploy/migrations

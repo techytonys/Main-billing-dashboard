@@ -35,6 +35,8 @@ const allowlist = [
   "passport-local",
   "pg",
   "qrcode",
+  "react",
+  "react-dom",
   "resend",
   "stripe",
   "stripe-replit-sync",
@@ -44,6 +46,10 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
+];
+
+const alwaysExternal = [
+  "pdfkit",
 ];
 
 async function buildAll() {
@@ -69,7 +75,10 @@ async function buildAll() {
     ...Object.keys(pkg.dependencies || {}),
     ...Object.keys(pkg.devDependencies || {}),
   ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+  const externals = [
+    ...allDeps.filter((dep) => !allowlist.includes(dep)),
+    ...alwaysExternal,
+  ];
 
   await esbuild({
     entryPoints: ["server/index.ts"],
