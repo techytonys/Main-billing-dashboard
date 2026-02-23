@@ -25,17 +25,18 @@ export async function ensureTables() {
     `CREATE TABLE IF NOT EXISTS users (
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
       email TEXT NOT NULL UNIQUE,
-      "firstName" TEXT,
-      "lastName" TEXT,
-      "profileImageUrl" TEXT,
-      "createdAt" TIMESTAMP DEFAULT NOW(),
-      "updatedAt" TIMESTAMP DEFAULT NOW()
+      first_name TEXT,
+      last_name TEXT,
+      profile_image_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )`,
     `CREATE TABLE IF NOT EXISTS sessions (
-      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id VARCHAR NOT NULL,
-      expires_at TIMESTAMP NOT NULL
+      sid VARCHAR NOT NULL PRIMARY KEY,
+      sess JSONB NOT NULL,
+      expire TIMESTAMP NOT NULL
     )`,
+    `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire)`,
     `CREATE TABLE IF NOT EXISTS customers (
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
