@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, sql, and, isNull, lt } from "drizzle-orm";
+import { eq, desc, sql, and, or, isNull, lt } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
   conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads, knowledgeBaseArticles, knowledgeBaseCategories, knowledgeBaseTags,
@@ -236,6 +236,7 @@ export interface IStorage {
   createCommunityUser(user: InsertCommunityUser): Promise<CommunityUser>;
   updateCommunityUser(id: string, updates: Partial<CommunityUser>): Promise<CommunityUser | undefined>;
   getCommunityMembers(limit?: number): Promise<CommunityUser[]>;
+  deleteCommunityUser(id: string): Promise<void>;
   getCommunityUserBySessionToken(token: string): Promise<CommunityUser | undefined>;
   createCommunitySession(userId: string, token: string, expiresAt: Date, ipAddress?: string, userAgent?: string): Promise<void>;
   deleteCommunitySession(token: string): Promise<void>;
@@ -1562,29 +1563,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCommunityMembers(limit = 50): Promise<CommunityUser[]> {
-    return db.select({
-      id: communityUsers.id,
-      email: communityUsers.email,
-      passwordHash: communityUsers.passwordHash,
-      displayName: communityUsers.displayName,
-      avatarUrl: communityUsers.avatarUrl,
-      bio: communityUsers.bio,
-      websiteUrl: communityUsers.websiteUrl,
-      facebookUrl: communityUsers.facebookUrl,
-      twitterUrl: communityUsers.twitterUrl,
-      linkedinUrl: communityUsers.linkedinUrl,
-      instagramUrl: communityUsers.instagramUrl,
-      youtubeUrl: communityUsers.youtubeUrl,
-      githubUrl: communityUsers.githubUrl,
-      tiktokUrl: communityUsers.tiktokUrl,
-      customerId: communityUsers.customerId,
-      isActive: communityUsers.isActive,
-      lastSeenAt: communityUsers.lastSeenAt,
-      createdAt: communityUsers.createdAt,
-    }).from(communityUsers)
+    return db.select().from(communityUsers)
       .where(eq(communityUsers.isActive, true))
       .orderBy(desc(communityUsers.createdAt))
       .limit(limit);
+  }
+
+  async deleteCommunityUser(id: string): Promise<void> {
+    await db.delete(communityComments).where(eq(communityComments.authorUserId, id));
+    await db.delete(communityReactions).where(eq(communityReactions.actorUserId, id));
+    await db.delete(communityNotifications).where(eq(communityNotifications.recipientUserId, id));
+    await db.delete(communityFriendships).where(
+      or(eq(communityFriendships.requesterId, id), eq(communityFriendships.addresseeId, id))
+    );
+    await db.delete(communityGroupMembers).where(eq(communityGroupMembers.userId, id));
+    await db.delete(communitySessions).where(eq(communitySessions.userId, id));
+    await db.delete(communityMessages).where(eq(communityMessages.userId, id));
+    await db.delete(communityPosts).where(eq(communityPosts.authorUserId, id));
+    await db.delete(communityUsers).where(eq(communityUsers.id, id));
   }
 
   async getCommunityUserBySessionToken(token: string): Promise<CommunityUser | undefined> {
