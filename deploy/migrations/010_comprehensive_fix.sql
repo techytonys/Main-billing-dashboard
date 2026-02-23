@@ -1,8 +1,10 @@
--- Comprehensive migration to fix all tables for production deployment
--- This handles both fresh installs and fixing existing databases
+-- ============================================================================
+-- COMPREHENSIVE FIX: Align ALL tables with Drizzle ORM schema (shared/schema.ts)
+-- Safe to run multiple times. Adds missing columns without dropping data.
+-- ============================================================================
 
 -- ============================================
--- FIX 1: Users table - ensure snake_case columns
+-- FIX: Users table columns (snake_case)
 -- ============================================
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='firstName') THEN
@@ -23,481 +25,489 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================
--- FIX 2: Sessions table - must match connect-pg-simple format
+-- FIX: Sessions table (connect-pg-simple format)
 -- ============================================
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='sessions') THEN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sessions' AND column_name='sid') THEN
       DROP TABLE sessions;
-      CREATE TABLE sessions (
-        sid VARCHAR NOT NULL PRIMARY KEY,
-        sess JSONB NOT NULL,
-        expire TIMESTAMP NOT NULL
-      );
-      CREATE INDEX "IDX_session_expire" ON sessions (expire);
     END IF;
-  ELSE
-    CREATE TABLE sessions (
-      sid VARCHAR NOT NULL PRIMARY KEY,
-      sess JSONB NOT NULL,
-      expire TIMESTAMP NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire);
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS sessions (
+  sid VARCHAR NOT NULL PRIMARY KEY,
+  sess JSONB NOT NULL,
+  expire TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire);
+
+-- ============================================
+-- FIX: Customers - add missing columns from Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='currency') THEN
+    ALTER TABLE customers ADD COLUMN currency TEXT DEFAULT 'USD';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customers' AND column_name='stripe_customer_id') THEN
+    ALTER TABLE customers ADD COLUMN stripe_customer_id TEXT;
   END IF;
 END $$;
 
 -- ============================================
--- CORE TABLES
+-- FIX: Billing Rates - add missing columns from Drizzle schema
 -- ============================================
-CREATE TABLE IF NOT EXISTS users (
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='billing_rates' AND column_name='code') THEN
+    ALTER TABLE billing_rates ADD COLUMN code TEXT;
+    UPDATE billing_rates SET code = LOWER(REPLACE(name, ' ', '_')) WHERE code IS NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='billing_rates' AND column_name='unit_label') THEN
+    ALTER TABLE billing_rates ADD COLUMN unit_label TEXT DEFAULT 'page';
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Work Entries - add missing columns
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_entries' AND column_name='customer_id') THEN
+    ALTER TABLE work_entries ADD COLUMN customer_id VARCHAR;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_entries' AND column_name='recorded_at') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_entries' AND column_name='entry_date') THEN
+      ALTER TABLE work_entries RENAME COLUMN entry_date TO recorded_at;
+    ELSE
+      ALTER TABLE work_entries ADD COLUMN recorded_at TIMESTAMP DEFAULT NOW();
+    END IF;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Invoices - add missing columns from Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='issued_at') THEN
+    ALTER TABLE invoices ADD COLUMN issued_at TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='tax_rate') THEN
+    ALTER TABLE invoices ADD COLUMN tax_rate NUMERIC DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='tax_amount_cents') THEN
+    ALTER TABLE invoices ADD COLUMN tax_amount_cents INTEGER DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='total_amount_cents') THEN
+    ALTER TABLE invoices ADD COLUMN total_amount_cents INTEGER NOT NULL DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='currency') THEN
+    ALTER TABLE invoices ADD COLUMN currency TEXT DEFAULT 'USD';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='subtotal_cents') THEN
+    ALTER TABLE invoices ADD COLUMN subtotal_cents INTEGER NOT NULL DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='due_date') THEN
+    ALTER TABLE invoices ADD COLUMN due_date TIMESTAMP;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Invoice Line Items - add missing columns
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoice_line_items' AND column_name='work_entry_id') THEN
+    ALTER TABLE invoice_line_items ADD COLUMN work_entry_id VARCHAR;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoice_line_items' AND column_name='unit_price_cents') THEN
+    ALTER TABLE invoice_line_items ADD COLUMN unit_price_cents INTEGER NOT NULL DEFAULT 0;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Payment Methods - match Drizzle schema columns
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_methods' AND column_name='type') THEN
+    ALTER TABLE payment_methods ADD COLUMN type TEXT DEFAULT 'card';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_methods' AND column_name='expiry_month') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_methods' AND column_name='exp_month') THEN
+      ALTER TABLE payment_methods RENAME COLUMN exp_month TO expiry_month;
+    ELSE
+      ALTER TABLE payment_methods ADD COLUMN expiry_month INTEGER;
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_methods' AND column_name='expiry_year') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_methods' AND column_name='exp_year') THEN
+      ALTER TABLE payment_methods RENAME COLUMN exp_year TO expiry_year;
+    ELSE
+      ALTER TABLE payment_methods ADD COLUMN expiry_year INTEGER;
+    END IF;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Support Tickets - add missing columns
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='project_id') THEN
+    ALTER TABLE support_tickets ADD COLUMN project_id VARCHAR;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='ticket_number') THEN
+    ALTER TABLE support_tickets ADD COLUMN ticket_number TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='category') THEN
+    ALTER TABLE support_tickets ADD COLUMN category TEXT NOT NULL DEFAULT 'general';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='support_tickets' AND column_name='updated_at') THEN
+    ALTER TABLE support_tickets ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Ticket Messages - sender_name NOT NULL
+-- ============================================
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ticket_messages' AND column_name='sender_name' AND is_nullable='YES') THEN
+    UPDATE ticket_messages SET sender_name = 'Unknown' WHERE sender_name IS NULL;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: QA Questions - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='qa_questions' AND column_name='author_name') THEN
+    ALTER TABLE qa_questions ADD COLUMN author_name TEXT DEFAULT 'Anonymous';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='qa_questions' AND column_name='author_email') THEN
+    ALTER TABLE qa_questions ADD COLUMN author_email TEXT DEFAULT '';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='qa_questions' AND column_name='status') THEN
+    ALTER TABLE qa_questions ADD COLUMN status TEXT NOT NULL DEFAULT 'unanswered';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='qa_questions' AND column_name='is_public') THEN
+    ALTER TABLE qa_questions ADD COLUMN is_public BOOLEAN DEFAULT true;
+  END IF;
+  -- Remove old column that doesn't exist in Drizzle schema
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='qa_questions' AND column_name='customer_id') THEN
+    ALTER TABLE qa_questions DROP COLUMN customer_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='qa_questions' AND column_name='is_answered') THEN
+    ALTER TABLE qa_questions DROP COLUMN is_answered;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Payment Plans - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_plans' AND column_name='number_of_installments') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_plans' AND column_name='installment_count') THEN
+      ALTER TABLE payment_plans RENAME COLUMN installment_count TO number_of_installments;
+    ELSE
+      ALTER TABLE payment_plans ADD COLUMN number_of_installments INTEGER NOT NULL DEFAULT 3;
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_plans' AND column_name='stripe_price_id') THEN
+    ALTER TABLE payment_plans ADD COLUMN stripe_price_id TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_plans' AND column_name='start_date') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payment_plans' AND column_name='next_payment_date') THEN
+      ALTER TABLE payment_plans RENAME COLUMN next_payment_date TO start_date;
+    ELSE
+      ALTER TABLE payment_plans ADD COLUMN start_date TIMESTAMP;
+    END IF;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Notifications - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='body') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='message') THEN
+      ALTER TABLE notifications RENAME COLUMN message TO body;
+    ELSE
+      ALTER TABLE notifications ADD COLUMN body TEXT;
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='link_url') THEN
+    ALTER TABLE notifications ADD COLUMN link_url TEXT;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Conversations - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='conversations' AND column_name='visitor_name') THEN
+    ALTER TABLE conversations ADD COLUMN visitor_name TEXT DEFAULT '';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='conversations' AND column_name='visitor_email') THEN
+    ALTER TABLE conversations ADD COLUMN visitor_email TEXT DEFAULT '';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='conversations' AND column_name='access_token') THEN
+    ALTER TABLE conversations ADD COLUMN access_token TEXT DEFAULT gen_random_uuid();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='conversations' AND column_name='updated_at') THEN
+    ALTER TABLE conversations ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Conversation Messages - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='conversation_messages' AND column_name='sender_name') THEN
+    ALTER TABLE conversation_messages ADD COLUMN sender_name TEXT DEFAULT '';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='conversation_messages' AND column_name='attachments') THEN
+    ALTER TABLE conversation_messages ADD COLUMN attachments TEXT;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Project Updates - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_updates' AND column_name='type') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_updates' AND column_name='update_type') THEN
+      ALTER TABLE project_updates RENAME COLUMN update_type TO type;
+    ELSE
+      ALTER TABLE project_updates ADD COLUMN type TEXT NOT NULL DEFAULT 'update';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_updates' AND column_name='status') THEN
+    ALTER TABLE project_updates ADD COLUMN status TEXT NOT NULL DEFAULT 'completed';
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Project Screenshots - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='object_path') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='url') THEN
+      ALTER TABLE project_screenshots RENAME COLUMN url TO object_path;
+    ELSE
+      ALTER TABLE project_screenshots ADD COLUMN object_path TEXT NOT NULL DEFAULT '';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='file_name') THEN
+    ALTER TABLE project_screenshots ADD COLUMN file_name TEXT NOT NULL DEFAULT 'screenshot.png';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='file_size') THEN
+    ALTER TABLE project_screenshots ADD COLUMN file_size INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='content_type') THEN
+    ALTER TABLE project_screenshots ADD COLUMN content_type TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='approval_status') THEN
+    ALTER TABLE project_screenshots ADD COLUMN approval_status TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='revision_notes') THEN
+    ALTER TABLE project_screenshots ADD COLUMN revision_notes TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='approval_requested_at') THEN
+    ALTER TABLE project_screenshots ADD COLUMN approval_requested_at TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_screenshots' AND column_name='approved_at') THEN
+    ALTER TABLE project_screenshots ADD COLUMN approved_at TIMESTAMP;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Project Client Files - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='customer_id') THEN
+    ALTER TABLE project_client_files ADD COLUMN customer_id VARCHAR;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='object_path') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='url') THEN
+      ALTER TABLE project_client_files RENAME COLUMN url TO object_path;
+    ELSE
+      ALTER TABLE project_client_files ADD COLUMN object_path TEXT NOT NULL DEFAULT '';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='file_name') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='filename') THEN
+      ALTER TABLE project_client_files RENAME COLUMN filename TO file_name;
+    ELSE
+      ALTER TABLE project_client_files ADD COLUMN file_name TEXT NOT NULL DEFAULT 'file';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='file_size') THEN
+    ALTER TABLE project_client_files ADD COLUMN file_size INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='content_type') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='project_client_files' AND column_name='file_type') THEN
+      ALTER TABLE project_client_files RENAME COLUMN file_type TO content_type;
+    ELSE
+      ALTER TABLE project_client_files ADD COLUMN content_type TEXT;
+    END IF;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Quotes - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='customer_name') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='client_name') THEN
+      ALTER TABLE quotes RENAME COLUMN client_name TO customer_name;
+    ELSE
+      ALTER TABLE quotes ADD COLUMN customer_name TEXT NOT NULL DEFAULT '';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='customer_email') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='client_email') THEN
+      ALTER TABLE quotes RENAME COLUMN client_email TO customer_email;
+    ELSE
+      ALTER TABLE quotes ADD COLUMN customer_email TEXT NOT NULL DEFAULT '';
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='total_amount_cents') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='total_cents') THEN
+      ALTER TABLE quotes RENAME COLUMN total_cents TO total_amount_cents;
+    ELSE
+      ALTER TABLE quotes ADD COLUMN total_amount_cents INTEGER NOT NULL DEFAULT 0;
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='view_token') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='portal_token') THEN
+      ALTER TABLE quotes RENAME COLUMN portal_token TO view_token;
+    ELSE
+      ALTER TABLE quotes ADD COLUMN view_token TEXT DEFAULT gen_random_uuid();
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='sent_at') THEN
+    ALTER TABLE quotes ADD COLUMN sent_at TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='responded_at') THEN
+    ALTER TABLE quotes ADD COLUMN responded_at TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='expires_at') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='valid_until') THEN
+      ALTER TABLE quotes RENAME COLUMN valid_until TO expires_at;
+    ELSE
+      ALTER TABLE quotes ADD COLUMN expires_at TIMESTAMP;
+    END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='project_requirements') THEN
+    ALTER TABLE quotes ADD COLUMN project_requirements TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='requirements_submitted_at') THEN
+    ALTER TABLE quotes ADD COLUMN requirements_submitted_at TIMESTAMP;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='notes') THEN
+    ALTER TABLE quotes ADD COLUMN notes TEXT;
+  END IF;
+  -- Remove old columns not in Drizzle schema
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='subtotal_cents') THEN
+    ALTER TABLE quotes DROP COLUMN subtotal_cents;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='tax_cents') THEN
+    ALTER TABLE quotes DROP COLUMN tax_cents;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='client_company') THEN
+    ALTER TABLE quotes DROP COLUMN client_company;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='approved_at') THEN
+    ALTER TABLE quotes DROP COLUMN approved_at;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='denied_at') THEN
+    ALTER TABLE quotes DROP COLUMN denied_at;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='denial_reason') THEN
+    ALTER TABLE quotes DROP COLUMN denial_reason;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='title') THEN
+    ALTER TABLE quotes DROP COLUMN title;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='quotes' AND column_name='description') THEN
+    ALTER TABLE quotes DROP COLUMN description;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Subscriptions - match Drizzle schema
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subscriptions' AND column_name='plan_code') THEN
+    ALTER TABLE subscriptions ADD COLUMN plan_code TEXT DEFAULT '';
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Linode Servers - match Drizzle markup_percent default
+-- ============================================
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='linode_servers' AND column_name='markup_percent') THEN
+    ALTER TABLE linode_servers ALTER COLUMN markup_percent SET DEFAULT 50;
+  END IF;
+END $$;
+
+-- ============================================
+-- FIX: Community Posts - add missing author_type column
+-- ============================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='community_posts' AND column_name='author_type') THEN
+    ALTER TABLE community_posts ADD COLUMN author_type TEXT DEFAULT 'admin';
+  END IF;
+END $$;
+
+-- ============================================
+-- ENSURE: All community tables exist (already created by previous migration)
+-- ============================================
+CREATE TABLE IF NOT EXISTS community_users (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
-  first_name TEXT,
-  last_name TEXT,
-  profile_image_url TEXT,
+  password_hash TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  avatar_url TEXT,
+  bio TEXT,
+  website_url TEXT,
+  facebook_url TEXT,
+  twitter_url TEXT,
+  linkedin_url TEXT,
+  instagram_url TEXT,
+  youtube_url TEXT,
+  github_url TEXT,
+  tiktok_url TEXT,
+  totp_secret TEXT,
+  two_factor_enabled BOOLEAN DEFAULT false,
+  customer_id VARCHAR,
+  is_active BOOLEAN DEFAULT true,
+  last_seen_at TIMESTAMP DEFAULT NOW(),
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  admin_user_id TEXT
 );
 
-CREATE TABLE IF NOT EXISTS customers (
+CREATE TABLE IF NOT EXISTS community_sessions (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR NOT NULL,
+  session_token TEXT NOT NULL UNIQUE,
+  ip_address TEXT,
+  user_agent TEXT,
+  last_seen_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS community_messages (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR,
   name TEXT NOT NULL,
   email TEXT NOT NULL,
-  phone TEXT,
-  company TEXT,
-  portal_token TEXT UNIQUE,
-  stripe_customer_id TEXT,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS projects (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT,
-  status TEXT NOT NULL DEFAULT 'active',
-  start_date TIMESTAMP,
-  end_date TIMESTAMP,
-  preview_url TEXT,
-  progress_url TEXT,
-  github_repo_url TEXT,
-  deploy_platform TEXT,
-  netlify_site_id TEXT,
-  netlify_site_url TEXT,
-  vercel_project_id TEXT,
-  vercel_project_url TEXT,
-  railway_project_id TEXT,
-  railway_project_url TEXT,
-  railway_service_id TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS billing_rates (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  description TEXT,
-  rate_cents INTEGER NOT NULL,
-  unit TEXT NOT NULL DEFAULT 'page',
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS work_entries (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id VARCHAR NOT NULL,
-  rate_id VARCHAR NOT NULL,
-  quantity NUMERIC NOT NULL DEFAULT 1,
-  description TEXT,
-  entry_date TIMESTAMP DEFAULT NOW(),
-  is_billed BOOLEAN DEFAULT false,
-  invoice_id VARCHAR,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS invoices (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  project_id VARCHAR,
-  invoice_number TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL DEFAULT 'draft',
-  subtotal_cents INTEGER NOT NULL DEFAULT 0,
-  tax_cents INTEGER NOT NULL DEFAULT 0,
-  total_cents INTEGER NOT NULL DEFAULT 0,
-  due_date TIMESTAMP,
-  paid_at TIMESTAMP,
-  stripe_invoice_id TEXT,
-  stripe_payment_intent_id TEXT,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS invoice_line_items (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  invoice_id VARCHAR NOT NULL,
-  description TEXT NOT NULL,
-  quantity NUMERIC NOT NULL DEFAULT 1,
-  unit_price_cents INTEGER NOT NULL,
-  total_cents INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS conversations (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
   subject TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS conversation_messages (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  conversation_id VARCHAR NOT NULL,
-  sender_type TEXT NOT NULL DEFAULT 'admin',
-  message TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS notifications (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  type TEXT NOT NULL DEFAULT 'info',
-  title TEXT NOT NULL,
-  message TEXT NOT NULL,
-  is_read BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS support_tickets (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  subject TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  priority TEXT NOT NULL DEFAULT 'normal',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS ticket_messages (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  ticket_id VARCHAR NOT NULL,
-  sender_type TEXT NOT NULL DEFAULT 'client',
-  sender_name TEXT,
-  message TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS qa_questions (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  question TEXT NOT NULL,
-  answer TEXT,
-  is_answered BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW(),
-  answered_at TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS payment_plans (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  invoice_id VARCHAR NOT NULL,
-  total_amount_cents INTEGER NOT NULL,
-  installment_count INTEGER NOT NULL DEFAULT 3,
-  installments_paid INTEGER NOT NULL DEFAULT 0,
-  installment_amount_cents INTEGER NOT NULL,
-  frequency TEXT NOT NULL DEFAULT 'monthly',
-  status TEXT NOT NULL DEFAULT 'pending',
-  next_payment_date TIMESTAMP,
-  stripe_subscription_id TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS payment_methods (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  stripe_payment_method_id TEXT NOT NULL,
-  brand TEXT,
-  last4 TEXT,
-  exp_month INTEGER,
-  exp_year INTEGER,
-  is_default BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  plan_name TEXT NOT NULL,
-  plan_code TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
-  price_cents INTEGER NOT NULL,
-  billing_interval TEXT NOT NULL DEFAULT 'monthly',
-  stripe_subscription_id TEXT,
-  current_period_start TIMESTAMP,
-  current_period_end TIMESTAMP,
-  canceled_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_updates (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id VARCHAR NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  update_type TEXT NOT NULL DEFAULT 'progress',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_screenshots (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id VARCHAR NOT NULL,
-  url TEXT NOT NULL,
-  caption TEXT,
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS project_client_files (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id VARCHAR NOT NULL,
-  filename TEXT NOT NULL,
-  url TEXT NOT NULL,
-  file_type TEXT,
-  uploaded_by TEXT NOT NULL DEFAULT 'client',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS quotes (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR,
-  quote_number TEXT UNIQUE,
-  title TEXT NOT NULL,
-  description TEXT,
-  status TEXT NOT NULL DEFAULT 'draft',
-  subtotal_cents INTEGER NOT NULL DEFAULT 0,
-  tax_cents INTEGER NOT NULL DEFAULT 0,
-  total_cents INTEGER NOT NULL DEFAULT 0,
-  valid_until TIMESTAMP,
-  client_name TEXT,
-  client_email TEXT,
-  client_company TEXT,
-  approved_at TIMESTAMP,
-  denied_at TIMESTAMP,
-  denial_reason TEXT,
-  portal_token TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS knowledge_base_articles (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  title TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  content TEXT NOT NULL DEFAULT '',
-  category TEXT NOT NULL DEFAULT 'General',
-  status TEXT NOT NULL DEFAULT 'draft',
-  notion_page_id TEXT,
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  tags TEXT[] DEFAULT '{}'
-);
-
-CREATE TABLE IF NOT EXISTS knowledge_base_categories (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  icon TEXT NOT NULL DEFAULT 'Folder',
-  sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS knowledge_base_tags (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  icon TEXT NOT NULL DEFAULT 'Tag',
-  color TEXT NOT NULL DEFAULT 'gray',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS licenses (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  license_key TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL DEFAULT 'active',
-  max_activations INTEGER DEFAULT 0,
-  activation_count INTEGER DEFAULT 0,
-  last_activated_at TIMESTAMP,
-  last_activated_ip TEXT,
-  last_activated_hostname TEXT,
-  expires_at TIMESTAMP,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS license_activations (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  license_id VARCHAR NOT NULL,
-  server_id VARCHAR,
-  server_ip TEXT,
-  hostname TEXT,
-  activated_at TIMESTAMP DEFAULT NOW(),
-  status TEXT NOT NULL DEFAULT 'active',
-  released_at TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS leads (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  business_name TEXT NOT NULL,
-  address TEXT,
-  phone TEXT,
-  website TEXT,
-  domain TEXT,
-  email_guess TEXT,
-  google_place_id TEXT,
-  google_rating NUMERIC,
-  google_review_count INTEGER,
-  category TEXT,
-  zip_code TEXT,
+  body TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'new',
-  notes TEXT,
-  last_contacted_at TIMESTAMP,
-  audit_score INTEGER,
-  audit_data TEXT,
+  admin_reply TEXT,
+  replied_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS linode_servers (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  linode_id INTEGER NOT NULL,
-  label TEXT NOT NULL,
-  customer_id VARCHAR,
-  region TEXT NOT NULL,
-  plan_type TEXT NOT NULL,
-  plan_label TEXT,
-  status TEXT NOT NULL DEFAULT 'provisioning',
-  ipv4 TEXT,
-  ipv6 TEXT,
-  vcpus INTEGER,
-  memory INTEGER,
-  disk INTEGER,
-  monthly_price_cents INTEGER,
-  markup_percent INTEGER DEFAULT 20,
-  last_stats_at TIMESTAMP,
-  network_in NUMERIC,
-  network_out NUMERIC,
-  cpu_usage NUMERIC,
-  created_at TIMESTAMP DEFAULT NOW(),
-  last_invoice_at TIMESTAMP,
-  ssh_user TEXT,
-  ssh_port INTEGER,
-  ssh_public_key TEXT,
-  server_setup_complete BOOLEAN DEFAULT false
-);
-
-CREATE TABLE IF NOT EXISTS usage_records (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  subscription_id VARCHAR,
-  metric_name TEXT NOT NULL,
-  metric_code TEXT NOT NULL,
-  units NUMERIC NOT NULL,
-  recorded_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS git_backup_configs (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id VARCHAR NOT NULL,
-  customer_id VARCHAR NOT NULL,
-  github_token TEXT,
-  github_username TEXT,
-  github_repo TEXT,
-  github_branch TEXT DEFAULT 'main',
-  autopilot_enabled BOOLEAN DEFAULT false,
-  autopilot_frequency TEXT DEFAULT 'daily',
-  last_push_at TIMESTAMP,
-  next_scheduled_at TIMESTAMP,
-  is_connected BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS git_backup_logs (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  config_id VARCHAR NOT NULL,
-  project_id VARCHAR NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  commit_sha TEXT,
-  commit_message TEXT,
-  files_count INTEGER,
-  error_message TEXT,
-  triggered_by TEXT NOT NULL DEFAULT 'manual',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS api_keys (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  key TEXT NOT NULL,
-  customer_id VARCHAR,
-  scopes TEXT NOT NULL DEFAULT 'read',
-  is_active BOOLEAN DEFAULT true,
-  last_used_at TIMESTAMP,
-  expires_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS push_subscriptions (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id VARCHAR NOT NULL,
-  endpoint TEXT NOT NULL,
-  p256dh TEXT NOT NULL,
-  auth TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS agent_cost_entries (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id VARCHAR,
-  customer_id VARCHAR,
-  description TEXT NOT NULL,
-  agent_cost_cents INTEGER NOT NULL,
-  markup_percent INTEGER NOT NULL DEFAULT 50,
-  client_charge_cents INTEGER NOT NULL,
-  session_date TIMESTAMP DEFAULT NOW(),
-  invoice_id VARCHAR,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS quote_requests (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  company TEXT,
-  phone TEXT,
-  project_type TEXT NOT NULL,
-  budget TEXT,
-  message TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'new',
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS quote_line_items (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  quote_id VARCHAR NOT NULL,
-  description TEXT NOT NULL,
-  quantity INTEGER NOT NULL DEFAULT 1,
-  unit_price_cents INTEGER NOT NULL,
-  total_cents INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS quote_comments (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  quote_id VARCHAR NOT NULL,
-  sender_type TEXT NOT NULL,
-  sender_name TEXT NOT NULL,
-  message TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- ============================================
--- COMMUNITY TABLES
--- ============================================
 CREATE TABLE IF NOT EXISTS community_posts (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
   author_name TEXT NOT NULL,
@@ -557,54 +567,6 @@ CREATE TABLE IF NOT EXISTS community_notifications (
   comment_id VARCHAR,
   actor_name TEXT NOT NULL,
   is_read BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS community_users (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  display_name TEXT NOT NULL,
-  avatar_url TEXT,
-  bio TEXT,
-  customer_id VARCHAR,
-  is_active BOOLEAN DEFAULT true,
-  last_seen_at TIMESTAMP DEFAULT NOW(),
-  created_at TIMESTAMP DEFAULT NOW(),
-  website_url TEXT,
-  facebook_url TEXT,
-  twitter_url TEXT,
-  linkedin_url TEXT,
-  instagram_url TEXT,
-  youtube_url TEXT,
-  github_url TEXT,
-  tiktok_url TEXT,
-  totp_secret TEXT,
-  two_factor_enabled BOOLEAN DEFAULT false,
-  admin_user_id TEXT
-);
-
-CREATE TABLE IF NOT EXISTS community_sessions (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id VARCHAR NOT NULL,
-  session_token TEXT NOT NULL UNIQUE,
-  ip_address TEXT,
-  user_agent TEXT,
-  last_seen_at TIMESTAMP DEFAULT NOW(),
-  expires_at TIMESTAMP NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS community_messages (
-  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id VARCHAR,
-  name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  subject TEXT NOT NULL,
-  body TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'new',
-  admin_reply TEXT,
-  replied_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
