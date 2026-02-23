@@ -10,6 +10,8 @@ import { generateInvoicePDF } from "./pdf";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import type { Customer } from "@shared/schema";
 import webpush from "web-push";
+import path from "path";
+import fs from "fs";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -6235,6 +6237,42 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
         return post;
       }));
       res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Local file upload for self-hosted mode (avatar uploads etc.)
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use("/uploads", (req, res, next) => {
+    if (req.method === "GET") {
+      const express = require("express");
+      express.static(uploadsDir)(req, res, next);
+    } else {
+      next();
+    }
+  });
+
+  app.post("/api/uploads/local", async (req, res) => {
+    try {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        try {
+          const buffer = Buffer.concat(chunks);
+          const contentType = req.headers["content-type"] || "application/octet-stream";
+          const ext = contentType.includes("png") ? ".png" : contentType.includes("gif") ? ".gif" : contentType.includes("webp") ? ".webp" : ".jpg";
+          const filename = `${crypto.randomUUID()}${ext}`;
+          const filepath = path.join(uploadsDir, filename);
+          fs.writeFileSync(filepath, buffer);
+          res.json({ url: `/uploads/${filename}` });
+        } catch (err: any) {
+          res.status(500).json({ error: err.message });
+        }
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
