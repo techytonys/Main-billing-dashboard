@@ -25,6 +25,10 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 IS_UPDATE=false
+HAS_ENV=false
+if [ -f "$APP_DIR/.env" ]; then
+  HAS_ENV=true
+fi
 if [ -f "$APP_DIR/.env" ] && systemctl is-active --quiet aipoweredsites 2>/dev/null; then
   IS_UPDATE=true
 elif [ -f "$APP_DIR/.env" ] && [ -f "/etc/systemd/system/aipoweredsites.service" ]; then
@@ -253,7 +257,10 @@ UPGEOF
   VERCEL_TOK=""
   RAILWAY_TOK=""
 
-  if [ -f "$APP_DIR/.env" ]; then
+  SESS_SECRET=$(openssl rand -hex 32)
+  DB_PASS=$(openssl rand -hex 16)
+
+  if $HAS_ENV; then
     STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     STRIPE_WH=$(grep "^STRIPE_WEBHOOK_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
@@ -268,56 +275,54 @@ UPGEOF
     NETLIFY_TOK=$(grep "^NETLIFY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     VERCEL_TOK=$(grep "^VERCEL_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     RAILWAY_TOK=$(grep "^RAILWAY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-  fi
-
-  echo ""
-  echo -e "  ${YELLOW}Enter API keys (Enter to keep existing):${RESET}"
-  echo ""
-
-  prompt_key() {
-    local label=$1 current=$2 varname=$3
-    if [ -n "$current" ]; then
-      echo -e "  ${DIM}$label: ${GREEN}set${RESET} (${DIM}${current:0:7}...${RESET})"
-      read -p "    New value or Enter to keep: " newval
-      [ -n "$newval" ] && eval "$varname='$newval'"
-    else
-      read -p "  $label: " newval
-      eval "$varname='$newval'"
-    fi
-  }
-
-  prompt_key "Stripe Secret Key (sk_...)" "$STRIPE_SK" STRIPE_SK
-  prompt_key "Stripe Publishable Key (pk_...)" "$STRIPE_PK" STRIPE_PK
-  prompt_key "Stripe Webhook Secret (whsec_...)" "$STRIPE_WH" STRIPE_WH
-  prompt_key "Resend API Key (re_...)" "$RESEND_KEY" RESEND_KEY
-  prompt_key "Resend Audience ID (optional)" "$RESEND_AUD" RESEND_AUD
-  prompt_key "OpenAI API Key (optional)" "$OPENAI_KEY" OPENAI_KEY
-  prompt_key "Google Places API Key (optional)" "$GOOGLE_KEY" GOOGLE_KEY
-  prompt_key "Linode API Key (optional)" "$LINODE_KEY" LINODE_KEY
-  prompt_key "GitHub Client ID (optional)" "$GITHUB_CID" GITHUB_CID
-  prompt_key "GitHub Client Secret (optional)" "$GITHUB_CSEC" GITHUB_CSEC
-  prompt_key "Netlify API Token (optional)" "$NETLIFY_TOK" NETLIFY_TOK
-  prompt_key "Vercel API Token (optional)" "$VERCEL_TOK" VERCEL_TOK
-  prompt_key "Railway API Token (optional)" "$RAILWAY_TOK" RAILWAY_TOK
-
-  if [ -z "$SITE_DOMAIN" ]; then
-    read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN
-    SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
-  fi
-
-  if [ -z "$STRIPE_SK" ] || [ -z "$STRIPE_PK" ] || [ -z "$RESEND_KEY" ]; then
-    echo -e "  ${RED}Stripe keys and Resend key are required${RESET}"
-    exit 1
-  fi
-
-  SESS_SECRET=$(openssl rand -hex 32)
-  DB_PASS=$(openssl rand -hex 16)
-
-  if [ -f "$APP_DIR/.env" ]; then
     EXISTING_SESS=$(grep "^SESSION_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     EXISTING_DB=$(grep "^POSTGRES_PASSWORD=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     [ -n "$EXISTING_SESS" ] && SESS_SECRET="$EXISTING_SESS"
     [ -n "$EXISTING_DB" ] && DB_PASS="$EXISTING_DB"
+    SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
+
+    echo -e "  ${GREEN}Existing .env found - using saved keys (zero prompts)${RESET}"
+    echo -e "  ${DIM}To change keys later, edit /opt/aipoweredsites/.env${RESET}"
+  else
+    echo ""
+    echo -e "  ${YELLOW}First-time setup - enter API keys:${RESET}"
+    echo ""
+
+    prompt_key() {
+      local label=$1 current=$2 varname=$3
+      if [ -n "$current" ]; then
+        echo -e "  ${DIM}$label: ${GREEN}set${RESET} (${DIM}${current:0:7}...${RESET})"
+        read -p "    New value or Enter to keep: " newval
+        [ -n "$newval" ] && eval "$varname='$newval'"
+      else
+        read -p "  $label: " newval
+        eval "$varname='$newval'"
+      fi
+    }
+
+    prompt_key "Stripe Secret Key (sk_...)" "$STRIPE_SK" STRIPE_SK
+    prompt_key "Stripe Publishable Key (pk_...)" "$STRIPE_PK" STRIPE_PK
+    prompt_key "Stripe Webhook Secret (whsec_...)" "$STRIPE_WH" STRIPE_WH
+    prompt_key "Resend API Key (re_...)" "$RESEND_KEY" RESEND_KEY
+    prompt_key "Resend Audience ID (optional)" "$RESEND_AUD" RESEND_AUD
+    prompt_key "OpenAI API Key (optional)" "$OPENAI_KEY" OPENAI_KEY
+    prompt_key "Google Places API Key (optional)" "$GOOGLE_KEY" GOOGLE_KEY
+    prompt_key "Linode API Key (optional)" "$LINODE_KEY" LINODE_KEY
+    prompt_key "GitHub Client ID (optional)" "$GITHUB_CID" GITHUB_CID
+    prompt_key "GitHub Client Secret (optional)" "$GITHUB_CSEC" GITHUB_CSEC
+    prompt_key "Netlify API Token (optional)" "$NETLIFY_TOK" NETLIFY_TOK
+    prompt_key "Vercel API Token (optional)" "$VERCEL_TOK" VERCEL_TOK
+    prompt_key "Railway API Token (optional)" "$RAILWAY_TOK" RAILWAY_TOK
+
+    if [ -z "$SITE_DOMAIN" ]; then
+      read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN
+      SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
+    fi
+
+    if [ -z "$STRIPE_SK" ] || [ -z "$STRIPE_PK" ] || [ -z "$RESEND_KEY" ]; then
+      echo -e "  ${RED}Stripe keys and Resend key are required${RESET}"
+      exit 1
+    fi
   fi
 
   cat > "$APP_DIR/.env" << ENVFILE
