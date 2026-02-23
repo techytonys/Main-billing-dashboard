@@ -6,13 +6,13 @@ COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps 2>&1 | tail -5
 
 COPY tsconfig.json drizzle.config.ts vite.config.ts ./
+COPY tailwind.config.ts postcss.config.js components.json ./
+COPY script ./script
 COPY client ./client
 COPY server ./server
 COPY shared ./shared
-COPY attached_assets ./attached_assets
 
-ENV NODE_ENV=production
-RUN npm run build
+RUN npm run build && echo "Build complete - dist contents:" && ls -la dist/
 
 FROM node:20-slim
 

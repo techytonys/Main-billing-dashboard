@@ -2,21 +2,24 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
 const allowlist = [
   "@google/generative-ai",
+  "@google-cloud/storage",
+  "@notionhq/client",
+  "@octokit/rest",
   "axios",
+  "bcryptjs",
+  "cheerio",
   "connect-pg-simple",
   "cookie-parser",
   "cors",
-  "cheerio",
   "date-fns",
   "drizzle-orm",
   "drizzle-zod",
   "express",
   "express-rate-limit",
   "express-session",
+  "google-auth-library",
   "jsonwebtoken",
   "memoizee",
   "memorystore",
@@ -24,21 +27,23 @@ const allowlist = [
   "nanoid",
   "nodemailer",
   "openai",
+  "openid-client",
   "otpauth",
   "p-limit",
   "p-retry",
   "passport",
   "passport-local",
   "pg",
+  "qrcode",
   "resend",
   "stripe",
   "stripe-replit-sync",
   "uuid",
+  "web-push",
   "ws",
   "xlsx",
   "zod",
   "zod-validation-error",
-  "bcryptjs",
 ];
 
 async function buildAll() {

@@ -6,4 +6,4 @@ node_modules
 replit.nix
 .cache
 .config
-attached_assets
+dist
