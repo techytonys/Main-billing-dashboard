@@ -3,6 +3,7 @@ set -e
 
 APP_DIR="/opt/aipoweredsites"
 REPO_URL="https://github.com/techytonys/Main-billing-dashboard.git"
+ENV_BACKUP="/root/.aips_env_backup"
 
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -24,12 +25,13 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-IS_UPDATE=false
-HAS_ENV=false
+# IMMEDIATELY save .env to a safe location OUTSIDE the repo before anything else
 if [ -f "$APP_DIR/.env" ]; then
-  HAS_ENV=true
+  cp -f "$APP_DIR/.env" "$ENV_BACKUP"
 fi
-if [ -f "$APP_DIR/.env" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
+
+IS_UPDATE=false
+if [ -f "$ENV_BACKUP" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
   IS_UPDATE=true
 fi
 
@@ -56,7 +58,7 @@ echo ""
 if $IS_UPDATE; then
 
   cd "$APP_DIR"
-  set -a; source .env; set +a
+  set -a; source "$ENV_BACKUP"; set +a
 
   step 1 "Backing up database"
   BACKUP_DIR="$APP_DIR/backups"
@@ -73,10 +75,9 @@ if $IS_UPDATE; then
   ok
 
   step 2 "Pulling latest code"
-  cp "$APP_DIR/.env" /tmp/.env.aips.bak 2>/dev/null || true
   git fetch origin main -q
   git reset --hard origin/main -q
-  cp /tmp/.env.aips.bak "$APP_DIR/.env" 2>/dev/null || true
+  cp -f "$ENV_BACKUP" "$APP_DIR/.env"
   COMMIT=$(git rev-parse --short HEAD)
   echo -e "  ${DIM}Now at commit ${COMMIT}${RESET}"
   ok
@@ -229,16 +230,18 @@ UPGEOF
 
   step 7 "Pulling code"
   if [ -d "$APP_DIR/.git" ]; then
-    cp "$APP_DIR/.env" /tmp/.env.aips.bak 2>/dev/null || true
     cd "$APP_DIR"
     git fetch origin main -q
     git reset --hard origin/main -q
-    cp /tmp/.env.aips.bak "$APP_DIR/.env" 2>/dev/null || true
     echo -e "  ${DIM}Updated to latest${RESET}"
   else
     rm -rf "$APP_DIR"
     git clone -q "$REPO_URL" "$APP_DIR"
     cd "$APP_DIR"
+  fi
+  # Always restore .env from backup after git operations
+  if [ -f "$ENV_BACKUP" ]; then
+    cp -f "$ENV_BACKUP" "$APP_DIR/.env"
   fi
   ok
 
@@ -260,15 +263,8 @@ UPGEOF
   SESS_SECRET=$(openssl rand -hex 32)
   DB_PASS=$(openssl rand -hex 16)
 
-  ENV_FOUND=false
+  # Check .env at THIS moment (after git pull + restore)
   if [ -f "$APP_DIR/.env" ]; then
-    ENV_FOUND=true
-  elif [ -f "/tmp/.env.aips.bak" ]; then
-    cp /tmp/.env.aips.bak "$APP_DIR/.env"
-    ENV_FOUND=true
-  fi
-
-  if $ENV_FOUND; then
     STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     STRIPE_PK=$(grep "^STRIPE_PUBLISHABLE_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
     STRIPE_WH=$(grep "^STRIPE_WEBHOOK_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
@@ -289,9 +285,11 @@ UPGEOF
     [ -n "$EXISTING_DB" ] && DB_PASS="$EXISTING_DB"
     SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
 
-    echo -e "  ${GREEN}Existing .env found - using saved keys (zero prompts)${RESET}"
+    echo -e "  ${GREEN}Existing config found - using saved keys (zero prompts)${RESET}"
     echo -e "  ${DIM}To change keys later, edit /opt/aipoweredsites/.env${RESET}"
   else
+    # TRUE first-time install - no .env anywhere
+    # Read from /dev/tty so it works even when piped via curl
     echo ""
     echo -e "  ${YELLOW}First-time setup - enter API keys:${RESET}"
     echo ""
@@ -300,10 +298,10 @@ UPGEOF
       local label=$1 current=$2 varname=$3
       if [ -n "$current" ]; then
         echo -e "  ${DIM}$label: ${GREEN}set${RESET} (${DIM}${current:0:7}...${RESET})"
-        read -p "    New value or Enter to keep: " newval
+        read -p "    New value or Enter to keep: " newval < /dev/tty
         [ -n "$newval" ] && eval "$varname='$newval'"
       else
-        read -p "  $label: " newval
+        read -p "  $label: " newval < /dev/tty
         eval "$varname='$newval'"
       fi
     }
@@ -322,10 +320,8 @@ UPGEOF
     prompt_key "Vercel API Token (optional)" "$VERCEL_TOK" VERCEL_TOK
     prompt_key "Railway API Token (optional)" "$RAILWAY_TOK" RAILWAY_TOK
 
-    if [ -z "$SITE_DOMAIN" ]; then
-      read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN
-      SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
-    fi
+    read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN < /dev/tty
+    SITE_DOMAIN=${SITE_DOMAIN:-aipoweredsites.com}
 
     if [ -z "$STRIPE_SK" ] || [ -z "$STRIPE_PK" ] || [ -z "$RESEND_KEY" ]; then
       echo -e "  ${RED}Stripe keys and Resend key are required${RESET}"
@@ -360,6 +356,9 @@ VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-
 VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com
 ENVFILE
+
+  # Also save backup for next time
+  cp -f "$APP_DIR/.env" "$ENV_BACKUP"
 
   cat > "$APP_DIR/deploy/Caddyfile" << CADDYEOF
 :80 {
