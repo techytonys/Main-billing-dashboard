@@ -10,8 +10,21 @@ import { generateInvoicePDF } from "./pdf";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import type { Customer } from "@shared/schema";
 import webpush from "web-push";
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 import path from "path";
 import fs from "fs";
+
+let snsClient: SNSClient | null = null;
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  snsClient = new SNSClient({
+    region: process.env.AWS_REGION || "us-east-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+  console.log(`[AWS SNS] Client initialized (region: ${process.env.AWS_REGION || "us-east-1"})`);
+}
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -132,16 +145,44 @@ async function triggerSnsEvent(eventType: string, subject: string, message: stri
         }
       }
 
+      let smsSent = 0;
+      let smsFailed = 0;
+      if (snsClient) {
+        for (const sub of subscribers) {
+          if (sub.status === "unsubscribed") continue;
+          if (sub.phone) {
+            try {
+              const phoneNumber = sub.phone.replace(/[^+\d]/g, "");
+              if (phoneNumber.length >= 10) {
+                const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber}`;
+                await snsClient.send(new PublishCommand({
+                  PhoneNumber: formattedPhone,
+                  Message: `${subject}\n\n${message}`.substring(0, 160),
+                  MessageAttributes: {
+                    "AWS.SNS.SMS.SMSType": { DataType: "String", StringValue: "Transactional" },
+                    "AWS.SNS.SMS.SenderID": { DataType: "String", StringValue: "AIPowered" },
+                  },
+                }));
+                smsSent++;
+              }
+            } catch (smsErr: any) {
+              console.error(`[SNS] SMS to ${sub.phone} failed:`, smsErr.message);
+              smsFailed++;
+            }
+          }
+        }
+      }
+
       await storage.createSnsMessage({
         topicId: topic.id,
         subject,
         message,
         messageType: "event",
         recipientCount: subscribers.length,
-        status: emailsSent > 0 ? "sent" : emailsFailed > 0 ? "failed" : "sent",
+        status: emailsSent > 0 || smsSent > 0 ? "sent" : emailsFailed > 0 || smsFailed > 0 ? "failed" : "sent",
       } as any);
 
-      console.log(`[SNS] Trigger "${eventType}" → topic "${topic.name}": ${emailsSent} emails sent, ${emailsFailed} failed`);
+      console.log(`[SNS] Trigger "${eventType}" → topic "${topic.name}": ${emailsSent} emails, ${smsSent} SMS sent, ${emailsFailed + smsFailed} failed`);
     }
 
     if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -7035,6 +7076,32 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const configured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
       res.json({ configured, region: configured ? process.env.AWS_REGION : null });
     } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sns/test-sms", isAuthenticated, async (req, res) => {
+    try {
+      const { phone, message } = req.body;
+      if (!phone) return res.status(400).json({ error: "Phone number is required" });
+      if (!snsClient) return res.status(400).json({ error: "AWS credentials not configured. Add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY." });
+
+      const phoneNumber = phone.replace(/[^+\d]/g, "");
+      const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber}`;
+      const testMessage = message || "Test SMS from AI Powered Sites. Your notification system is working!";
+
+      await snsClient.send(new PublishCommand({
+        PhoneNumber: formattedPhone,
+        Message: testMessage.substring(0, 160),
+        MessageAttributes: {
+          "AWS.SNS.SMS.SMSType": { DataType: "String", StringValue: "Transactional" },
+          "AWS.SNS.SMS.SenderID": { DataType: "String", StringValue: "AIPowered" },
+        },
+      }));
+
+      res.json({ success: true, phone: formattedPhone, message: testMessage });
+    } catch (err: any) {
+      console.error("[SNS] Test SMS failed:", err);
       res.status(500).json({ error: err.message });
     }
   });
