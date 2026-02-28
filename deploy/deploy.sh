@@ -58,6 +58,14 @@ echo ""
 if $IS_UPDATE; then
 
   cd "$APP_DIR"
+  if [ -f "$ENV_BACKUP" ]; then
+    sed -i '/^[^#=]*$/d' "$ENV_BACKUP"
+    sed -i '/^$/d' "$ENV_BACKUP"
+  fi
+  if [ -f "$APP_DIR/.env" ]; then
+    sed -i '/^[^#=]*$/d' "$APP_DIR/.env"
+    sed -i '/^$/d' "$APP_DIR/.env"
+  fi
   set -a; source "$ENV_BACKUP"; set +a
 
   step 1 "Backing up database"
