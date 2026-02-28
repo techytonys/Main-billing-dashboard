@@ -702,7 +702,7 @@ function PortalScreenshots({ token, projectId }: { token: string; projectId: str
   );
 }
 
-type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "servers" | "help" | "community";
+type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "help" | "community";
 
 interface PortalNotification {
   id: string;
@@ -1902,16 +1902,6 @@ export default function ClientPortal() {
     },
   });
 
-  const { data: portalServers, isLoading: serversLoading } = useQuery<any[]>({
-    queryKey: ["/api/portal", params.token, "servers"],
-    queryFn: async () => {
-      const res = await fetch(`/api/portal/${params.token}/servers`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!params.token,
-  });
-
   const { data: kbArticles } = useQuery<any[]>({
     queryKey: ["/api/public/knowledge-base"],
     enabled: !!params.token,
@@ -1956,7 +1946,6 @@ export default function ClientPortal() {
     { id: "billing", label: "Billing", icon: Wallet },
     { id: "support", label: "Support", icon: LifeBuoy, count: activeTicketCount },
     { id: "backups", label: "Backups", icon: FolderGit2 },
-    { id: "servers", label: "Servers", icon: Server },
     { id: "help", label: "Help Center", icon: BookOpen },
     { id: "community", label: "Community", icon: Users },
   ];
@@ -2986,10 +2975,6 @@ export default function ClientPortal() {
                 </DialogContent>
               </Dialog>
             </>
-          )}
-
-          {activeTab === "servers" && (
-            <PortalServersTab token={params.token!} servers={portalServers || []} serversLoading={serversLoading} />
           )}
 
           {activeTab === "help" && (

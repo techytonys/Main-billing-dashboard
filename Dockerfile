@@ -25,6 +25,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends curl && rm 
 RUN npm init -y > /dev/null 2>&1 && npm install pdfkit@0.17.2 --save 2>&1 | tail -3
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/client/public ./client/public
 COPY deploy/migrations ./deploy/migrations
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

@@ -46,6 +46,7 @@ import PublicHelp from "@/pages/public-help";
 import Community from "@/pages/community";
 import CommunityAccount from "@/pages/community-account";
 import CommunityResetPassword from "@/pages/community-reset-password";
+import SnsNotifications from "@/pages/sns-notifications";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -69,6 +70,7 @@ function DashboardRouter() {
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/licenses" component={Licenses} />
       <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
+      <Route path="/admin/notifications" component={SnsNotifications} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

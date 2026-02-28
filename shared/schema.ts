@@ -421,10 +421,11 @@ export type InsertGitBackupLog = z.infer<typeof insertGitBackupLogSchema>;
 
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  customerId: varchar("customer_id").notNull(),
+  customerId: varchar("customer_id"),
   endpoint: text("endpoint").notNull(),
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
+  userType: text("user_type").default("visitor"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -758,3 +759,78 @@ export const communityGroupMembers = pgTable("community_group_members", {
 export const insertCommunityGroupMemberSchema = createInsertSchema(communityGroupMembers).omit({ id: true, createdAt: true });
 export type CommunityGroupMember = typeof communityGroupMembers.$inferSelect;
 export type InsertCommunityGroupMember = z.infer<typeof insertCommunityGroupMemberSchema>;
+
+export const snsTopics = pgTable("sns_topics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  topicArn: text("topic_arn"),
+  triggers: text("triggers"),
+  subscriberCount: integer("subscriber_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSnsTopicSchema = createInsertSchema(snsTopics).omit({ id: true, createdAt: true, subscriberCount: true });
+export type SnsTopic = typeof snsTopics.$inferSelect;
+export type InsertSnsTopic = z.infer<typeof insertSnsTopicSchema>;
+
+export const snsSubscribers = pgTable("sns_subscribers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  topicId: varchar("topic_id").notNull(),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  subscriptionArn: text("subscription_arn"),
+  unsubscribeToken: varchar("unsubscribe_token").default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSnsSubscriberSchema = createInsertSchema(snsSubscribers).omit({ id: true, createdAt: true, subscriptionArn: true, unsubscribeToken: true, status: true });
+export type SnsSubscriber = typeof snsSubscribers.$inferSelect;
+export type InsertSnsSubscriber = z.infer<typeof insertSnsSubscriberSchema>;
+
+export const snsMessages = pgTable("sns_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  topicId: varchar("topic_id"),
+  subject: text("subject").notNull(),
+  message: text("message").notNull(),
+  messageType: text("message_type").notNull().default("broadcast"),
+  recipientCount: integer("recipient_count").default(0),
+  status: text("status").notNull().default("sent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSnsMessageSchema = createInsertSchema(snsMessages).omit({ id: true, createdAt: true, recipientCount: true, status: true });
+export type SnsMessage = typeof snsMessages.$inferSelect;
+export type InsertSnsMessage = z.infer<typeof insertSnsMessageSchema>;
+
+export const snsTriggers = pgTable("sns_triggers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  description: text("description"),
+  icon: text("icon").default("zap"),
+  color: text("color").default("text-violet-500"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSnsTriggerSchema = createInsertSchema(snsTriggers).omit({ id: true, createdAt: true });
+export type SnsTrigger = typeof snsTriggers.$inferSelect;
+export type InsertSnsTrigger = z.infer<typeof insertSnsTriggerSchema>;
+
+export const snsScheduledNotifications = pgTable("sns_scheduled_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  triggerSlug: text("trigger_slug").notNull(),
+  subject: text("subject").notNull(),
+  message: text("message").notNull(),
+  htmlMessage: text("html_message"),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSnsScheduledNotificationSchema = createInsertSchema(snsScheduledNotifications).omit({ id: true, createdAt: true, status: true });
+export type SnsScheduledNotification = typeof snsScheduledNotifications.$inferSelect;
+export type InsertSnsScheduledNotification = z.infer<typeof insertSnsScheduledNotificationSchema>;
+

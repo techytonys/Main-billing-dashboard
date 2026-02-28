@@ -184,6 +184,10 @@ LINODE_KEY=""
 NETLIFY_TOK=""
 VERCEL_TOK=""
 RAILWAY_TOK=""
+AWS_AK=""
+AWS_SK=""
+AWS_REG=""
+NOTION_KEY=""
 
 if [ -f "$APP_DIR/.env" ]; then
   STRIPE_SK=$(grep "^STRIPE_SECRET_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
@@ -200,6 +204,10 @@ if [ -f "$APP_DIR/.env" ]; then
   NETLIFY_TOK=$(grep "^NETLIFY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   VERCEL_TOK=$(grep "^VERCEL_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
   RAILWAY_TOK=$(grep "^RAILWAY_API_TOKEN=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  AWS_AK=$(grep "^AWS_ACCESS_KEY_ID=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  AWS_SK=$(grep "^AWS_SECRET_ACCESS_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  AWS_REG=$(grep "^AWS_REGION=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  NOTION_KEY=$(grep "^NOTION_API_KEY=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
 fi
 
 echo ""
@@ -231,6 +239,10 @@ prompt_key "GitHub Client Secret (optional)" "$GITHUB_CSEC" GITHUB_CSEC
 prompt_key "Netlify API Token (optional)" "$NETLIFY_TOK" NETLIFY_TOK
 prompt_key "Vercel API Token (optional)" "$VERCEL_TOK" VERCEL_TOK
 prompt_key "Railway API Token (optional)" "$RAILWAY_TOK" RAILWAY_TOK
+prompt_key "AWS Access Key ID (for SMS, optional)" "$AWS_AK" AWS_AK
+prompt_key "AWS Secret Access Key (optional)" "$AWS_SK" AWS_SK
+prompt_key "AWS Region (default us-east-1)" "$AWS_REG" AWS_REG
+prompt_key "Notion API Key (optional)" "$NOTION_KEY" NOTION_KEY
 
 if [ -z "$SITE_DOMAIN" ]; then
   read -p "  Domain (e.g. aipoweredsites.com): " SITE_DOMAIN
@@ -274,6 +286,10 @@ GITHUB_CLIENT_SECRET=${GITHUB_CSEC}
 NETLIFY_API_TOKEN=${NETLIFY_TOK}
 VERCEL_API_TOKEN=${VERCEL_TOK}
 RAILWAY_API_TOKEN=${RAILWAY_TOK}
+AWS_ACCESS_KEY_ID=${AWS_AK}
+AWS_SECRET_ACCESS_KEY=${AWS_SK}
+AWS_REGION=${AWS_REG:-us-east-1}
+NOTION_API_KEY=${NOTION_KEY}
 VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
 VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
 VAPID_SUBJECT=mailto:hello@aipoweredsites.com

@@ -51,14 +51,18 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: data.body,
-    icon: "/favicon.png",
-    badge: "/favicon.png",
+    icon: data.icon || "/favicon.png",
+    badge: data.badge || "/favicon.png",
     data: {
-      url: data.url || "/",
+      url: data.data?.url || data.url || "/",
     },
-    vibrate: [100, 50, 100],
+    vibrate: [200, 100, 200],
     tag: data.tag || "default",
     renotify: true,
+    actions: [
+      { action: "open", title: "Open" },
+      { action: "dismiss", title: "Dismiss" },
+    ],
   };
 
   event.waitUntil(self.registration.showNotification(data.title, options));

@@ -17,6 +17,8 @@ import {
   Shield,
   Users2,
   Sparkles,
+  Bell,
+  CreditCard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +41,7 @@ const mainItems = [
   { title: "Projects", url: "/admin/projects", icon: FolderOpen },
   { title: "Invoices", url: "/admin/invoices", icon: FileText },
   { title: "Rates", url: "/admin/billing-rates", icon: DollarSign },
+  { title: "Payments", url: "/admin/payment-methods", icon: CreditCard },
   { title: "Quotes", url: "/admin/quote-builder", icon: Calculator },
 ];
 
@@ -46,6 +49,7 @@ const engageItems = [
   { title: "Conversations", url: "/admin/conversations", icon: MessagesSquare },
   { title: "Support", url: "/admin/support", icon: LifeBuoy },
   { title: "Community", url: "/admin/community", icon: Users2 },
+  { title: "Notifications", url: "/admin/notifications", icon: Bell },
   { title: "Leads", url: "/admin/lead-generator", icon: Target },
 ];
 

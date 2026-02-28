@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, sql, and, or, isNull, lt } from "drizzle-orm";
+import { eq, desc, sql, and, or, isNull, lt, lte } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
   conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads, knowledgeBaseArticles, knowledgeBaseCategories, knowledgeBaseTags,
@@ -54,6 +54,13 @@ import {
   type CommunityFriendship, type InsertCommunityFriendship,
   type CommunityGroup, type InsertCommunityGroup,
   type CommunityGroupMember, type InsertCommunityGroupMember,
+  snsTopics, snsSubscribers, snsMessages, snsTriggers, snsScheduledNotifications, pushSubscriptions,
+  type SnsTopic, type InsertSnsTopic,
+  type SnsSubscriber, type InsertSnsSubscriber,
+  type SnsMessage, type InsertSnsMessage,
+  type SnsTrigger, type InsertSnsTrigger,
+  type SnsScheduledNotification, type InsertSnsScheduledNotification,
+  type PushSubscription,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -291,6 +298,37 @@ export interface IStorage {
   removeCommunityGroupMember(groupId: string, userId: string): Promise<boolean>;
   isGroupMember(groupId: string, userId: string): Promise<boolean>;
   getCommunityGroupPosts(groupId: string, limit?: number): Promise<CommunityPost[]>;
+
+  getSnsTopics(): Promise<SnsTopic[]>;
+  getSnsTopic(id: string): Promise<SnsTopic | undefined>;
+  createSnsTopic(topic: InsertSnsTopic): Promise<SnsTopic>;
+  updateSnsTopic(id: string, updates: Partial<InsertSnsTopic & { topicArn: string; subscriberCount: number }>): Promise<SnsTopic | undefined>;
+  deleteSnsTopic(id: string): Promise<boolean>;
+
+  getSnsSubscribers(topicId?: string): Promise<SnsSubscriber[]>;
+  getSnsSubscriber(id: string): Promise<SnsSubscriber | undefined>;
+  getSnsSubscriberByToken(token: string): Promise<SnsSubscriber | undefined>;
+  createSnsSubscriber(subscriber: InsertSnsSubscriber): Promise<SnsSubscriber>;
+  updateSnsSubscriber(id: string, updates: Partial<{ status: string; subscriptionArn: string }>): Promise<SnsSubscriber | undefined>;
+  deleteSnsSubscriber(id: string): Promise<boolean>;
+
+  getSnsMessages(topicId?: string): Promise<SnsMessage[]>;
+  createSnsMessage(message: InsertSnsMessage & { recipientCount?: number }): Promise<SnsMessage>;
+
+  getSnsTriggers(): Promise<SnsTrigger[]>;
+  getSnsTrigger(id: string): Promise<SnsTrigger | undefined>;
+  createSnsTrigger(trigger: InsertSnsTrigger): Promise<SnsTrigger>;
+  deleteSnsTrigger(id: string): Promise<boolean>;
+
+  getSnsScheduledNotifications(): Promise<SnsScheduledNotification[]>;
+  createSnsScheduledNotification(notification: InsertSnsScheduledNotification): Promise<SnsScheduledNotification>;
+  getDueSnsScheduledNotifications(): Promise<SnsScheduledNotification[]>;
+  updateSnsScheduledNotificationStatus(id: string, status: string): Promise<void>;
+  deleteSnsScheduledNotification(id: string): Promise<boolean>;
+
+  getAllPushSubscriptions(): Promise<PushSubscription[]>;
+  createPushSubscription(sub: { endpoint: string; p256dh: string; auth: string; customerId?: string; userType?: string }): Promise<PushSubscription>;
+  deletePushSubscription(endpoint: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1762,6 +1800,144 @@ export class DatabaseStorage implements IStorage {
       .where(eq(communityPosts.groupId, groupId))
       .orderBy(desc(communityPosts.createdAt))
       .limit(limit);
+  }
+
+  async getSnsTopics(): Promise<SnsTopic[]> {
+    return db.select().from(snsTopics).orderBy(desc(snsTopics.createdAt));
+  }
+
+  async getSnsTopic(id: string): Promise<SnsTopic | undefined> {
+    const [topic] = await db.select().from(snsTopics).where(eq(snsTopics.id, id));
+    return topic;
+  }
+
+  async createSnsTopic(topic: InsertSnsTopic): Promise<SnsTopic> {
+    const [created] = await db.insert(snsTopics).values(topic).returning();
+    return created;
+  }
+
+  async updateSnsTopic(id: string, updates: Partial<InsertSnsTopic & { topicArn: string; subscriberCount: number }>): Promise<SnsTopic | undefined> {
+    const [updated] = await db.update(snsTopics).set(updates).where(eq(snsTopics.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSnsTopic(id: string): Promise<boolean> {
+    await db.delete(snsSubscribers).where(eq(snsSubscribers.topicId, id));
+    const result = await db.delete(snsTopics).where(eq(snsTopics.id, id));
+    return true;
+  }
+
+  async getSnsSubscribers(topicId?: string): Promise<SnsSubscriber[]> {
+    if (topicId) {
+      return db.select().from(snsSubscribers).where(eq(snsSubscribers.topicId, topicId)).orderBy(desc(snsSubscribers.createdAt));
+    }
+    return db.select().from(snsSubscribers).orderBy(desc(snsSubscribers.createdAt));
+  }
+
+  async getSnsSubscriber(id: string): Promise<SnsSubscriber | undefined> {
+    const [sub] = await db.select().from(snsSubscribers).where(eq(snsSubscribers.id, id));
+    return sub;
+  }
+
+  async getSnsSubscriberByToken(token: string): Promise<SnsSubscriber | undefined> {
+    const [sub] = await db.select().from(snsSubscribers).where(eq(snsSubscribers.unsubscribeToken, token));
+    return sub;
+  }
+
+  async createSnsSubscriber(subscriber: InsertSnsSubscriber): Promise<SnsSubscriber> {
+    const [created] = await db.insert(snsSubscribers).values(subscriber).returning();
+    await db.update(snsTopics).set({ subscriberCount: sql`COALESCE(subscriber_count, 0) + 1` }).where(eq(snsTopics.id, subscriber.topicId));
+    return created;
+  }
+
+  async updateSnsSubscriber(id: string, updates: Partial<{ status: string; subscriptionArn: string }>): Promise<SnsSubscriber | undefined> {
+    const [updated] = await db.update(snsSubscribers).set(updates).where(eq(snsSubscribers.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSnsSubscriber(id: string): Promise<boolean> {
+    const [sub] = await db.select().from(snsSubscribers).where(eq(snsSubscribers.id, id));
+    if (sub) {
+      await db.delete(snsSubscribers).where(eq(snsSubscribers.id, id));
+      await db.update(snsTopics).set({ subscriberCount: sql`GREATEST(COALESCE(subscriber_count, 0) - 1, 0)` }).where(eq(snsTopics.id, sub.topicId));
+    }
+    return true;
+  }
+
+  async getSnsMessages(topicId?: string): Promise<SnsMessage[]> {
+    if (topicId) {
+      return db.select().from(snsMessages).where(eq(snsMessages.topicId, topicId)).orderBy(desc(snsMessages.createdAt));
+    }
+    return db.select().from(snsMessages).orderBy(desc(snsMessages.createdAt));
+  }
+
+  async createSnsMessage(message: InsertSnsMessage & { recipientCount?: number }): Promise<SnsMessage> {
+    const [created] = await db.insert(snsMessages).values(message).returning();
+    return created;
+  }
+
+  async getSnsTriggers(): Promise<SnsTrigger[]> {
+    return db.select().from(snsTriggers).orderBy(desc(snsTriggers.createdAt));
+  }
+
+  async getSnsTrigger(id: string): Promise<SnsTrigger | undefined> {
+    const [trigger] = await db.select().from(snsTriggers).where(eq(snsTriggers.id, id));
+    return trigger;
+  }
+
+  async createSnsTrigger(trigger: InsertSnsTrigger): Promise<SnsTrigger> {
+    const [created] = await db.insert(snsTriggers).values(trigger).returning();
+    return created;
+  }
+
+  async deleteSnsTrigger(id: string): Promise<boolean> {
+    await db.delete(snsTriggers).where(eq(snsTriggers.id, id));
+    return true;
+  }
+
+  async getSnsScheduledNotifications(): Promise<SnsScheduledNotification[]> {
+    return db.select().from(snsScheduledNotifications).orderBy(desc(snsScheduledNotifications.scheduledAt));
+  }
+
+  async createSnsScheduledNotification(notification: InsertSnsScheduledNotification): Promise<SnsScheduledNotification> {
+    const [created] = await db.insert(snsScheduledNotifications).values(notification).returning();
+    return created;
+  }
+
+  async getDueSnsScheduledNotifications(): Promise<SnsScheduledNotification[]> {
+    return db.select().from(snsScheduledNotifications)
+      .where(and(
+        eq(snsScheduledNotifications.status, "pending"),
+        lte(snsScheduledNotifications.scheduledAt, new Date())
+      ));
+  }
+
+  async updateSnsScheduledNotificationStatus(id: string, status: string): Promise<void> {
+    await db.update(snsScheduledNotifications).set({ status }).where(eq(snsScheduledNotifications.id, id));
+  }
+
+  async deleteSnsScheduledNotification(id: string): Promise<boolean> {
+    await db.delete(snsScheduledNotifications).where(eq(snsScheduledNotifications.id, id));
+    return true;
+  }
+
+  async getAllPushSubscriptions(): Promise<PushSubscription[]> {
+    return db.select().from(pushSubscriptions);
+  }
+
+  async createPushSubscription(sub: { endpoint: string; p256dh: string; auth: string; customerId?: string; userType?: string }): Promise<PushSubscription> {
+    const existing = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, sub.endpoint));
+    if (existing.length > 0) {
+      const [updated] = await db.update(pushSubscriptions).set(sub).where(eq(pushSubscriptions.endpoint, sub.endpoint)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(pushSubscriptions).values(sub).returning();
+    return created;
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<boolean> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+    return true;
   }
 }
 

@@ -5,7 +5,9 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = `Deploy ${new Date().toISOString().split('T')[0]}: PWA support, Schema.org structured data, service worker caching`;
+const COMMIT_MESSAGE = `Deploy ${new Date().toISOString().split('T')[0]}: AWS SNS, web push, Docker updates`;
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 let connectionSettings: any;
 
@@ -108,28 +110,38 @@ async function main() {
     const fullPath = path.join(rootDir, filePath);
     const binary = isBinary(fullPath);
 
-    try {
-      if (binary) {
-        const content = fs.readFileSync(fullPath).toString('base64');
-        const { data: blob } = await octokit.git.createBlob({
-          owner: OWNER, repo: REPO,
-          content, encoding: 'base64'
-        });
-        treeItems.push({ path: filePath, mode: '100644' as const, type: 'blob' as const, sha: blob.sha });
-      } else {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const { data: blob } = await octokit.git.createBlob({
-          owner: OWNER, repo: REPO,
-          content, encoding: 'utf-8'
-        });
-        treeItems.push({ path: filePath, mode: '100644' as const, type: 'blob' as const, sha: blob.sha });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (binary) {
+          const content = fs.readFileSync(fullPath).toString('base64');
+          const { data: blob } = await octokit.git.createBlob({
+            owner: OWNER, repo: REPO,
+            content, encoding: 'base64'
+          });
+          treeItems.push({ path: filePath, mode: '100644' as const, type: 'blob' as const, sha: blob.sha });
+        } else {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const { data: blob } = await octokit.git.createBlob({
+            owner: OWNER, repo: REPO,
+            content, encoding: 'utf-8'
+          });
+          treeItems.push({ path: filePath, mode: '100644' as const, type: 'blob' as const, sha: blob.sha });
+        }
+        blobCount++;
+        if (blobCount % 25 === 0) {
+          console.log(`  Uploaded ${blobCount}/${allFiles.length} files...`);
+        }
+        await sleep(80);
+        break;
+      } catch (e: any) {
+        if (e.status === 403 && attempt < 2) {
+          console.log(`  Rate limited on ${filePath}, waiting ${(attempt + 1) * 30}s...`);
+          await sleep((attempt + 1) * 30000);
+          continue;
+        }
+        console.warn(`  Skipping ${filePath}: ${e.message}`);
+        break;
       }
-      blobCount++;
-      if (blobCount % 25 === 0) {
-        console.log(`  Uploaded ${blobCount}/${allFiles.length} files...`);
-      }
-    } catch (e: any) {
-      console.warn(`  Skipping ${filePath}: ${e.message}`);
     }
   }
 

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema } from "@shared/schema";
 import crypto from "crypto";
 import { z } from "zod";
-import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor, sendAuditReportEmail } from "./email";
+import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor, sendAuditReportEmail } from "./email";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { generateInvoicePDF } from "./pdf";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -92,6 +92,129 @@ async function createNotificationAndEmail(
     console.error("Failed to create notification:", err);
     return null;
   }
+}
+
+async function triggerSnsEvent(eventType: string, subject: string, message: string, htmlMessage?: string) {
+  try {
+    const topics = await storage.getSnsTopics();
+    const matchingTopics = topics.filter(t => {
+      if (t.triggers) {
+        const triggers = t.triggers.split(",").map(s => s.trim());
+        return triggers.includes(eventType);
+      }
+      return false;
+    });
+
+    if (matchingTopics.length === 0) return;
+
+    for (const topic of matchingTopics) {
+      const subscribers = await storage.getSnsSubscribers(topic.id);
+      if (subscribers.length === 0) continue;
+
+      let emailsSent = 0;
+      let emailsFailed = 0;
+
+      const baseUrl = (process.env.SITE_URL || "https://aipoweredsites.com").replace(/\/$/, "");
+      for (const sub of subscribers) {
+        if (sub.status === "unsubscribed") continue;
+        if (sub.email) {
+          try {
+            const unsubUrl = sub.unsubscribeToken ? `${baseUrl}/unsubscribe/${sub.unsubscribeToken}` : undefined;
+            const emailHtml = htmlMessage
+              ? htmlMessage + (unsubUrl ? `<div style="text-align:center;padding:16px 0"><a href="${unsubUrl}" style="color:#9ca3af;font-size:11px;text-decoration:underline">Unsubscribe</a></div>` : "")
+              : buildTriggerEmailHtml(subject, message, topic.name, unsubUrl);
+            const result = await sendEmail({ to: sub.email, subject, html: emailHtml });
+            if (result.success) emailsSent++;
+            else emailsFailed++;
+          } catch {
+            emailsFailed++;
+          }
+        }
+      }
+
+      await storage.createSnsMessage({
+        topicId: topic.id,
+        subject,
+        message,
+        messageType: "event",
+        recipientCount: subscribers.length,
+        status: emailsSent > 0 ? "sent" : emailsFailed > 0 ? "failed" : "sent",
+      } as any);
+
+      console.log(`[SNS] Trigger "${eventType}" → topic "${topic.name}": ${emailsSent} emails sent, ${emailsFailed} failed`);
+    }
+
+    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+      try {
+        const allPushSubs = await storage.getAllPushSubscriptions();
+        let pushSent = 0;
+        for (const ps of allPushSubs) {
+          try {
+            await webpush.sendNotification(
+              { endpoint: ps.endpoint, keys: { p256dh: ps.p256dh, auth: ps.auth } },
+              JSON.stringify({ title: subject, body: message.substring(0, 200), icon: "/icons/icon-192x192.png", badge: "/icons/icon-72x72.png", tag: eventType, data: { url: "/" } })
+            );
+            pushSent++;
+          } catch (pushErr: any) {
+            if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+              await storage.deletePushSubscription(ps.endpoint);
+            }
+          }
+        }
+        if (pushSent > 0) console.log(`[SNS] Push notifications sent: ${pushSent}`);
+      } catch (pushError) {
+        console.error("[SNS] Push notification error:", pushError);
+      }
+    }
+  } catch (err) {
+    console.error("SNS event trigger error:", err);
+  }
+}
+
+function convertMessageToHtml(text: string): string {
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
+    '<a href="$2" style="color:#6366f1;text-decoration:underline;font-weight:500">$1</a>');
+  html = html.replace(
+    /(?<!\href=")(https?:\/\/[^\s<\)]+)/g,
+    '<a href="$1" style="color:#6366f1;text-decoration:underline">$1</a>'
+  );
+  html = html.replace(/\n/g, "<br>");
+  return html;
+}
+
+function buildTriggerEmailHtml(subject: string, message: string, topicName: string, unsubscribeUrl?: string): string {
+  const messageHtml = convertMessageToHtml(message);
+  const unsubBlock = unsubscribeUrl
+    ? `<p style="margin:8px 0 0;font-size:11px;color:#9ca3af;text-align:center"><a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">Unsubscribe</a> from these notifications</p>`
+    : "";
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.07)">
+<tr><td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:28px 32px">
+<h1 style="margin:0;color:#fff;font-size:22px;font-weight:600">${subject}</h1>
+<p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:13px">Notification from ${topicName}</p>
+</td></tr>
+<tr><td style="padding:28px 32px">
+<div style="font-size:15px;line-height:1.7;color:#374151">${messageHtml}</div>
+</td></tr>
+<tr><td style="padding:0 32px 28px">
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 16px">
+<p style="margin:0;font-size:11px;color:#9ca3af;text-align:center">Sent by AI Powered Sites Notifications</p>
+${unsubBlock}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
 }
 
 export async function registerRoutes(
@@ -201,6 +324,7 @@ ${urls}
     try {
       const parsed = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(parsed);
+      triggerSnsEvent("new_customer", `New Customer: ${customer.name}`, `A new customer "${customer.name}"${customer.company ? ` (${customer.company})` : ""} has been added.`).catch(() => {});
       res.status(201).json(customer);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Invalid customer data" });
@@ -303,6 +427,9 @@ ${urls}
       }
       const project = await storage.updateProject(req.params.id, updates);
       if (!project) return res.status(404).json({ message: "Project not found" });
+      if (updates.status) {
+        triggerSnsEvent("project_status", `Project Update: ${project.name}`, `Project "${project.name}" status changed to "${updates.status}".`).catch(() => {});
+      }
       res.json(project);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to update project" });
@@ -535,6 +662,12 @@ ${urls}
       if (!status) return res.status(400).json({ message: "Status is required" });
       const invoice = await storage.updateInvoiceStatus(req.params.id, status);
       if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+      const amt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(invoice.totalAmountCents / 100);
+      if (status === "paid") {
+        triggerSnsEvent("invoice_paid", `Invoice Paid: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} has been marked as paid.`).catch(() => {});
+      } else if (status === "overdue") {
+        triggerSnsEvent("invoice_overdue", `Invoice Overdue: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} is now overdue.`).catch(() => {});
+      }
       res.json(invoice);
     } catch (err) {
       res.status(500).json({ message: "Failed to update invoice" });
@@ -567,6 +700,7 @@ ${urls}
           `New Invoice: ${invoice.invoiceNumber}`,
           `A new invoice for ${amt} has been generated${project ? ` for project "${project.name}"` : ""}. Due date: ${new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`,
         ).catch(() => {});
+        triggerSnsEvent("invoice_created", `New Invoice: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} generated${project ? ` for project "${project.name}"` : ""}. Due: ${new Date(invoice.dueDate).toLocaleDateString()}.`).catch(() => {});
       }
 
       res.status(201).json(invoice);
@@ -946,6 +1080,8 @@ ${urls}
         ? `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`
         : undefined;
 
+      triggerSnsEvent("support_ticket", `New Support Ticket: #${ticket.ticketNumber}`, `Support ticket "${ticketSubject}" created by ${senderName} (${senderEmail}).`).catch(() => {});
+
       await sendTicketNotification({
         customerName: senderName,
         customerEmail: senderEmail,
@@ -1247,6 +1383,11 @@ ${urls}
       const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
       if (session.payment_status === "paid" && session.metadata?.invoiceId) {
         await storage.updateInvoiceStatus(session.metadata.invoiceId, "paid");
+        const paidInvoice = await storage.getInvoice(session.metadata.invoiceId);
+        if (paidInvoice) {
+          const paidAmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(paidInvoice.totalAmountCents / 100);
+          triggerSnsEvent("payment_received", `Payment Received: ${paidInvoice.invoiceNumber}`, `Payment of ${paidAmt} received for invoice ${paidInvoice.invoiceNumber} from ${customer.name}.`).catch(() => {});
+        }
       }
 
       res.json({ status: session.payment_status });
@@ -1928,6 +2069,74 @@ ${urls}
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to remove push subscription" });
+    }
+  });
+
+  app.get("/api/push/vapid-key", (_req, res) => {
+    res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || "" });
+  });
+
+  app.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const { endpoint, keys, userType } = req.body;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "Invalid subscription data" });
+      }
+      const sub = await storage.createPushSubscription({
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        userType: userType || "visitor",
+      });
+      res.json(sub);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save push subscription" });
+    }
+  });
+
+  app.post("/api/push/unsubscribe", async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint) return res.status(400).json({ message: "Missing endpoint" });
+      await storage.deletePushSubscription(endpoint);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to remove push subscription" });
+    }
+  });
+
+  app.get("/api/push/subscriptions", isAuthenticated, async (_req, res) => {
+    try {
+      const subs = await storage.getAllPushSubscriptions();
+      res.json(subs);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch push subscriptions" });
+    }
+  });
+
+  app.post("/api/push/test", isAuthenticated, async (req, res) => {
+    try {
+      if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+        return res.status(400).json({ message: "VAPID keys not configured" });
+      }
+      const allSubs = await storage.getAllPushSubscriptions();
+      let sent = 0;
+      for (const ps of allSubs) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: ps.endpoint, keys: { p256dh: ps.p256dh, auth: ps.auth } },
+            JSON.stringify({ title: "Test Notification", body: "Web push is working!", icon: "/icons/icon-192x192.png", tag: "test" })
+          );
+          sent++;
+        } catch (pushErr: any) {
+          if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+            await storage.deletePushSubscription(ps.endpoint);
+          }
+        }
+      }
+      res.json({ sent, total: allSubs.length });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to send test push" });
     }
   });
 
@@ -6666,6 +6875,261 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       res.status(500).json({ error: err.message });
     }
   });
+
+  // ── Amazon SNS Management (Admin Only) ──
+
+  app.get("/api/sns/topics", isAuthenticated, async (req, res) => {
+    try {
+      const topics = await storage.getSnsTopics();
+      res.json(topics);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sns/topics", isAuthenticated, async (req, res) => {
+    try {
+      const { name, description, triggers } = req.body;
+      if (!name) return res.status(400).json({ error: "Topic name is required" });
+      const topic = await storage.createSnsTopic({ name, description, triggers: triggers || null });
+      res.json(topic);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/sns/topics/:id", isAuthenticated, async (req, res) => {
+    try {
+      const topic = await storage.updateSnsTopic(req.params.id, req.body);
+      if (!topic) return res.status(404).json({ error: "Topic not found" });
+      res.json(topic);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sns/topics/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSnsTopic(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sns/subscribers", isAuthenticated, async (req, res) => {
+    try {
+      const topicId = req.query.topicId as string | undefined;
+      const subscribers = await storage.getSnsSubscribers(topicId);
+      res.json(subscribers);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sns/subscribers", isAuthenticated, async (req, res) => {
+    try {
+      const { topicId, name, email, phone } = req.body;
+      if (!topicId || !name) return res.status(400).json({ error: "Topic and name are required" });
+      if (!email && !phone) return res.status(400).json({ error: "At least one of email or phone is required" });
+      const subscriber = await storage.createSnsSubscriber({ topicId, name, email, phone });
+      const snsConfigured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
+      if (!snsConfigured) {
+        await storage.updateSnsSubscriber(subscriber.id, { status: "confirmed" });
+        subscriber.status = "confirmed";
+      }
+      res.json(subscriber);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sns/subscribers/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSnsSubscriber(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/sns/subscribers/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (!["confirmed", "unsubscribed"].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'confirmed' or 'unsubscribed'" });
+      }
+      const updated = await storage.updateSnsSubscriber(req.params.id, { status });
+      if (!updated) return res.status(404).json({ error: "Subscriber not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/unsubscribe/:token", async (req, res) => {
+    try {
+      const sub = await storage.getSnsSubscriberByToken(req.params.token);
+      if (!sub) {
+        return res.status(404).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found</title></head><body style="margin:0;padding:60px 20px;background:#f4f4f5;font-family:'Segoe UI',sans-serif;text-align:center"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 4px 6px rgba(0,0,0,0.07)"><h1 style="color:#ef4444;font-size:24px">Link Invalid</h1><p style="color:#6b7280">This unsubscribe link is no longer valid or has already been used.</p></div></body></html>`);
+      }
+      if (sub.status === "unsubscribed") {
+        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already Unsubscribed</title></head><body style="margin:0;padding:60px 20px;background:#f4f4f5;font-family:'Segoe UI',sans-serif;text-align:center"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 4px 6px rgba(0,0,0,0.07)"><h1 style="color:#6366f1;font-size:24px">Already Unsubscribed</h1><p style="color:#6b7280">You've already been unsubscribed from these notifications, <strong>${sub.name}</strong>.</p></div></body></html>`);
+      }
+      await storage.updateSnsSubscriber(sub.id, { status: "unsubscribed" });
+      res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribed</title></head><body style="margin:0;padding:60px 20px;background:#f4f4f5;font-family:'Segoe UI',sans-serif;text-align:center"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 4px 6px rgba(0,0,0,0.07)"><div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);margin:0 auto 20px;display:flex;align-items:center;justify-content:center"><span style="color:#fff;font-size:28px">✓</span></div><h1 style="color:#111827;font-size:24px;margin:0 0 12px">Unsubscribed</h1><p style="color:#6b7280;font-size:15px;line-height:1.6">You've been successfully unsubscribed, <strong>${sub.name}</strong>. You will no longer receive email notifications from this topic.</p></div></body></html>`);
+    } catch (err: any) {
+      res.status(500).send("Something went wrong.");
+    }
+  });
+
+  app.get("/api/sns/messages", isAuthenticated, async (req, res) => {
+    try {
+      const topicId = req.query.topicId as string | undefined;
+      const messages = await storage.getSnsMessages(topicId);
+      res.json(messages);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sns/messages", isAuthenticated, async (req, res) => {
+    try {
+      const { topicId, subject, message, messageType } = req.body;
+      if (!subject || !message) return res.status(400).json({ error: "Subject and message are required" });
+
+      let recipientCount = 0;
+      if (topicId) {
+        const subscribers = await storage.getSnsSubscribers(topicId);
+        recipientCount = subscribers.length;
+      } else {
+        const allSubs = await storage.getSnsSubscribers();
+        recipientCount = allSubs.length;
+      }
+
+      const snsConfigured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
+      const status = snsConfigured ? "sent" : "queued";
+
+      const msg = await storage.createSnsMessage({
+        topicId: topicId || null,
+        subject,
+        message,
+        messageType: messageType || (topicId ? "targeted" : "broadcast"),
+        recipientCount,
+        status,
+      } as any);
+
+      if (!snsConfigured) {
+        res.json({ ...msg, note: "AWS credentials not configured. Message saved but not delivered via SNS." });
+        return;
+      }
+
+      res.json(msg);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sns/status", isAuthenticated, async (req, res) => {
+    try {
+      const configured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
+      res.json({ configured, region: configured ? process.env.AWS_REGION : null });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sns/triggers", isAuthenticated, async (req, res) => {
+    try {
+      const triggers = await storage.getSnsTriggers();
+      res.json(triggers);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sns/triggers", isAuthenticated, async (req, res) => {
+    try {
+      const { name, description, icon, color } = req.body;
+      if (!name) return res.status(400).json({ error: "Trigger name is required" });
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const existing = await storage.getSnsTriggers();
+      if (existing.some(t => t.slug === slug)) {
+        return res.status(409).json({ error: `A trigger with slug "${slug}" already exists` });
+      }
+      const trigger = await storage.createSnsTrigger({ name, slug, description: description || null, icon: icon || "zap", color: color || "text-violet-500" });
+      res.json(trigger);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sns/triggers/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSnsTrigger(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sns/triggers/:slug/fire", isAuthenticated, async (req, res) => {
+    try {
+      const { subject, message, htmlMessage, scheduledAt } = req.body;
+      if (!subject || !message) return res.status(400).json({ error: "Subject and message are required" });
+      if (scheduledAt) {
+        const scheduled = await storage.createSnsScheduledNotification({
+          triggerSlug: req.params.slug,
+          subject,
+          message,
+          htmlMessage: htmlMessage || null,
+          scheduledAt: new Date(scheduledAt),
+        });
+        return res.json({ success: true, scheduled: true, id: scheduled.id, message: `Notification scheduled for ${new Date(scheduledAt).toLocaleString()}` });
+      }
+      await triggerSnsEvent(req.params.slug, subject, message, htmlMessage || undefined);
+      res.json({ success: true, message: `Trigger '${req.params.slug}' fired successfully` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sns/scheduled", isAuthenticated, async (req, res) => {
+    try {
+      const notifications = await storage.getSnsScheduledNotifications();
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sns/scheduled/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSnsScheduledNotification(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  setInterval(async () => {
+    try {
+      const due = await storage.getDueSnsScheduledNotifications();
+      for (const notification of due) {
+        try {
+          await storage.updateSnsScheduledNotificationStatus(notification.id, "sending");
+          await triggerSnsEvent(notification.triggerSlug, notification.subject, notification.message, notification.htmlMessage || undefined);
+          await storage.updateSnsScheduledNotificationStatus(notification.id, "sent");
+          console.log(`[SNS Scheduler] Sent scheduled notification "${notification.subject}" (trigger: ${notification.triggerSlug})`);
+        } catch (err) {
+          await storage.updateSnsScheduledNotificationStatus(notification.id, "failed");
+          console.error(`[SNS Scheduler] Failed to send scheduled notification ${notification.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[SNS Scheduler] Error checking scheduled notifications:", err);
+    }
+  }, 60 * 1000);
 
   // Admin friendships endpoint (for admin panel)
   app.get("/api/community/admin/friendships", isAuthenticated, async (req, res) => {
