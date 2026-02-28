@@ -47,7 +47,7 @@ echo -e "${RESET}"
 if $IS_UPDATE; then
   echo -e "  ${WHITE}${BOLD}Updating AI Powered Sites${RESET}"
   echo -e "  ${DIM}Pull latest code → Rebuild → Restart (zero prompts)${RESET}"
-  TOTAL=7
+  TOTAL=8
 else
   echo -e "  ${WHITE}${BOLD}AI Powered Sites - Full Deploy + Security Hardening${RESET}"
   echo -e "  ${DIM}Docker + Caddy + Fail2Ban + Auto Security Updates${RESET}"
@@ -89,20 +89,41 @@ if $IS_UPDATE; then
   echo -e "  ${DIM}Code updated${RESET}"
   ok
 
-  step 3 "Running migrations"
+  step 3 "Checking AWS keys"
+  if ! grep -q "^AWS_ACCESS_KEY_ID=.\+" "$APP_DIR/.env" 2>/dev/null; then
+    echo -e "  ${YELLOW}AWS keys not found in .env — needed for SMS notifications${RESET}"
+    read -p "  AWS Access Key ID (AKIA...): " NEW_AWS_AK
+    read -p "  AWS Secret Access Key: " NEW_AWS_SK
+    read -p "  AWS Region (default us-east-1): " NEW_AWS_REG
+    NEW_AWS_REG=${NEW_AWS_REG:-us-east-1}
+    if [ -n "$NEW_AWS_AK" ] && [ -n "$NEW_AWS_SK" ]; then
+      echo "AWS_ACCESS_KEY_ID=${NEW_AWS_AK}" >> "$APP_DIR/.env"
+      echo "AWS_SECRET_ACCESS_KEY=${NEW_AWS_SK}" >> "$APP_DIR/.env"
+      echo "AWS_REGION=${NEW_AWS_REG}" >> "$APP_DIR/.env"
+      cp -f "$APP_DIR/.env" "$ENV_BACKUP"
+      echo -e "  ${GREEN}AWS keys saved${RESET}"
+    else
+      echo -e "  ${DIM}Skipped — SMS won't be active${RESET}"
+    fi
+  else
+    echo -e "  ${DIM}AWS keys already configured${RESET}"
+  fi
+  ok
+
+  step 4 "Running migrations"
   for f in $(ls deploy/migrations/*.sql 2>/dev/null | sort); do
     echo -e "  ${DIM}$(basename $f)${RESET}"
     docker compose exec -T db psql -U "${POSTGRES_USER:-aips}" -d "${POSTGRES_DB:-aipoweredsites}" < "$f" > /dev/null 2>&1 || true
   done
   ok
 
-  step 4 "Stopping app"
+  step 5 "Stopping app"
   docker compose stop app 2>/dev/null || true
   docker compose rm -f app 2>/dev/null || true
   echo -e "  ${DIM}Database still running${RESET}"
   ok
 
-  step 5 "Rebuilding (3-5 min)"
+  step 6 "Rebuilding (3-5 min)"
   docker compose build --no-cache app 2>&1 | tail -5
   BUILD_EXIT=${PIPESTATUS[0]}
   if [ $BUILD_EXIT -ne 0 ]; then
@@ -110,12 +131,12 @@ if $IS_UPDATE; then
   fi
   ok
 
-  step 6 "Starting"
+  step 7 "Starting"
   docker compose up -d
   docker image prune -f > /dev/null 2>&1 || true
   ok
 
-  step 7 "Health check"
+  step 8 "Health check"
   sleep 8
   APP_READY=0
   for i in $(seq 1 10); do
