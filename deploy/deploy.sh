@@ -25,6 +25,11 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Clean malformed lines from env files before doing anything
+for _ef in "$APP_DIR/.env" "/root/.aips_env_backup"; do
+  [ -f "$_ef" ] && sed -i '/^[^#=]*$/d' "$_ef" && sed -i '/^$/d' "$_ef"
+done
+
 # IMMEDIATELY save .env to a safe location OUTSIDE the repo before anything else
 if [ -f "$APP_DIR/.env" ]; then
   cp -f "$APP_DIR/.env" "$ENV_BACKUP"
