@@ -3637,6 +3637,12 @@ ${urls}
       let domain = null;
       let scrapedEmails: string[] = [];
       let guessedEmails: string[] = [];
+      let hunterEmails: string[] = [];
+      let verifiedEmails: string[] = [];
+      let hunterContacts: any[] = [];
+      let emailPattern: string | null = null;
+      let organization: string | null = null;
+      let hasMx = false;
       let emailSource: string = "none";
 
       if (website) {
@@ -3650,7 +3656,13 @@ ${urls}
           const scrapeResult = await scrapeEmailsFromWebsite(website);
           scrapedEmails = scrapeResult.scrapedEmails;
           guessedEmails = scrapeResult.guessedEmails;
+          hunterEmails = scrapeResult.hunterEmails || [];
+          verifiedEmails = scrapeResult.verifiedEmails || [];
+          hasMx = scrapeResult.hasMx || false;
           emailSource = scrapeResult.source;
+          hunterContacts = scrapeResult.hunterContacts || [];
+          emailPattern = scrapeResult.emailPattern || null;
+          organization = scrapeResult.organization || null;
         } catch (err) {
           console.error("Email scraping failed, falling back to guesses:", err);
           if (domain) {
@@ -3665,8 +3677,7 @@ ${urls}
           }
         }
       }
-
-      const emailGuess = [...scrapedEmails, ...guessedEmails].join(", ") || null;
+      const emailGuess = [...scrapedEmails, ...hunterEmails, ...verifiedEmails, ...guessedEmails].join(", ") || null;
 
       res.json({
         placeId: place.place_id || req.params.placeId,
@@ -3678,6 +3689,12 @@ ${urls}
         emailGuess,
         scrapedEmails,
         guessedEmails,
+        hunterEmails,
+        verifiedEmails,
+        hunterContacts,
+        emailPattern,
+        organization,
+        hasMx,
         emailSource,
         rating: place.rating || null,
         reviewCount: place.user_ratings_total || 0,
@@ -3748,6 +3765,25 @@ ${urls}
     } catch (err: any) {
       console.error("Email scrape error:", err);
       res.status(500).json({ error: "Failed to scrape emails" });
+    }
+  });
+
+  app.post("/api/leads/find-email", isAuthenticated, async (req, res) => {
+    try {
+      const { domain, firstName, lastName } = req.body;
+      if (!domain || !firstName || !lastName) {
+        return res.status(400).json({ error: "Domain, firstName, and lastName are required" });
+      }
+      const { findEmailByName } = await import("./emailScraper");
+      const contact = await findEmailByName(domain, firstName, lastName);
+      if (contact) {
+        res.json({ found: true, contact });
+      } else {
+        res.json({ found: false, contact: null });
+      }
+    } catch (err: any) {
+      console.error("Email finder error:", err);
+      res.status(500).json({ error: "Failed to find email" });
     }
   });
 

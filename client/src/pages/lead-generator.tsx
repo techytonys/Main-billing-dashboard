@@ -45,6 +45,7 @@ import {
   ChevronRight,
   Sparkles,
   Eye,
+  CheckCircle,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
 
@@ -105,7 +106,24 @@ interface PlaceDetails {
   emailGuess: string | null;
   scrapedEmails: string[];
   guessedEmails: string[];
-  emailSource: "scraped" | "guessed" | "both" | "none";
+  hunterEmails: string[];
+  verifiedEmails: string[];
+  hunterContacts: Array<{
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    position: string | null;
+    department: string | null;
+    confidence: number;
+    type: "personal" | "generic";
+    linkedin: string | null;
+    twitter: string | null;
+    phone: string | null;
+  }>;
+  emailPattern: string | null;
+  organization: string | null;
+  hasMx: boolean;
+  emailSource: "scraped" | "guessed" | "hunter" | "verified" | "both" | "none";
   rating: number | null;
   reviewCount: number;
   category: string | null;
@@ -129,6 +147,10 @@ export default function LeadGenerator() {
   const [editNotes, setEditNotes] = useState("");
   const [editStatus, setEditStatus] = useState("");
   const [scrapingLeadId, setScrapingLeadId] = useState<string | null>(null);
+  const [findEmailOpen, setFindEmailOpen] = useState(false);
+  const [findFirstName, setFindFirstName] = useState("");
+  const [findLastName, setFindLastName] = useState("");
+  const [findEmailResult, setFindEmailResult] = useState<any>(null);
 
   const { data: savedLeads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
@@ -185,6 +207,21 @@ export default function LeadGenerator() {
     },
   });
 
+  const findEmailMutation = useMutation({
+    mutationFn: async ({ domain, firstName, lastName }: { domain: string; firstName: string; lastName: string }) => {
+      const res = await apiRequest("POST", "/api/leads/find-email", { domain, firstName, lastName });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setFindEmailResult(data);
+      if (data.found) {
+        toast({ title: "Email found!", description: data.contact?.email });
+      } else {
+        toast({ title: "No email found", description: "Could not find an email for that person.", variant: "destructive" });
+      }
+    },
+  });
+
   const handleSearch = () => {
     if (!zipCode.trim()) {
       toast({ title: "Enter a zip code", description: "A zip code is required to search.", variant: "destructive" });
@@ -235,13 +272,17 @@ export default function LeadGenerator() {
     try {
       const res = await apiRequest("POST", "/api/leads/scrape-email", { website: lead.website });
       const result = await res.json();
-      const allEmails = [...(result.scrapedEmails || []), ...(result.guessedEmails || [])].join(", ");
+      const allEmails = [...(result.scrapedEmails || []), ...(result.hunterEmails || []), ...(result.verifiedEmails || []), ...(result.guessedEmails || [])].join(", ");
       await apiRequest("PATCH", `/api/leads/${lead.id}`, { emailGuess: allEmails || lead.emailGuess });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       if (result.scrapedEmails?.length > 0) {
-        toast({ title: "Emails found!", description: `Found ${result.scrapedEmails.length} email(s) on ${lead.domain || lead.website}` });
+        toast({ title: "Emails found!", description: `Found ${result.scrapedEmails.length} email(s) scraped from ${lead.domain || lead.website}` });
+      } else if (result.hunterEmails?.length > 0) {
+        toast({ title: "Emails found via Hunter.io!", description: `Found ${result.hunterEmails.length} verified email(s) for ${lead.domain}` });
+      } else if (result.verifiedEmails?.length > 0) {
+        toast({ title: "Verified email found!", description: `Verified ${result.verifiedEmails[0]} exists` });
       } else {
-        toast({ title: "No emails found on website", description: "Guessed emails have been saved instead." });
+        toast({ title: "No emails found on website", description: result.hasMx ? "Domain accepts email. Guessed emails saved." : "Guessed emails have been saved instead." });
       }
     } catch {
       toast({ title: "Scrape failed", variant: "destructive" });
@@ -699,7 +740,7 @@ export default function LeadGenerator() {
                         Found on website:
                       </span>
                       <div className="flex flex-wrap gap-1">
-                        {placeDetails.scrapedEmails.map(email => (
+                        {placeDetails.scrapedEmails.map((email: string) => (
                           <Badge key={email} className="text-xs font-mono bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border-green-300 dark:border-green-700">
                             {email}
                           </Badge>
@@ -708,15 +749,167 @@ export default function LeadGenerator() {
                     </div>
                   </div>
                 )}
+                {placeDetails.emailPattern && (
+                  <div className="flex items-center gap-3">
+                    <Target className="w-4 h-4 text-violet-500" />
+                    <span className="text-xs text-violet-600 dark:text-violet-400">
+                      Email pattern: <code className="bg-violet-100 dark:bg-violet-900/30 px-1.5 py-0.5 rounded text-violet-800 dark:text-violet-300 font-mono">{placeDetails.emailPattern}</code>
+                    </span>
+                  </div>
+                )}
+                {placeDetails.hunterContacts?.length > 0 && (
+                  <div className="flex items-start gap-3">
+                    <Users className="w-4 h-4 text-blue-500 mt-0.5" />
+                    <div className="flex-1">
+                      <span className="text-xs text-blue-600 dark:text-blue-400 font-medium block mb-2">
+                        Contacts Found ({placeDetails.hunterContacts.length}):
+                      </span>
+                      <div className="space-y-2">
+                        {placeDetails.hunterContacts.filter((c: any) => {
+                          const pos = (c.position || "").toLowerCase();
+                          return ["owner","founder","co-founder","ceo","president","principal","director","managing","partner","chief","head","vp","vice president","general manager","gm","proprietor"].some(t => pos.includes(t));
+                        }).length > 0 && (
+                          <div className="mb-2">
+                            <span className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-semibold">Decision Makers</span>
+                            <div className="mt-1 space-y-1.5">
+                              {placeDetails.hunterContacts.filter((c: any) => {
+                                const pos = (c.position || "").toLowerCase();
+                                return ["owner","founder","co-founder","ceo","president","principal","director","managing","partner","chief","head","vp","vice president","general manager","gm","proprietor"].some(t => pos.includes(t));
+                              }).map((contact: any) => (
+                                <div key={contact.email} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-semibold text-foreground">
+                                        {contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.email}
+                                      </span>
+                                      <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-300 dark:border-amber-700">
+                                        {contact.position}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className="text-[11px] font-mono text-muted-foreground">{contact.email}</span>
+                                      <span className="text-[10px] text-green-600 dark:text-green-400">{contact.confidence}% confident</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      {contact.phone && <span className="text-[10px] text-muted-foreground">{contact.phone}</span>}
+                                      {contact.linkedin && (
+                                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">LinkedIn</a>
+                                      )}
+                                      {contact.twitter && (
+                                        <a href={`https://twitter.com/${contact.twitter}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-sky-500 hover:underline">Twitter</a>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {placeDetails.hunterContacts.filter((c: any) => {
+                          const pos = (c.position || "").toLowerCase();
+                          return !["owner","founder","co-founder","ceo","president","principal","director","managing","partner","chief","head","vp","vice president","general manager","gm","proprietor"].some(t => pos.includes(t));
+                        }).length > 0 && (
+                          <div>
+                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Other Contacts</span>
+                            <div className="mt-1 space-y-1">
+                              {placeDetails.hunterContacts.filter((c: any) => {
+                                const pos = (c.position || "").toLowerCase();
+                                return !["owner","founder","co-founder","ceo","president","principal","director","managing","partner","chief","head","vp","vice president","general manager","gm","proprietor"].some(t => pos.includes(t));
+                              }).map((contact: any) => (
+                                <div key={contact.email} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/50">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-medium text-foreground">
+                                        {contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.email}
+                                      </span>
+                                      {contact.position && (
+                                        <span className="text-[10px] text-muted-foreground">{contact.position}</span>
+                                      )}
+                                      <span className="text-[10px] text-green-600 dark:text-green-400">{contact.confidence}%</span>
+                                    </div>
+                                    <span className="text-[11px] font-mono text-muted-foreground">{contact.email}</span>
+                                    {contact.linkedin && (
+                                      <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline ml-2">LinkedIn</a>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {placeDetails.hunterEmails?.length > 0 && !placeDetails.hunterContacts?.length && (
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-4 h-4 text-blue-500 mt-0.5" />
+                    <div>
+                      <span className="text-xs text-blue-600 dark:text-blue-400 font-medium block mb-1">
+                        Verified via Hunter.io:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {placeDetails.hunterEmails.map((email: string) => (
+                          <Badge key={email} className="text-xs font-mono bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                            {email}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {placeDetails.verifiedEmails?.length > 0 && (
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-4 h-4 text-emerald-500 mt-0.5" />
+                    <div>
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium block mb-1">
+                        Verified email exists:
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {placeDetails.verifiedEmails.map((email: string) => (
+                          <Badge key={email} className="text-xs font-mono bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700">
+                            {email}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {placeDetails.hasMx && !placeDetails.scrapedEmails?.length && !placeDetails.hunterEmails?.length && (
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-4 h-4 text-amber-500" />
+                    <span className="text-xs text-amber-600 dark:text-amber-400">Domain accepts email (MX records found)</span>
+                  </div>
+                )}
+                {placeDetails.domain && (
+                  <div className="flex items-center gap-3">
+                    <Search className="w-4 h-4 text-indigo-500" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7"
+                      data-testid="button-find-email-by-name"
+                      onClick={() => {
+                        setFindEmailOpen(true);
+                        setFindFirstName("");
+                        setFindLastName("");
+                        setFindEmailResult(null);
+                      }}
+                    >
+                      <Users className="w-3 h-3 mr-1" />
+                      Find Email by Name
+                    </Button>
+                  </div>
+                )}
                 {placeDetails.guessedEmails?.length > 0 && (
                   <div className="flex items-start gap-3">
                     <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
                     <div>
                       <span className="text-xs text-muted-foreground block mb-1">
-                        {placeDetails.scrapedEmails?.length > 0 ? "Other possible emails:" : "Best guesses (not found on site):"}
+                        {(placeDetails.scrapedEmails?.length > 0 || placeDetails.hunterEmails?.length > 0) ? "Other possible emails:" : "Best guesses (not found on site):"}
                       </span>
                       <div className="flex flex-wrap gap-1">
-                        {placeDetails.guessedEmails.map(email => (
+                        {placeDetails.guessedEmails.map((email: string) => (
                           <Badge key={email} variant="outline" className="text-xs font-mono">{email}</Badge>
                         ))}
                       </div>
@@ -832,6 +1025,87 @@ export default function LeadGenerator() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={findEmailOpen} onOpenChange={setFindEmailOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Search className="w-5 h-5 text-indigo-500" />
+              Find Email by Name
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Search for a specific person's email at <strong>{placeDetails?.domain}</strong> using Hunter.io
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">First Name</label>
+                <Input
+                  value={findFirstName}
+                  onChange={(e) => setFindFirstName(e.target.value)}
+                  placeholder="John"
+                  data-testid="input-find-first-name"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Last Name</label>
+                <Input
+                  value={findLastName}
+                  onChange={(e) => setFindLastName(e.target.value)}
+                  placeholder="Smith"
+                  data-testid="input-find-last-name"
+                />
+              </div>
+            </div>
+            <Button
+              className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white"
+              disabled={!findFirstName.trim() || !findLastName.trim() || findEmailMutation.isPending}
+              data-testid="button-search-email"
+              onClick={() => {
+                if (placeDetails?.domain) {
+                  findEmailMutation.mutate({
+                    domain: placeDetails.domain,
+                    firstName: findFirstName.trim(),
+                    lastName: findLastName.trim(),
+                  });
+                }
+              }}
+            >
+              {findEmailMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Searching...</>
+              ) : (
+                <><Search className="w-4 h-4 mr-2" /> Find Email</>
+              )}
+            </Button>
+            {findEmailResult?.found && findEmailResult.contact && (
+              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-semibold text-green-700 dark:text-green-400">Email Found!</span>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-mono text-foreground">{findEmailResult.contact.email}</div>
+                  {findEmailResult.contact.position && (
+                    <div className="text-xs text-muted-foreground">{findEmailResult.contact.position}</div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-green-600">{findEmailResult.contact.confidence}% confidence</span>
+                    {findEmailResult.contact.linkedin && (
+                      <a href={findEmailResult.contact.linkedin} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline">LinkedIn</a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {findEmailResult && !findEmailResult.found && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+                No email found for {findFirstName} {findLastName} at {placeDetails?.domain}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
