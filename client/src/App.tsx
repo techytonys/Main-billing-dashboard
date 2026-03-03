@@ -48,6 +48,7 @@ import PublicHelp from "@/pages/public-help";
 import Community from "@/pages/community";
 import CommunityAccount from "@/pages/community-account";
 import CommunityResetPassword from "@/pages/community-reset-password";
+import SmsMessaging from "@/pages/sms-messaging";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -72,6 +73,7 @@ function DashboardRouter() {
       <Route path="/admin/servers" component={LinodeServers} />
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/licenses" component={Licenses} />
+      <Route path="/admin/sms" component={SmsMessaging} />
       <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />

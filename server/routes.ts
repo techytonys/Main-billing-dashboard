@@ -7195,5 +7195,306 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  // SMS Messaging routes
+  app.get("/api/sms/stats", isAuthenticated, async (_req, res) => {
+    try {
+      const stats = await storage.getSmsStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sms/subscribers", isAuthenticated, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const subscribers = await storage.getSmsSubscribers(status);
+      res.json(subscribers);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/subscribers", isAuthenticated, async (req, res) => {
+    try {
+      const existing = await storage.getSmsSubscribers("active");
+      const dupe = existing.find(s => s.phone === req.body.phone);
+      if (dupe) return res.status(400).json({ error: "A subscriber with this phone number already exists" });
+      const sub = await storage.createSmsSubscriber(req.body);
+      res.status(201).json(sub);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/sms/subscribers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const sub = await storage.updateSmsSubscriber(req.params.id, req.body);
+      res.json(sub);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/subscribers/:id/unsubscribe", isAuthenticated, async (req, res) => {
+    try {
+      await storage.unsubscribeSmsSubscriber(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/subscribers/:id/resubscribe", isAuthenticated, async (req, res) => {
+    try {
+      await storage.resubscribeSmsSubscriber(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sms/subscribers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const hard = req.query.hard === "true";
+      if (hard) {
+        await storage.hardDeleteSmsSubscriber(req.params.id);
+      } else {
+        await storage.deleteSmsSubscriber(req.params.id);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sms/events", isAuthenticated, async (_req, res) => {
+    try {
+      const events = await storage.getSmsEvents();
+      res.json(events);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/events", isAuthenticated, async (req, res) => {
+    try {
+      const ev = await storage.createSmsEvent(req.body);
+      res.status(201).json(ev);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/sms/events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const ev = await storage.updateSmsEvent(req.params.id, req.body);
+      res.json(ev);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sms/events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const ev = await storage.getSmsEvent(req.params.id);
+      if (ev?.isSystem) return res.status(400).json({ error: "Cannot delete system events" });
+      await storage.deleteSmsEvent(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sms/lists", isAuthenticated, async (_req, res) => {
+    try {
+      const lists = await storage.getSmsLists();
+      res.json(lists);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/lists", isAuthenticated, async (req, res) => {
+    try {
+      const list = await storage.createSmsList(req.body);
+      res.status(201).json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/sms/lists/:id", isAuthenticated, async (req, res) => {
+    try {
+      const list = await storage.updateSmsList(req.params.id, req.body);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sms/lists/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSmsList(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sms/lists/:id/members", isAuthenticated, async (req, res) => {
+    try {
+      const members = await storage.getSmsListMembers(req.params.id);
+      res.json(members);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/lists/:id/members", isAuthenticated, async (req, res) => {
+    try {
+      const { subscriberIds } = req.body;
+      if (!subscriberIds?.length) return res.status(400).json({ error: "subscriberIds required" });
+      const added = await storage.addSmsListMembers(req.params.id, subscriberIds);
+      res.json({ added });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/sms/lists/:listId/members/:subscriberId", isAuthenticated, async (req, res) => {
+    try {
+      await storage.removeSmsListMember(req.params.listId, req.params.subscriberId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/lists/:id/send", isAuthenticated, async (req, res) => {
+    try {
+      const { body, eventId } = req.body;
+      if (!body) return res.status(400).json({ error: "body required" });
+      const members = await storage.getSmsListMembers(req.params.id);
+      const active = members.filter(m => m.status === "active");
+      const results: any[] = [];
+
+      let eventName: string | undefined;
+      if (eventId) {
+        const ev = await storage.getSmsEvent(eventId);
+        eventName = ev?.name;
+        if (ev) await storage.incrementSmsEventTrigger(ev.id);
+      }
+
+      for (const sub of active) {
+        const msg = await storage.createSmsMessage({
+          subscriberId: sub.id,
+          subscriberPhone: sub.phone,
+          subscriberName: sub.name || undefined,
+          eventId: eventId || undefined,
+          eventName,
+          body,
+          status: "queued",
+          direction: "outbound",
+        });
+        results.push(msg);
+      }
+      res.status(201).json({ sent: results.length, messages: results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sms/analytics", isAuthenticated, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const analytics = await storage.getSmsAnalytics(days);
+      res.json(analytics);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/sms/messages", isAuthenticated, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const messages = await storage.getSmsMessages(limit);
+      res.json(messages);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/send", isAuthenticated, async (req, res) => {
+    try {
+      const { subscriberIds, body, eventId } = req.body;
+      if (!body || !subscriberIds?.length) return res.status(400).json({ error: "body and subscriberIds required" });
+
+      const results: any[] = [];
+      for (const subId of subscriberIds) {
+        const sub = await storage.getSmsSubscriber(subId);
+        if (!sub || sub.status !== "active") continue;
+
+        let eventName: string | undefined;
+        if (eventId) {
+          const ev = await storage.getSmsEvent(eventId);
+          eventName = ev?.name;
+          if (ev) await storage.incrementSmsEventTrigger(ev.id);
+        }
+
+        const msg = await storage.createSmsMessage({
+          subscriberId: sub.id,
+          subscriberPhone: sub.phone,
+          subscriberName: sub.name || undefined,
+          eventId: eventId || undefined,
+          eventName,
+          body,
+          status: "queued",
+          direction: "outbound",
+        });
+        results.push(msg);
+      }
+
+      res.status(201).json({ sent: results.length, messages: results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/sms/broadcast", isAuthenticated, async (req, res) => {
+    try {
+      const { body, eventId } = req.body;
+      if (!body) return res.status(400).json({ error: "body required" });
+
+      const subscribers = await storage.getSmsSubscribers("active");
+      const results: any[] = [];
+
+      let eventName: string | undefined;
+      if (eventId) {
+        const ev = await storage.getSmsEvent(eventId);
+        eventName = ev?.name;
+        if (ev) await storage.incrementSmsEventTrigger(ev.id);
+      }
+
+      for (const sub of subscribers) {
+        const msg = await storage.createSmsMessage({
+          subscriberId: sub.id,
+          subscriberPhone: sub.phone,
+          subscriberName: sub.name || undefined,
+          eventId: eventId || undefined,
+          eventName,
+          body,
+          status: "queued",
+          direction: "outbound",
+        });
+        results.push(msg);
+      }
+
+      res.status(201).json({ sent: results.length, messages: results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

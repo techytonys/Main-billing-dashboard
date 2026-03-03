@@ -20,6 +20,7 @@ import {
   CreditCard,
   BarChart3,
   Link2,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,6 +54,7 @@ const engageItems = [
   { title: "Leads", url: "/admin/lead-generator", icon: Target },
   { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
   { title: "Link Tracker", url: "/admin/link-tracker", icon: Link2 },
+  { title: "SMS", url: "/admin/sms", icon: MessageSquare },
 ];
 
 const manageItems = [

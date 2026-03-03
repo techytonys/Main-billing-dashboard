@@ -874,4 +874,87 @@ export const insertTrackedLinkClickSchema = createInsertSchema(trackedLinkClicks
 export type TrackedLinkClick = typeof trackedLinkClicks.$inferSelect;
 export type InsertTrackedLinkClick = z.infer<typeof insertTrackedLinkClickSchema>;
 
+export const smsSubscribers = pgTable("sms_subscribers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  source: varchar("source", { length: 100 }),
+  tags: text("tags"),
+  notes: text("notes"),
+  optedInAt: timestamp("opted_in_at").defaultNow(),
+  optedOutAt: timestamp("opted_out_at"),
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const smsEvents = pgTable("sms_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull(),
+  description: text("description"),
+  messageTemplate: text("message_template").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  isSystem: boolean("is_system").notNull().default(false),
+  triggerCount: integer("trigger_count").notNull().default(0),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const smsMessages = pgTable("sms_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  subscriberId: varchar("subscriber_id"),
+  subscriberPhone: varchar("subscriber_phone", { length: 20 }).notNull(),
+  subscriberName: varchar("subscriber_name", { length: 200 }),
+  eventId: varchar("event_id"),
+  eventName: varchar("event_name", { length: 200 }),
+  body: text("body").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("queued"),
+  direction: varchar("direction", { length: 10 }).notNull().default("outbound"),
+  twilioSid: varchar("twilio_sid", { length: 50 }),
+  errorMessage: text("error_message"),
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const smsLists = pgTable("sms_lists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 20 }).default("#3b82f6"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const smsListMembers = pgTable("sms_list_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  listId: varchar("list_id").notNull(),
+  subscriberId: varchar("subscriber_id").notNull(),
+  addedAt: timestamp("added_at").defaultNow(),
+});
+
+export const insertSmsListSchema = createInsertSchema(smsLists).omit({ id: true, createdAt: true });
+export type SmsList = typeof smsLists.$inferSelect;
+export type InsertSmsList = z.infer<typeof insertSmsListSchema>;
+
+export const insertSmsListMemberSchema = createInsertSchema(smsListMembers).omit({ id: true, addedAt: true });
+export type SmsListMember = typeof smsListMembers.$inferSelect;
+export type InsertSmsListMember = z.infer<typeof insertSmsListMemberSchema>;
+
+export const insertSmsSubscriberSchema = createInsertSchema(smsSubscribers).omit({ id: true, createdAt: true, optedInAt: true });
+export type SmsSubscriber = typeof smsSubscribers.$inferSelect;
+export type InsertSmsSubscriber = z.infer<typeof insertSmsSubscriberSchema>;
+
+export const insertSmsEventSchema = createInsertSchema(smsEvents).omit({ id: true, triggerCount: true, lastTriggeredAt: true, createdAt: true, updatedAt: true });
+export type SmsEvent = typeof smsEvents.$inferSelect;
+export type InsertSmsEvent = z.infer<typeof insertSmsEventSchema>;
+
+export const insertSmsMessageSchema = createInsertSchema(smsMessages).omit({ id: true, twilioSid: true, errorMessage: true, sentAt: true, deliveredAt: true, createdAt: true });
+export type SmsMessage = typeof smsMessages.$inferSelect;
+export type InsertSmsMessage = z.infer<typeof insertSmsMessageSchema>;
+
 

@@ -58,6 +58,12 @@ import {
   type PushSubscription,
   analyticsPageViews, analyticsEvents, analyticsSessions,
   type AnalyticsPageView, type InsertAnalyticsPageView,
+  smsSubscribers, smsEvents, smsMessages, smsLists, smsListMembers,
+  type SmsSubscriber, type InsertSmsSubscriber,
+  type SmsEvent, type InsertSmsEvent,
+  type SmsMessage, type InsertSmsMessage,
+  type SmsList, type InsertSmsList,
+  type SmsListMember, type InsertSmsListMember,
   type AnalyticsEvent, type InsertAnalyticsEvent,
   type AnalyticsSession, type InsertAnalyticsSession,
   trackedLinks, trackedLinkClicks,
@@ -2027,6 +2033,242 @@ export class DatabaseStorage implements IStorage {
       avgSessionDuration: avgDur?.avg || 0,
       socialBreakdown, topPages, sourceBreakdown, deviceBreakdown, browserBreakdown, eventTypes, dailyViews,
     };
+  }
+
+  async getSmsSubscribers(statusFilter?: string): Promise<SmsSubscriber[]> {
+    if (statusFilter && statusFilter !== "all") {
+      if (statusFilter === "deleted") {
+        return db.select().from(smsSubscribers).where(eq(smsSubscribers.status, "deleted")).orderBy(desc(smsSubscribers.createdAt));
+      }
+      return db.select().from(smsSubscribers).where(and(eq(smsSubscribers.status, statusFilter), isNull(smsSubscribers.deletedAt))).orderBy(desc(smsSubscribers.createdAt));
+    }
+    return db.select().from(smsSubscribers).where(isNull(smsSubscribers.deletedAt)).orderBy(desc(smsSubscribers.createdAt));
+  }
+
+  async getSmsSubscriber(id: string): Promise<SmsSubscriber | undefined> {
+    const [sub] = await db.select().from(smsSubscribers).where(eq(smsSubscribers.id, id));
+    return sub;
+  }
+
+  async createSmsSubscriber(data: InsertSmsSubscriber): Promise<SmsSubscriber> {
+    const [sub] = await db.insert(smsSubscribers).values(data).returning();
+    return sub;
+  }
+
+  async updateSmsSubscriber(id: string, data: Partial<InsertSmsSubscriber>): Promise<SmsSubscriber> {
+    const [sub] = await db.update(smsSubscribers).set(data).where(eq(smsSubscribers.id, id)).returning();
+    return sub;
+  }
+
+  async deleteSmsSubscriber(id: string): Promise<void> {
+    await db.update(smsSubscribers).set({ status: "deleted", deletedAt: new Date() }).where(eq(smsSubscribers.id, id));
+  }
+
+  async hardDeleteSmsSubscriber(id: string): Promise<void> {
+    await db.delete(smsSubscribers).where(eq(smsSubscribers.id, id));
+  }
+
+  async unsubscribeSmsSubscriber(id: string): Promise<void> {
+    await db.update(smsSubscribers).set({ status: "unsubscribed", optedOutAt: new Date() }).where(eq(smsSubscribers.id, id));
+  }
+
+  async resubscribeSmsSubscriber(id: string): Promise<void> {
+    await db.update(smsSubscribers).set({ status: "active", optedOutAt: null }).where(eq(smsSubscribers.id, id));
+  }
+
+  async getSmsEvents(): Promise<SmsEvent[]> {
+    return db.select().from(smsEvents).orderBy(desc(smsEvents.createdAt));
+  }
+
+  async getSmsEvent(id: string): Promise<SmsEvent | undefined> {
+    const [ev] = await db.select().from(smsEvents).where(eq(smsEvents.id, id));
+    return ev;
+  }
+
+  async getSmsEventBySlug(slug: string): Promise<SmsEvent | undefined> {
+    const [ev] = await db.select().from(smsEvents).where(eq(smsEvents.slug, slug));
+    return ev;
+  }
+
+  async createSmsEvent(data: InsertSmsEvent): Promise<SmsEvent> {
+    const [ev] = await db.insert(smsEvents).values(data).returning();
+    return ev;
+  }
+
+  async updateSmsEvent(id: string, data: Partial<InsertSmsEvent>): Promise<SmsEvent> {
+    const [ev] = await db.update(smsEvents).set({ ...data, updatedAt: new Date() }).where(eq(smsEvents.id, id)).returning();
+    return ev;
+  }
+
+  async deleteSmsEvent(id: string): Promise<void> {
+    await db.delete(smsEvents).where(eq(smsEvents.id, id));
+  }
+
+  async incrementSmsEventTrigger(id: string): Promise<void> {
+    await db.update(smsEvents).set({ triggerCount: sql`${smsEvents.triggerCount} + 1`, lastTriggeredAt: new Date() }).where(eq(smsEvents.id, id));
+  }
+
+  async getSmsMessages(limit = 100): Promise<SmsMessage[]> {
+    return db.select().from(smsMessages).orderBy(desc(smsMessages.createdAt)).limit(limit);
+  }
+
+  async createSmsMessage(data: InsertSmsMessage): Promise<SmsMessage> {
+    const [msg] = await db.insert(smsMessages).values(data).returning();
+    return msg;
+  }
+
+  async getSmsStats(): Promise<{ totalSubscribers: number; activeSubscribers: number; unsubscribed: number; deleted: number; totalMessages: number; totalEvents: number }> {
+    const [totalResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsSubscribers);
+    const [activeResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsSubscribers).where(eq(smsSubscribers.status, "active"));
+    const [unsubResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsSubscribers).where(eq(smsSubscribers.status, "unsubscribed"));
+    const [deletedResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsSubscribers).where(eq(smsSubscribers.status, "deleted"));
+    const [msgResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsMessages);
+    const [evResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsEvents).where(eq(smsEvents.enabled, true));
+    return {
+      totalSubscribers: totalResult?.count || 0,
+      activeSubscribers: activeResult?.count || 0,
+      unsubscribed: unsubResult?.count || 0,
+      deleted: deletedResult?.count || 0,
+      totalMessages: msgResult?.count || 0,
+      totalEvents: evResult?.count || 0,
+    };
+  }
+
+  async getSmsAnalytics(days = 30): Promise<{
+    deliveryRate: number; openRate: number; clickRate: number; unsubscribeRate: number;
+    totalSent: number; totalDelivered: number; totalOpened: number; totalClicked: number; totalFailed: number;
+    dailyMessages: { date: string; sent: number; delivered: number; opened: number; failed: number }[];
+    dailySubscribers: { date: string; newSubscribers: number; unsubscribed: number }[];
+    eventPerformance: { name: string; sent: number; delivered: number; opened: number; clicked: number }[];
+  }> {
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+
+    const [sentResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsMessages).where(gte(smsMessages.createdAt, from));
+    const [deliveredResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsMessages).where(and(gte(smsMessages.createdAt, from), eq(smsMessages.status, "delivered")));
+    const [openedResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsMessages).where(and(gte(smsMessages.createdAt, from), sql`${smsMessages.openedAt} IS NOT NULL`));
+    const [clickedResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsMessages).where(and(gte(smsMessages.createdAt, from), sql`${smsMessages.clickedAt} IS NOT NULL`));
+    const [failedResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsMessages).where(and(gte(smsMessages.createdAt, from), eq(smsMessages.status, "failed")));
+
+    const totalSent = sentResult?.count || 0;
+    const totalDelivered = deliveredResult?.count || 0;
+    const totalOpened = openedResult?.count || 0;
+    const totalClicked = clickedResult?.count || 0;
+    const totalFailed = failedResult?.count || 0;
+
+    const deliveryRate = totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0;
+    const openRate = totalDelivered > 0 ? Math.round((totalOpened / totalDelivered) * 100) : 0;
+    const clickRate = totalOpened > 0 ? Math.round((totalClicked / totalOpened) * 100) : 0;
+
+    const [unsubCount] = await db.select({ count: sql<number>`count(*)::int` }).from(smsSubscribers).where(and(eq(smsSubscribers.status, "unsubscribed"), gte(smsSubscribers.optedOutAt, from)));
+    const [activeCount] = await db.select({ count: sql<number>`count(*)::int` }).from(smsSubscribers).where(eq(smsSubscribers.status, "active"));
+    const totalActive = (activeCount?.count || 0) + (unsubCount?.count || 0);
+    const unsubscribeRate = totalActive > 0 ? Math.round(((unsubCount?.count || 0) / totalActive) * 100) : 0;
+
+    const dailyMessages = await db.select({
+      date: sql<string>`to_char(${smsMessages.createdAt}, 'YYYY-MM-DD')`,
+      sent: sql<number>`count(*)::int`,
+      delivered: sql<number>`count(*) FILTER (WHERE ${smsMessages.status} = 'delivered')::int`,
+      opened: sql<number>`count(*) FILTER (WHERE ${smsMessages.openedAt} IS NOT NULL)::int`,
+      failed: sql<number>`count(*) FILTER (WHERE ${smsMessages.status} = 'failed')::int`,
+    }).from(smsMessages)
+      .where(gte(smsMessages.createdAt, from))
+      .groupBy(sql`to_char(${smsMessages.createdAt}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${smsMessages.createdAt}, 'YYYY-MM-DD')`);
+
+    const dailySubscribers = await db.select({
+      date: sql<string>`to_char(${smsSubscribers.createdAt}, 'YYYY-MM-DD')`,
+      newSubscribers: sql<number>`count(*) FILTER (WHERE ${smsSubscribers.status} != 'deleted')::int`,
+      unsubscribed: sql<number>`count(*) FILTER (WHERE ${smsSubscribers.status} = 'unsubscribed')::int`,
+    }).from(smsSubscribers)
+      .where(gte(smsSubscribers.createdAt, from))
+      .groupBy(sql`to_char(${smsSubscribers.createdAt}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${smsSubscribers.createdAt}, 'YYYY-MM-DD')`);
+
+    const eventPerformance = await db.select({
+      name: smsMessages.eventName,
+      sent: sql<number>`count(*)::int`,
+      delivered: sql<number>`count(*) FILTER (WHERE ${smsMessages.status} = 'delivered')::int`,
+      opened: sql<number>`count(*) FILTER (WHERE ${smsMessages.openedAt} IS NOT NULL)::int`,
+      clicked: sql<number>`count(*) FILTER (WHERE ${smsMessages.clickedAt} IS NOT NULL)::int`,
+    }).from(smsMessages)
+      .where(and(gte(smsMessages.createdAt, from), sql`${smsMessages.eventName} IS NOT NULL`))
+      .groupBy(smsMessages.eventName)
+      .orderBy(sql`count(*) DESC`);
+
+    return {
+      deliveryRate, openRate, clickRate, unsubscribeRate,
+      totalSent, totalDelivered, totalOpened, totalClicked, totalFailed,
+      dailyMessages, dailySubscribers, eventPerformance,
+    };
+  }
+
+  async getSmsLists(): Promise<(SmsList & { memberCount: number })[]> {
+    const lists = await db.select().from(smsLists).orderBy(desc(smsLists.createdAt));
+    const result = [];
+    for (const list of lists) {
+      const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(smsListMembers).where(eq(smsListMembers.listId, list.id));
+      result.push({ ...list, memberCount: countResult?.count || 0 });
+    }
+    return result;
+  }
+
+  async getSmsList(id: string): Promise<SmsList | undefined> {
+    const [list] = await db.select().from(smsLists).where(eq(smsLists.id, id));
+    return list;
+  }
+
+  async createSmsList(data: InsertSmsList): Promise<SmsList> {
+    const [list] = await db.insert(smsLists).values(data).returning();
+    return list;
+  }
+
+  async updateSmsList(id: string, data: Partial<InsertSmsList>): Promise<SmsList> {
+    const [list] = await db.update(smsLists).set(data).where(eq(smsLists.id, id)).returning();
+    return list;
+  }
+
+  async deleteSmsList(id: string): Promise<void> {
+    await db.delete(smsListMembers).where(eq(smsListMembers.listId, id));
+    await db.delete(smsLists).where(eq(smsLists.id, id));
+  }
+
+  async getSmsListMembers(listId: string): Promise<SmsSubscriber[]> {
+    const members = await db.select({ subscriberId: smsListMembers.subscriberId }).from(smsListMembers).where(eq(smsListMembers.listId, listId));
+    if (members.length === 0) return [];
+    const subIds = members.map(m => m.subscriberId);
+    const subs = await db.select().from(smsSubscribers).where(sql`${smsSubscribers.id} IN (${sql.join(subIds.map(id => sql`${id}`), sql`, `)})`);
+    return subs;
+  }
+
+  async addSmsListMember(listId: string, subscriberId: string): Promise<SmsListMember> {
+    const [existing] = await db.select().from(smsListMembers).where(and(eq(smsListMembers.listId, listId), eq(smsListMembers.subscriberId, subscriberId)));
+    if (existing) return existing;
+    const [member] = await db.insert(smsListMembers).values({ listId, subscriberId }).returning();
+    return member;
+  }
+
+  async removeSmsListMember(listId: string, subscriberId: string): Promise<void> {
+    await db.delete(smsListMembers).where(and(eq(smsListMembers.listId, listId), eq(smsListMembers.subscriberId, subscriberId)));
+  }
+
+  async addSmsListMembers(listId: string, subscriberIds: string[]): Promise<number> {
+    let added = 0;
+    for (const subId of subscriberIds) {
+      const [existing] = await db.select().from(smsListMembers).where(and(eq(smsListMembers.listId, listId), eq(smsListMembers.subscriberId, subId)));
+      if (!existing) {
+        await db.insert(smsListMembers).values({ listId, subscriberId: subId });
+        added++;
+      }
+    }
+    return added;
+  }
+
+  async getSubscriberLists(subscriberId: string): Promise<SmsList[]> {
+    const memberships = await db.select({ listId: smsListMembers.listId }).from(smsListMembers).where(eq(smsListMembers.subscriberId, subscriberId));
+    if (memberships.length === 0) return [];
+    const listIds = memberships.map(m => m.listId);
+    return db.select().from(smsLists).where(sql`${smsLists.id} IN (${sql.join(listIds.map(id => sql`${id}`), sql`, `)})`);
   }
 }
 
