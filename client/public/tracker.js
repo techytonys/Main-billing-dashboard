@@ -1,5 +1,7 @@
 (function() {
   "use strict";
+  function isOptedOut() { return localStorage.getItem("_aips_no_track") === "1"; }
+
   var ENDPOINT = (document.currentScript && document.currentScript.getAttribute("data-endpoint")) || window.location.origin;
   var SITE_ID = (document.currentScript && document.currentScript.getAttribute("data-site")) || window.location.hostname;
 
@@ -138,6 +140,7 @@
   }
 
   function send(path, data) {
+    if (isOptedOut()) return;
     var url = ENDPOINT + path;
     var body = JSON.stringify(data);
     if (navigator.sendBeacon) {
@@ -252,7 +255,7 @@
   });
 
   window.aips = {
-    track: function(eventName, metadata) { trackEvent(eventName, null, metadata); },
-    identify: function(userId) { send("/api/analytics/identify", { visitorId: visitorId, userId: userId }); }
+    track: function(eventName, metadata) { if (!isOptedOut()) trackEvent(eventName, null, metadata); },
+    identify: function(userId) { if (!isOptedOut()) send("/api/analytics/identify", { visitorId: visitorId, userId: userId }); }
   };
 })();

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Eye, Users, MousePointerClick, Clock, Smartphone, Monitor, Tablet, Copy, Check, TrendingUp, BarChart3, Activity, Globe, Radio, Trash2 } from "lucide-react";
+import { Eye, Users, MousePointerClick, Clock, Smartphone, Monitor, Tablet, Copy, Check, TrendingUp, BarChart3, Activity, Globe, Radio, Trash2, ShieldOff, Shield } from "lucide-react";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -240,6 +240,7 @@ export default function Analytics() {
   usePageTitle("Analytics");
   const [range, setRange] = useState("7d");
   const [copied, setCopied] = useState(false);
+  const [selfTrackingBlocked, setSelfTrackingBlocked] = useState(() => localStorage.getItem("_aips_no_track") === "1");
   const { toast } = useToast();
 
   const fetchAuth = (url: string) => fetch(url, { credentials: "include" }).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); });
@@ -303,6 +304,32 @@ export default function Analytics() {
           <p className="text-sm text-muted-foreground mt-1">Track page views, visitors, events, and traffic</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="button-toggle-self-tracking"
+            className={selfTrackingBlocked
+              ? "border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-900/20"
+              : "border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20"
+            }
+            onClick={() => {
+              if (selfTrackingBlocked) {
+                localStorage.removeItem("_aips_no_track");
+                setSelfTrackingBlocked(false);
+                toast({ title: "Self-tracking enabled", description: "Your visits will now be tracked in analytics." });
+              } else {
+                localStorage.setItem("_aips_no_track", "1");
+                setSelfTrackingBlocked(true);
+                toast({ title: "Self-tracking blocked", description: "Your visits will no longer appear in analytics." });
+              }
+            }}
+          >
+            {selfTrackingBlocked ? (
+              <><ShieldOff className="w-4 h-4 mr-2" />Tracking Blocked</>
+            ) : (
+              <><Shield className="w-4 h-4 mr-2" />Block My Visits</>
+            )}
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10" data-testid="button-reset-analytics">
