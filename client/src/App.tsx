@@ -39,6 +39,8 @@ import ApiKeys from "@/pages/api-keys";
 import ApiDocs from "@/pages/api-docs";
 import CodeBackups from "@/pages/code-backups";
 import LeadGenerator from "@/pages/lead-generator";
+import Analytics from "@/pages/analytics";
+import LinkTracker from "@/pages/link-tracker";
 import LinodeServers from "@/pages/linode-servers";
 import KnowledgeBase from "@/pages/knowledge-base";
 import Licenses from "@/pages/licenses";
@@ -46,7 +48,6 @@ import PublicHelp from "@/pages/public-help";
 import Community from "@/pages/community";
 import CommunityAccount from "@/pages/community-account";
 import CommunityResetPassword from "@/pages/community-reset-password";
-import SnsNotifications from "@/pages/sns-notifications";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -66,11 +67,12 @@ function DashboardRouter() {
       <Route path="/admin/api-keys" component={ApiKeys} />
       <Route path="/admin/code-backups" component={CodeBackups} />
       <Route path="/admin/lead-generator" component={LeadGenerator} />
+      <Route path="/admin/analytics" component={Analytics} />
+      <Route path="/admin/link-tracker" component={LinkTracker} />
       <Route path="/admin/servers" component={LinodeServers} />
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/licenses" component={Licenses} />
       <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
-      <Route path="/admin/notifications" component={SnsNotifications} />
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

@@ -760,77 +760,118 @@ export const insertCommunityGroupMemberSchema = createInsertSchema(communityGrou
 export type CommunityGroupMember = typeof communityGroupMembers.$inferSelect;
 export type InsertCommunityGroupMember = z.infer<typeof insertCommunityGroupMemberSchema>;
 
-export const snsTopics = pgTable("sns_topics", {
+export const analyticsPageViews = pgTable("analytics_page_views", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  description: text("description"),
-  topicArn: text("topic_arn"),
-  triggers: text("triggers"),
-  subscriberCount: integer("subscriber_count").default(0),
+  sessionId: varchar("session_id").notNull(),
+  visitorId: varchar("visitor_id").notNull(),
+  url: text("url").notNull(),
+  path: text("path").notNull(),
+  title: text("title"),
+  referrer: text("referrer"),
+  source: text("source"),
+  medium: text("medium"),
+  campaign: text("campaign"),
+  socialPlatform: text("social_platform"),
+  socialDetail: text("social_detail"),
+  device: text("device"),
+  browser: text("browser"),
+  os: text("os"),
+  country: text("country"),
+  screenWidth: integer("screen_width"),
+  screenHeight: integer("screen_height"),
+  duration: integer("duration"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSnsTopicSchema = createInsertSchema(snsTopics).omit({ id: true, createdAt: true, subscriberCount: true });
-export type SnsTopic = typeof snsTopics.$inferSelect;
-export type InsertSnsTopic = z.infer<typeof insertSnsTopicSchema>;
+export const insertAnalyticsPageViewSchema = createInsertSchema(analyticsPageViews).omit({ id: true, createdAt: true });
+export type AnalyticsPageView = typeof analyticsPageViews.$inferSelect;
+export type InsertAnalyticsPageView = z.infer<typeof insertAnalyticsPageViewSchema>;
 
-export const snsSubscribers = pgTable("sns_subscribers", {
+export const analyticsEvents = pgTable("analytics_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  topicId: varchar("topic_id").notNull(),
-  name: text("name").notNull(),
-  email: text("email"),
-  phone: text("phone"),
-  subscriptionArn: text("subscription_arn"),
-  unsubscribeToken: varchar("unsubscribe_token").default(sql`gen_random_uuid()`),
-  status: text("status").notNull().default("pending"),
+  sessionId: varchar("session_id").notNull(),
+  visitorId: varchar("visitor_id").notNull(),
+  eventType: text("event_type").notNull(),
+  elementTag: text("element_tag"),
+  elementText: text("element_text"),
+  elementId: text("element_id"),
+  elementClass: text("element_class"),
+  href: text("href"),
+  url: text("url").notNull(),
+  path: text("path").notNull(),
+  metadata: text("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSnsSubscriberSchema = createInsertSchema(snsSubscribers).omit({ id: true, createdAt: true, subscriptionArn: true, unsubscribeToken: true, status: true });
-export type SnsSubscriber = typeof snsSubscribers.$inferSelect;
-export type InsertSnsSubscriber = z.infer<typeof insertSnsSubscriberSchema>;
+export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).omit({ id: true, createdAt: true });
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
 
-export const snsMessages = pgTable("sns_messages", {
+export const analyticsSessions = pgTable("analytics_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  topicId: varchar("topic_id"),
-  subject: text("subject").notNull(),
-  message: text("message").notNull(),
-  messageType: text("message_type").notNull().default("broadcast"),
-  recipientCount: integer("recipient_count").default(0),
-  status: text("status").notNull().default("sent"),
+  visitorId: varchar("visitor_id").notNull(),
+  startedAt: timestamp("started_at").defaultNow(),
+  endedAt: timestamp("ended_at"),
+  pageCount: integer("page_count").default(0),
+  eventCount: integer("event_count").default(0),
+  source: text("source"),
+  medium: text("medium"),
+  campaign: text("campaign"),
+  socialPlatform: text("social_platform"),
+  socialDetail: text("social_detail"),
+  referrer: text("referrer"),
+  device: text("device"),
+  browser: text("browser"),
+  os: text("os"),
+  country: text("country"),
+  entryPage: text("entry_page"),
+  exitPage: text("exit_page"),
+  duration: integer("duration"),
+  isUnique: boolean("is_unique").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSnsMessageSchema = createInsertSchema(snsMessages).omit({ id: true, createdAt: true, recipientCount: true, status: true });
-export type SnsMessage = typeof snsMessages.$inferSelect;
-export type InsertSnsMessage = z.infer<typeof insertSnsMessageSchema>;
+export const insertAnalyticsSessionSchema = createInsertSchema(analyticsSessions).omit({ id: true, createdAt: true });
+export type AnalyticsSession = typeof analyticsSessions.$inferSelect;
+export type InsertAnalyticsSession = z.infer<typeof insertAnalyticsSessionSchema>;
 
-export const snsTriggers = pgTable("sns_triggers", {
+export const trackedLinks = pgTable("tracked_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  slug: text("slug").notNull(),
-  description: text("description"),
-  icon: text("icon").default("zap"),
-  color: text("color").default("text-violet-500"),
+  slug: varchar("slug", { length: 50 }).notNull().unique(),
+  destinationUrl: text("destination_url").notNull(),
+  platform: varchar("platform", { length: 50 }).notNull(),
+  contentType: varchar("content_type", { length: 50 }).notNull(),
+  label: varchar("label", { length: 200 }),
+  customDomain: varchar("custom_domain", { length: 255 }),
+  totalClicks: integer("total_clicks").default(0),
+  uniqueClicks: integer("unique_clicks").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const trackedLinkClicks = pgTable("tracked_link_clicks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  linkId: varchar("link_id").notNull(),
+  visitorId: varchar("visitor_id", { length: 100 }),
+  ip: varchar("ip", { length: 45 }),
+  userAgent: text("user_agent"),
+  device: varchar("device", { length: 20 }),
+  browser: varchar("browser", { length: 50 }),
+  os: varchar("os", { length: 50 }),
+  country: varchar("country", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  referrer: text("referrer"),
+  isUnique: boolean("is_unique").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSnsTriggerSchema = createInsertSchema(snsTriggers).omit({ id: true, createdAt: true });
-export type SnsTrigger = typeof snsTriggers.$inferSelect;
-export type InsertSnsTrigger = z.infer<typeof insertSnsTriggerSchema>;
+export const insertTrackedLinkSchema = createInsertSchema(trackedLinks).omit({ id: true, totalClicks: true, uniqueClicks: true, createdAt: true, updatedAt: true });
+export type TrackedLink = typeof trackedLinks.$inferSelect;
+export type InsertTrackedLink = z.infer<typeof insertTrackedLinkSchema>;
 
-export const snsScheduledNotifications = pgTable("sns_scheduled_notifications", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  triggerSlug: text("trigger_slug").notNull(),
-  subject: text("subject").notNull(),
-  message: text("message").notNull(),
-  htmlMessage: text("html_message"),
-  scheduledAt: timestamp("scheduled_at").notNull(),
-  status: text("status").notNull().default("pending"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const insertTrackedLinkClickSchema = createInsertSchema(trackedLinkClicks).omit({ id: true, createdAt: true });
+export type TrackedLinkClick = typeof trackedLinkClicks.$inferSelect;
+export type InsertTrackedLinkClick = z.infer<typeof insertTrackedLinkClickSchema>;
 
-export const insertSnsScheduledNotificationSchema = createInsertSchema(snsScheduledNotifications).omit({ id: true, createdAt: true, status: true });
-export type SnsScheduledNotification = typeof snsScheduledNotifications.$inferSelect;
-export type InsertSnsScheduledNotification = z.infer<typeof insertSnsScheduledNotificationSchema>;
 

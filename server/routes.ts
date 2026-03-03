@@ -1,30 +1,19 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema } from "@shared/schema";
+import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews } from "@shared/schema";
 import crypto from "crypto";
 import { z } from "zod";
+import { sql, and, gte, lte } from "drizzle-orm";
+import { db } from "./db";
 import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor, sendAuditReportEmail } from "./email";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { generateInvoicePDF } from "./pdf";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import type { Customer } from "@shared/schema";
 import webpush from "web-push";
-import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 import path from "path";
 import fs from "fs";
-
-let snsClient: SNSClient | null = null;
-if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-  snsClient = new SNSClient({
-    region: process.env.AWS_REGION || "us-east-1",
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    },
-  });
-  console.log(`[AWS SNS] Client initialized (region: ${process.env.AWS_REGION || "us-east-1"})`);
-}
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -107,161 +96,56 @@ async function createNotificationAndEmail(
   }
 }
 
-async function triggerSnsEvent(eventType: string, subject: string, message: string, htmlMessage?: string) {
+async function triggerNotificationEvent(eventType: string, subject: string, message: string) {
   try {
-    const topics = await storage.getSnsTopics();
-    const matchingTopics = topics.filter(t => {
-      if (t.triggers) {
-        const triggers = t.triggers.split(",").map(s => s.trim());
-        return triggers.includes(eventType);
-      }
-      return false;
-    });
-
-    if (matchingTopics.length === 0) return;
-
-    for (const topic of matchingTopics) {
-      const subscribers = await storage.getSnsSubscribers(topic.id);
-      if (subscribers.length === 0) continue;
-
-      let emailsSent = 0;
-      let emailsFailed = 0;
-
-      const baseUrl = (process.env.SITE_URL || "https://aipoweredsites.com").replace(/\/$/, "");
-      for (const sub of subscribers) {
-        if (sub.status === "unsubscribed") continue;
-        if (sub.email) {
-          try {
-            const unsubUrl = sub.unsubscribeToken ? `${baseUrl}/unsubscribe/${sub.unsubscribeToken}` : undefined;
-            const emailHtml = htmlMessage
-              ? htmlMessage + (unsubUrl ? `<div style="text-align:center;padding:16px 0"><a href="${unsubUrl}" style="color:#9ca3af;font-size:11px;text-decoration:underline">Unsubscribe</a></div>` : "")
-              : buildTriggerEmailHtml(subject, message, topic.name, unsubUrl);
-            const result = await sendEmail({ to: sub.email, subject, html: emailHtml });
-            if (result.success) emailsSent++;
-            else emailsFailed++;
-          } catch {
-            emailsFailed++;
-          }
-        }
-      }
-
-      let smsSent = 0;
-      let smsFailed = 0;
-      if (snsClient) {
-        for (const sub of subscribers) {
-          if (sub.status === "unsubscribed") continue;
-          if (sub.phone) {
-            try {
-              const phoneNumber = sub.phone.replace(/[^+\d]/g, "");
-              if (phoneNumber.length >= 10) {
-                const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber}`;
-                await snsClient.send(new PublishCommand({
-                  PhoneNumber: formattedPhone,
-                  Message: `${subject}\n\n${message}`.substring(0, 160),
-                  MessageAttributes: {
-                    "AWS.SNS.SMS.SMSType": { DataType: "String", StringValue: "Transactional" },
-                    "AWS.SNS.SMS.SenderID": { DataType: "String", StringValue: "AIPowered" },
-                  },
-                }));
-                smsSent++;
-              }
-            } catch (smsErr: any) {
-              console.error(`[SNS] SMS to ${sub.phone} failed:`, smsErr.message);
-              smsFailed++;
-            }
-          }
-        }
-      }
-
-      await storage.createSnsMessage({
-        topicId: topic.id,
-        subject,
-        message,
-        messageType: "event",
-        recipientCount: subscribers.length,
-        status: emailsSent > 0 || smsSent > 0 ? "sent" : emailsFailed > 0 || smsFailed > 0 ? "failed" : "sent",
-      } as any);
-
-      console.log(`[SNS] Trigger "${eventType}" → topic "${topic.name}": ${emailsSent} emails, ${smsSent} SMS sent, ${emailsFailed + smsFailed} failed`);
-    }
-
     if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-      try {
-        const allPushSubs = await storage.getAllPushSubscriptions();
-        let pushSent = 0;
-        for (const ps of allPushSubs) {
-          try {
-            await webpush.sendNotification(
-              { endpoint: ps.endpoint, keys: { p256dh: ps.p256dh, auth: ps.auth } },
-              JSON.stringify({ title: subject, body: message.substring(0, 200), icon: "/icons/icon-192x192.png", badge: "/icons/icon-72x72.png", tag: eventType, data: { url: "/" } })
-            );
-            pushSent++;
-          } catch (pushErr: any) {
-            if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
-              await storage.deletePushSubscription(ps.endpoint);
-            }
+      const allPushSubs = await storage.getAllPushSubscriptions();
+      let pushSent = 0;
+      for (const ps of allPushSubs) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: ps.endpoint, keys: { p256dh: ps.p256dh, auth: ps.auth } },
+            JSON.stringify({ title: subject, body: message.substring(0, 200), icon: "/icons/icon-192x192.png", badge: "/icons/icon-72x72.png", tag: eventType, data: { url: "/" } })
+          );
+          pushSent++;
+        } catch (pushErr: any) {
+          if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+            await storage.deletePushSubscription(ps.endpoint);
           }
         }
-        if (pushSent > 0) console.log(`[SNS] Push notifications sent: ${pushSent}`);
-      } catch (pushError) {
-        console.error("[SNS] Push notification error:", pushError);
       }
+      if (pushSent > 0) console.log(`[Notify] Push sent: ${pushSent} for "${eventType}"`);
     }
   } catch (err) {
-    console.error("SNS event trigger error:", err);
+    console.error("Notification event error:", err);
   }
-}
-
-function convertMessageToHtml(text: string): string {
-  let html = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
-    '<a href="$2" style="color:#6366f1;text-decoration:underline;font-weight:500">$1</a>');
-  html = html.replace(
-    /(?<!\href=")(https?:\/\/[^\s<\)]+)/g,
-    '<a href="$1" style="color:#6366f1;text-decoration:underline">$1</a>'
-  );
-  html = html.replace(/\n/g, "<br>");
-  return html;
-}
-
-function buildTriggerEmailHtml(subject: string, message: string, topicName: string, unsubscribeUrl?: string): string {
-  const messageHtml = convertMessageToHtml(message);
-  const unsubBlock = unsubscribeUrl
-    ? `<p style="margin:8px 0 0;font-size:11px;color:#9ca3af;text-align:center"><a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">Unsubscribe</a> from these notifications</p>`
-    : "";
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.07)">
-<tr><td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:28px 32px">
-<h1 style="margin:0;color:#fff;font-size:22px;font-weight:600">${subject}</h1>
-<p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:13px">Notification from ${topicName}</p>
-</td></tr>
-<tr><td style="padding:28px 32px">
-<div style="font-size:15px;line-height:1.7;color:#374151">${messageHtml}</div>
-</td></tr>
-<tr><td style="padding:0 32px 28px">
-<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 16px">
-<p style="margin:0;font-size:11px;color:#9ca3af;text-align:center">Sent by AI Powered Sites Notifications</p>
-${unsubBlock}
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
 }
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    }
+    next();
+  });
+
+  app.get("/.well-known/security.txt", (_req, res) => {
+    res.type("text/plain").send(
+`Contact: mailto:hello@aipoweredsites.com
+Preferred-Languages: en
+Canonical: https://aipoweredsites.com/.well-known/security.txt
+Expires: 2027-12-31T23:59:59.000Z
+`);
+  });
 
   app.get("/robots.txt", (_req, res) => {
     const baseUrl = (process.env.SITE_URL || "https://aipoweredsites.com").replace(/\/$/, "");
@@ -365,7 +249,7 @@ ${urls}
     try {
       const parsed = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(parsed);
-      triggerSnsEvent("new_customer", `New Customer: ${customer.name}`, `A new customer "${customer.name}"${customer.company ? ` (${customer.company})` : ""} has been added.`).catch(() => {});
+      triggerNotificationEvent("new_customer", `New Customer: ${customer.name}`, `A new customer "${customer.name}"${customer.company ? ` (${customer.company})` : ""} has been added.`).catch(() => {});
       res.status(201).json(customer);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Invalid customer data" });
@@ -469,7 +353,7 @@ ${urls}
       const project = await storage.updateProject(req.params.id, updates);
       if (!project) return res.status(404).json({ message: "Project not found" });
       if (updates.status) {
-        triggerSnsEvent("project_status", `Project Update: ${project.name}`, `Project "${project.name}" status changed to "${updates.status}".`).catch(() => {});
+        triggerNotificationEvent("project_status", `Project Update: ${project.name}`, `Project "${project.name}" status changed to "${updates.status}".`).catch(() => {});
       }
       res.json(project);
     } catch (err: any) {
@@ -705,9 +589,9 @@ ${urls}
       if (!invoice) return res.status(404).json({ message: "Invoice not found" });
       const amt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(invoice.totalAmountCents / 100);
       if (status === "paid") {
-        triggerSnsEvent("invoice_paid", `Invoice Paid: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} has been marked as paid.`).catch(() => {});
+        triggerNotificationEvent("invoice_paid", `Invoice Paid: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} has been marked as paid.`).catch(() => {});
       } else if (status === "overdue") {
-        triggerSnsEvent("invoice_overdue", `Invoice Overdue: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} is now overdue.`).catch(() => {});
+        triggerNotificationEvent("invoice_overdue", `Invoice Overdue: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} is now overdue.`).catch(() => {});
       }
       res.json(invoice);
     } catch (err) {
@@ -741,7 +625,7 @@ ${urls}
           `New Invoice: ${invoice.invoiceNumber}`,
           `A new invoice for ${amt} has been generated${project ? ` for project "${project.name}"` : ""}. Due date: ${new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`,
         ).catch(() => {});
-        triggerSnsEvent("invoice_created", `New Invoice: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} generated${project ? ` for project "${project.name}"` : ""}. Due: ${new Date(invoice.dueDate).toLocaleDateString()}.`).catch(() => {});
+        triggerNotificationEvent("invoice_created", `New Invoice: ${invoice.invoiceNumber}`, `Invoice ${invoice.invoiceNumber} for ${amt} generated${project ? ` for project "${project.name}"` : ""}. Due: ${new Date(invoice.dueDate).toLocaleDateString()}.`).catch(() => {});
       }
 
       res.status(201).json(invoice);
@@ -1121,7 +1005,7 @@ ${urls}
         ? `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`
         : undefined;
 
-      triggerSnsEvent("support_ticket", `New Support Ticket: #${ticket.ticketNumber}`, `Support ticket "${ticketSubject}" created by ${senderName} (${senderEmail}).`).catch(() => {});
+      triggerNotificationEvent("support_ticket", `New Support Ticket: #${ticket.ticketNumber}`, `Support ticket "${ticketSubject}" created by ${senderName} (${senderEmail}).`).catch(() => {});
 
       await sendTicketNotification({
         customerName: senderName,
@@ -1427,7 +1311,7 @@ ${urls}
         const paidInvoice = await storage.getInvoice(session.metadata.invoiceId);
         if (paidInvoice) {
           const paidAmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(paidInvoice.totalAmountCents / 100);
-          triggerSnsEvent("payment_received", `Payment Received: ${paidInvoice.invoiceNumber}`, `Payment of ${paidAmt} received for invoice ${paidInvoice.invoiceNumber} from ${customer.name}.`).catch(() => {});
+          triggerNotificationEvent("payment_received", `Payment Received: ${paidInvoice.invoiceNumber}`, `Payment of ${paidAmt} received for invoice ${paidInvoice.invoiceNumber} from ${customer.name}.`).catch(() => {});
         }
       }
 
@@ -6917,286 +6801,387 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
-  // ── Amazon SNS Management (Admin Only) ──
+  // ── Tracked Links (Link Shortener/Tracker) ──
 
-  app.get("/api/sns/topics", isAuthenticated, async (req, res) => {
+  app.get("/api/tracked-links", isAuthenticated, async (req, res) => {
     try {
-      const topics = await storage.getSnsTopics();
-      res.json(topics);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+      const links = await storage.getTrackedLinks();
+      res.json(links);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post("/api/sns/topics", isAuthenticated, async (req, res) => {
+  app.post("/api/tracked-links", isAuthenticated, async (req, res) => {
     try {
-      const { name, description, triggers } = req.body;
-      if (!name) return res.status(400).json({ error: "Topic name is required" });
-      const topic = await storage.createSnsTopic({ name, description, triggers: triggers || null });
-      res.json(topic);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+      const link = await storage.createTrackedLink(req.body);
+      res.json(link);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.patch("/api/sns/topics/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/tracked-links/:id", isAuthenticated, async (req, res) => {
     try {
-      const topic = await storage.updateSnsTopic(req.params.id, req.body);
-      if (!topic) return res.status(404).json({ error: "Topic not found" });
-      res.json(topic);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+      const stats = await storage.getTrackedLinkStats(req.params.id);
+      if (!stats) return res.status(404).json({ error: "Link not found" });
+      res.json(stats);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete("/api/sns/topics/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/tracked-links/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteSnsTopic(req.params.id);
+      const link = await storage.updateTrackedLink(req.params.id, req.body);
+      if (!link) return res.status(404).json({ error: "Link not found" });
+      res.json(link);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete("/api/tracked-links/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTrackedLink(req.params.id);
       res.json({ success: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/tracked-links/:id/clicks", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      if (range === "24h") from.setHours(from.getHours() - 24);
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else from.setDate(from.getDate() - 7);
+      const clicks = await storage.getTrackedLinkClicks(req.params.id, from, now);
+      res.json(clicks);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Public redirect route — this is the actual link that gets clicked
+  app.get("/go/:slug", async (req, res) => {
+    try {
+      const link = await storage.getTrackedLinkBySlug(req.params.slug);
+      if (!link || !link.isActive) return res.status(404).send("Link not found");
+
+      const ua = req.headers["user-agent"] || "";
+      let device = "desktop";
+      if (/mobile|android|iphone|ipod/i.test(ua)) device = "mobile";
+      else if (/tablet|ipad/i.test(ua)) device = "tablet";
+      let browser = "Other";
+      if (/firefox/i.test(ua)) browser = "Firefox";
+      else if (/edg/i.test(ua)) browser = "Edge";
+      else if (/chrome|crios/i.test(ua)) browser = "Chrome";
+      else if (/safari/i.test(ua)) browser = "Safari";
+      else if (/opera|opr/i.test(ua)) browser = "Opera";
+      let os = "Other";
+      if (/android/i.test(ua)) os = "Android";
+      else if (/iphone|ipad|ipod/i.test(ua)) os = "iOS";
+      else if (/windows/i.test(ua)) os = "Windows";
+      else if (/mac/i.test(ua)) os = "macOS";
+      else if (/linux/i.test(ua)) os = "Linux";
+
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+
+      await storage.recordTrackedLinkClick({
+        linkId: link.id,
+        visitorId: req.query.vid as string || undefined,
+        ip,
+        userAgent: ua,
+        device,
+        browser,
+        os,
+        referrer: req.headers.referer || undefined,
+      });
+
+      // Build destination with UTM params for the analytics tracker to pick up
+      const dest = new URL(link.destinationUrl);
+      if (!dest.searchParams.has("utm_source")) dest.searchParams.set("utm_source", link.platform);
+      if (!dest.searchParams.has("utm_medium")) dest.searchParams.set("utm_medium", "social");
+      if (!dest.searchParams.has("utm_content")) dest.searchParams.set("utm_content", link.contentType);
+      if (link.label && !dest.searchParams.has("utm_campaign")) dest.searchParams.set("utm_campaign", link.label);
+
+      res.redirect(302, dest.toString());
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error("Tracked link redirect error:", err);
+      res.status(500).send("Something went wrong");
     }
   });
 
-  app.get("/api/sns/subscribers", isAuthenticated, async (req, res) => {
+  // ── Analytics Tracking (Public) ──
+
+  app.post("/api/analytics/pageview", async (req, res) => {
     try {
-      const topicId = req.query.topicId as string | undefined;
-      const subscribers = await storage.getSnsSubscribers(topicId);
-      res.json(subscribers);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+      await storage.createAnalyticsPageView(req.body);
+      res.status(204).end();
+    } catch { res.status(204).end(); }
   });
 
-  app.post("/api/sns/subscribers", isAuthenticated, async (req, res) => {
+  app.post("/api/analytics/event", async (req, res) => {
     try {
-      const { topicId, name, email, phone } = req.body;
-      if (!topicId || !name) return res.status(400).json({ error: "Topic and name are required" });
-      if (!email && !phone) return res.status(400).json({ error: "At least one of email or phone is required" });
-      const subscriber = await storage.createSnsSubscriber({ topicId, name, email, phone });
-      const snsConfigured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
-      if (!snsConfigured) {
-        await storage.updateSnsSubscriber(subscriber.id, { status: "confirmed" });
-        subscriber.status = "confirmed";
-      }
-      res.json(subscriber);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+      await storage.createAnalyticsEvent(req.body);
+      res.status(204).end();
+    } catch { res.status(204).end(); }
   });
 
-  app.delete("/api/sns/subscribers/:id", isAuthenticated, async (req, res) => {
+  app.post("/api/analytics/session", async (req, res) => {
     try {
-      await storage.deleteSnsSubscriber(req.params.id);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+      const { sessionId, visitorId, timezone, ...rest } = req.body;
+      const country = countryFromTimezone(timezone || "") || "";
+      await storage.createAnalyticsSession({ visitorId, ...rest, country } as any);
+      res.status(204).end();
+    } catch { res.status(204).end(); }
   });
 
-  app.patch("/api/sns/subscribers/:id/status", isAuthenticated, async (req, res) => {
+  app.post("/api/analytics/duration", async (req, res) => {
     try {
-      const { status } = req.body;
-      if (!["confirmed", "unsubscribed"].includes(status)) {
-        return res.status(400).json({ error: "Status must be 'confirmed' or 'unsubscribed'" });
-      }
-      const updated = await storage.updateSnsSubscriber(req.params.id, { status });
-      if (!updated) return res.status(404).json({ error: "Subscriber not found" });
-      res.json(updated);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.get("/unsubscribe/:token", async (req, res) => {
-    try {
-      const sub = await storage.getSnsSubscriberByToken(req.params.token);
-      if (!sub) {
-        return res.status(404).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found</title></head><body style="margin:0;padding:60px 20px;background:#f4f4f5;font-family:'Segoe UI',sans-serif;text-align:center"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 4px 6px rgba(0,0,0,0.07)"><h1 style="color:#ef4444;font-size:24px">Link Invalid</h1><p style="color:#6b7280">This unsubscribe link is no longer valid or has already been used.</p></div></body></html>`);
-      }
-      if (sub.status === "unsubscribed") {
-        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Already Unsubscribed</title></head><body style="margin:0;padding:60px 20px;background:#f4f4f5;font-family:'Segoe UI',sans-serif;text-align:center"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 4px 6px rgba(0,0,0,0.07)"><h1 style="color:#6366f1;font-size:24px">Already Unsubscribed</h1><p style="color:#6b7280">You've already been unsubscribed from these notifications, <strong>${sub.name}</strong>.</p></div></body></html>`);
-      }
-      await storage.updateSnsSubscriber(sub.id, { status: "unsubscribed" });
-      res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribed</title></head><body style="margin:0;padding:60px 20px;background:#f4f4f5;font-family:'Segoe UI',sans-serif;text-align:center"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 4px 6px rgba(0,0,0,0.07)"><div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);margin:0 auto 20px;display:flex;align-items:center;justify-content:center"><span style="color:#fff;font-size:28px">✓</span></div><h1 style="color:#111827;font-size:24px;margin:0 0 12px">Unsubscribed</h1><p style="color:#6b7280;font-size:15px;line-height:1.6">You've been successfully unsubscribed, <strong>${sub.name}</strong>. You will no longer receive email notifications from this topic.</p></div></body></html>`);
-    } catch (err: any) {
-      res.status(500).send("Something went wrong.");
-    }
-  });
-
-  app.get("/api/sns/messages", isAuthenticated, async (req, res) => {
-    try {
-      const topicId = req.query.topicId as string | undefined;
-      const messages = await storage.getSnsMessages(topicId);
-      res.json(messages);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/sns/messages", isAuthenticated, async (req, res) => {
-    try {
-      const { topicId, subject, message, messageType } = req.body;
-      if (!subject || !message) return res.status(400).json({ error: "Subject and message are required" });
-
-      let recipientCount = 0;
-      if (topicId) {
-        const subscribers = await storage.getSnsSubscribers(topicId);
-        recipientCount = subscribers.length;
-      } else {
-        const allSubs = await storage.getSnsSubscribers();
-        recipientCount = allSubs.length;
-      }
-
-      const snsConfigured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
-      const status = snsConfigured ? "sent" : "queued";
-
-      const msg = await storage.createSnsMessage({
-        topicId: topicId || null,
-        subject,
-        message,
-        messageType: messageType || (topicId ? "targeted" : "broadcast"),
-        recipientCount,
-        status,
-      } as any);
-
-      if (!snsConfigured) {
-        res.json({ ...msg, note: "AWS credentials not configured. Message saved but not delivered via SNS." });
-        return;
-      }
-
-      res.json(msg);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.get("/api/sns/status", isAuthenticated, async (req, res) => {
-    try {
-      const configured = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION);
-      res.json({ configured, region: configured ? process.env.AWS_REGION : null });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/sns/test-sms", isAuthenticated, async (req, res) => {
-    try {
-      const { phone, message } = req.body;
-      if (!phone) return res.status(400).json({ error: "Phone number is required" });
-      if (!snsClient) return res.status(400).json({ error: "AWS credentials not configured. Add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY." });
-
-      const phoneNumber = phone.replace(/[^+\d]/g, "");
-      const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber}`;
-      const testMessage = message || "Test SMS from AI Powered Sites. Your notification system is working!";
-
-      await snsClient.send(new PublishCommand({
-        PhoneNumber: formattedPhone,
-        Message: testMessage.substring(0, 160),
-        MessageAttributes: {
-          "AWS.SNS.SMS.SMSType": { DataType: "String", StringValue: "Transactional" },
-          "AWS.SNS.SMS.SenderID": { DataType: "String", StringValue: "AIPowered" },
-        },
-      }));
-
-      res.json({ success: true, phone: formattedPhone, message: testMessage });
-    } catch (err: any) {
-      console.error("[SNS] Test SMS failed:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.get("/api/sns/triggers", isAuthenticated, async (req, res) => {
-    try {
-      const triggers = await storage.getSnsTriggers();
-      res.json(triggers);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/sns/triggers", isAuthenticated, async (req, res) => {
-    try {
-      const { name, description, icon, color } = req.body;
-      if (!name) return res.status(400).json({ error: "Trigger name is required" });
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-      const existing = await storage.getSnsTriggers();
-      if (existing.some(t => t.slug === slug)) {
-        return res.status(409).json({ error: `A trigger with slug "${slug}" already exists` });
-      }
-      const trigger = await storage.createSnsTrigger({ name, slug, description: description || null, icon: icon || "zap", color: color || "text-violet-500" });
-      res.json(trigger);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.delete("/api/sns/triggers/:id", isAuthenticated, async (req, res) => {
-    try {
-      await storage.deleteSnsTrigger(req.params.id);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/sns/triggers/:slug/fire", isAuthenticated, async (req, res) => {
-    try {
-      const { subject, message, htmlMessage, scheduledAt } = req.body;
-      if (!subject || !message) return res.status(400).json({ error: "Subject and message are required" });
-      if (scheduledAt) {
-        const scheduled = await storage.createSnsScheduledNotification({
-          triggerSlug: req.params.slug,
-          subject,
-          message,
-          htmlMessage: htmlMessage || null,
-          scheduledAt: new Date(scheduledAt),
-        });
-        return res.json({ success: true, scheduled: true, id: scheduled.id, message: `Notification scheduled for ${new Date(scheduledAt).toLocaleString()}` });
-      }
-      await triggerSnsEvent(req.params.slug, subject, message, htmlMessage || undefined);
-      res.json({ success: true, message: `Trigger '${req.params.slug}' fired successfully` });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.get("/api/sns/scheduled", isAuthenticated, async (req, res) => {
-    try {
-      const notifications = await storage.getSnsScheduledNotifications();
-      res.json(notifications);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.delete("/api/sns/scheduled/:id", isAuthenticated, async (req, res) => {
-    try {
-      await storage.deleteSnsScheduledNotification(req.params.id);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  setInterval(async () => {
-    try {
-      const due = await storage.getDueSnsScheduledNotifications();
-      for (const notification of due) {
-        try {
-          await storage.updateSnsScheduledNotificationStatus(notification.id, "sending");
-          await triggerSnsEvent(notification.triggerSlug, notification.subject, notification.message, notification.htmlMessage || undefined);
-          await storage.updateSnsScheduledNotificationStatus(notification.id, "sent");
-          console.log(`[SNS Scheduler] Sent scheduled notification "${notification.subject}" (trigger: ${notification.triggerSlug})`);
-        } catch (err) {
-          await storage.updateSnsScheduledNotificationStatus(notification.id, "failed");
-          console.error(`[SNS Scheduler] Failed to send scheduled notification ${notification.id}:`, err);
+      const { visitorId, duration, path } = req.body;
+      if (visitorId && duration) {
+        const sessions = await storage.getAnalyticsSessions(new Date(Date.now() - 86400000), new Date());
+        const session = sessions.find(s => s.visitorId === visitorId);
+        if (session) {
+          await storage.updateAnalyticsSession(session.id, {
+            duration: (session.duration || 0) + duration,
+            exitPage: path || session.exitPage,
+            endedAt: new Date(),
+          });
         }
       }
-    } catch (err) {
-      console.error("[SNS Scheduler] Error checking scheduled notifications:", err);
+      res.status(204).end();
+    } catch { res.status(204).end(); }
+  });
+
+  app.post("/api/analytics/identify", async (req, res) => {
+    res.status(204).end();
+  });
+
+  const liveVisitors = new Map<string, { visitorId: string; path: string; country: string; lastSeen: number }>();
+
+  const tzToCountry: Record<string, string> = {
+    "America/New_York": "US", "America/Chicago": "US", "America/Denver": "US", "America/Los_Angeles": "US",
+    "America/Anchorage": "US", "Pacific/Honolulu": "US", "America/Phoenix": "US", "America/Indiana/Indianapolis": "US",
+    "America/Detroit": "US", "America/Kentucky/Louisville": "US", "America/Boise": "US", "America/Juneau": "US",
+    "America/Toronto": "CA", "America/Vancouver": "CA", "America/Edmonton": "CA", "America/Winnipeg": "CA",
+    "America/Halifax": "CA", "America/St_Johns": "CA", "America/Montreal": "CA", "America/Regina": "CA",
+    "Europe/London": "GB", "Europe/Dublin": "IE", "Europe/Paris": "FR", "Europe/Berlin": "DE",
+    "Europe/Madrid": "ES", "Europe/Rome": "IT", "Europe/Amsterdam": "NL", "Europe/Brussels": "BE",
+    "Europe/Zurich": "CH", "Europe/Vienna": "AT", "Europe/Stockholm": "SE", "Europe/Oslo": "NO",
+    "Europe/Helsinki": "FI", "Europe/Copenhagen": "DK", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
+    "Europe/Budapest": "HU", "Europe/Bucharest": "RO", "Europe/Sofia": "BG", "Europe/Athens": "GR",
+    "Europe/Istanbul": "TR", "Europe/Lisbon": "PT", "Europe/Kiev": "UA", "Europe/Kyiv": "UA", "Europe/Moscow": "RU",
+    "Asia/Tokyo": "JP", "Asia/Shanghai": "CN", "Asia/Hong_Kong": "HK", "Asia/Taipei": "TW",
+    "Asia/Seoul": "KR", "Asia/Kolkata": "IN", "Asia/Calcutta": "IN", "Asia/Mumbai": "IN",
+    "Asia/Singapore": "SG", "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Manila": "PH",
+    "Asia/Kuala_Lumpur": "MY", "Asia/Ho_Chi_Minh": "VN", "Asia/Dubai": "AE", "Asia/Riyadh": "SA",
+    "Asia/Karachi": "PK", "Asia/Dhaka": "BD", "Asia/Colombo": "LK", "Asia/Kathmandu": "NP",
+    "Asia/Tashkent": "UZ", "Asia/Almaty": "KZ", "Asia/Tehran": "IR", "Asia/Baghdad": "IQ",
+    "Asia/Jerusalem": "IL", "Asia/Beirut": "LB", "Asia/Amman": "JO",
+    "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Australia/Brisbane": "AU",
+    "Australia/Perth": "AU", "Australia/Adelaide": "AU", "Pacific/Auckland": "NZ",
+    "Africa/Cairo": "EG", "Africa/Lagos": "NG", "Africa/Nairobi": "KE",
+    "Africa/Johannesburg": "ZA", "Africa/Casablanca": "MA", "Africa/Accra": "GH",
+    "America/Mexico_City": "MX", "America/Bogota": "CO", "America/Sao_Paulo": "BR",
+    "America/Buenos_Aires": "AR", "America/Lima": "PE", "America/Santiago": "CL",
+    "America/Caracas": "VE", "America/Guatemala": "GT", "America/Havana": "CU",
+    "America/Costa_Rica": "CR", "America/Panama": "PA", "America/Jamaica": "JM",
+    "America/Puerto_Rico": "PR", "America/Santo_Domingo": "DO",
+  };
+
+  const countryNames: Record<string, string> = {
+    US: "United States", CA: "Canada", GB: "United Kingdom", IE: "Ireland", FR: "France", DE: "Germany",
+    ES: "Spain", IT: "Italy", NL: "Netherlands", BE: "Belgium", CH: "Switzerland", AT: "Austria",
+    SE: "Sweden", NO: "Norway", FI: "Finland", DK: "Denmark", PL: "Poland", CZ: "Czech Republic",
+    HU: "Hungary", RO: "Romania", BG: "Bulgaria", GR: "Greece", TR: "Turkey", PT: "Portugal",
+    UA: "Ukraine", RU: "Russia", JP: "Japan", CN: "China", HK: "Hong Kong", TW: "Taiwan",
+    KR: "South Korea", IN: "India", SG: "Singapore", TH: "Thailand", ID: "Indonesia", PH: "Philippines",
+    MY: "Malaysia", VN: "Vietnam", AE: "UAE", SA: "Saudi Arabia", PK: "Pakistan", BD: "Bangladesh",
+    LK: "Sri Lanka", NP: "Nepal", UZ: "Uzbekistan", KZ: "Kazakhstan", IR: "Iran", IQ: "Iraq",
+    IL: "Israel", LB: "Lebanon", JO: "Jordan", AU: "Australia", NZ: "New Zealand", EG: "Egypt",
+    NG: "Nigeria", KE: "Kenya", ZA: "South Africa", MA: "Morocco", GH: "Ghana", MX: "Mexico",
+    CO: "Colombia", BR: "Brazil", AR: "Argentina", PE: "Peru", CL: "Chile", VE: "Venezuela",
+    GT: "Guatemala", CU: "Cuba", CR: "Costa Rica", PA: "Panama", JM: "Jamaica", PR: "Puerto Rico",
+    DO: "Dominican Republic",
+  };
+
+  function countryFromTimezone(tz: string): string {
+    return tzToCountry[tz] || "";
+  }
+
+  const LIVE_VISITORS_MAX = 10000;
+
+  app.post("/api/analytics/heartbeat", async (req, res) => {
+    try {
+      const { visitorId, path, timezone } = req.body;
+      if (typeof visitorId !== "string" || visitorId.length < 10 || visitorId.length > 64) {
+        return res.status(204).end();
+      }
+      if (typeof path !== "string" || path.length > 500) {
+        return res.status(204).end();
+      }
+      if (liveVisitors.size >= LIVE_VISITORS_MAX && !liveVisitors.has(visitorId)) {
+        return res.status(204).end();
+      }
+      const country = countryFromTimezone(typeof timezone === "string" ? timezone.substring(0, 50) : "") || "";
+      liveVisitors.set(visitorId, { visitorId, path: path.substring(0, 200), country, lastSeen: Date.now() });
+      res.status(204).end();
+    } catch { res.status(204).end(); }
+  });
+
+  setInterval(() => {
+    const cutoff = Date.now() - 120000;
+    for (const [id, v] of liveVisitors) {
+      if (v.lastSeen < cutoff) liveVisitors.delete(id);
     }
-  }, 60 * 1000);
+  }, 30000);
+
+  app.get("/api/analytics/live", isAuthenticated, async (_req, res) => {
+    try {
+      const visitors = Array.from(liveVisitors.values());
+      const byCountry: Record<string, { code: string; name: string; count: number }> = {};
+      visitors.forEach(v => {
+        const code = v.country || "XX";
+        const name = countryNames[code] || "Unknown";
+        if (!byCountry[code]) byCountry[code] = { code, name, count: 0 };
+        byCountry[code].count++;
+      });
+      const byPage: Record<string, number> = {};
+      visitors.forEach(v => { byPage[v.path] = (byPage[v.path] || 0) + 1; });
+      res.json({
+        count: visitors.length,
+        countries: Object.values(byCountry).sort((a, b) => b.count - a.count),
+        pages: Object.entries(byPage).map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count),
+      });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/analytics/countries", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      if (range === "24h") from.setHours(from.getHours() - 24);
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else if (range === "90d") from.setDate(from.getDate() - 90);
+      else from.setDate(from.getDate() - 7);
+      const result = await db.select({
+        country: analyticsSessions.country,
+        count: sql<number>`count(*)::int`,
+      }).from(analyticsSessions)
+        .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, now), sql`${analyticsSessions.country} IS NOT NULL AND ${analyticsSessions.country} != ''`))
+        .groupBy(analyticsSessions.country)
+        .orderBy(sql`count(*) DESC`);
+      const mapped = result.map(r => ({
+        code: r.country,
+        name: countryNames[r.country || ""] || r.country || "Unknown",
+        count: r.count,
+      }));
+      res.json(mapped);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/analytics/traffic-chart", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      let interval = "day";
+      if (range === "24h") { from.setHours(from.getHours() - 24); interval = "hour"; }
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else if (range === "90d") from.setDate(from.getDate() - 90);
+      else from.setDate(from.getDate() - 7);
+
+      const fmtStr = interval === "hour" ? "YYYY-MM-DD HH24:00" : "YYYY-MM-DD";
+      const pvFmt = sql.raw(`to_char(analytics_page_views.created_at, '${fmtStr}')`);
+      const sessFmt = sql.raw(`to_char(analytics_sessions.created_at, '${fmtStr}')`);
+      const pageViews = await db.select({
+        period: sql<string>`${pvFmt}`,
+        count: sql<number>`count(*)::int`,
+      }).from(analyticsPageViews)
+        .where(and(gte(analyticsPageViews.createdAt, from), lte(analyticsPageViews.createdAt, now)))
+        .groupBy(sql`${pvFmt}`)
+        .orderBy(sql`${pvFmt}`);
+
+      const sessions = await db.select({
+        period: sql<string>`${sessFmt}`,
+        count: sql<number>`count(*)::int`,
+      }).from(analyticsSessions)
+        .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, now)))
+        .groupBy(sql`${sessFmt}`)
+        .orderBy(sql`${sessFmt}`);
+
+      res.json({ pageViews, sessions, interval });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── Analytics Dashboard (Admin Only) ──
+
+  app.get("/api/analytics/stats", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      if (range === "24h") from.setHours(from.getHours() - 24);
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else if (range === "90d") from.setDate(from.getDate() - 90);
+      else from.setDate(from.getDate() - 7);
+      const stats = await storage.getAnalyticsStats(from, now);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/analytics/pageviews", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      if (range === "24h") from.setHours(from.getHours() - 24);
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else from.setDate(from.getDate() - 7);
+      const views = await storage.getAnalyticsPageViews(from, now);
+      res.json(views);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/analytics/events", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      if (range === "24h") from.setHours(from.getHours() - 24);
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else from.setDate(from.getDate() - 7);
+      const events = await storage.getAnalyticsEvents(from, now);
+      res.json(events);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/analytics/sessions", isAuthenticated, async (req, res) => {
+    try {
+      const range = (req.query.range as string) || "7d";
+      const now = new Date();
+      let from = new Date();
+      if (range === "24h") from.setHours(from.getHours() - 24);
+      else if (range === "7d") from.setDate(from.getDate() - 7);
+      else if (range === "30d") from.setDate(from.getDate() - 30);
+      else from.setDate(from.getDate() - 7);
+      const sessions = await storage.getAnalyticsSessions(from, now);
+      res.json(sessions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/analytics/script", (_req, res) => {
+    const baseUrl = (process.env.SITE_URL || "https://aipoweredsites.com").replace(/\/$/, "");
+    res.type("text/plain").send(`<script src="${baseUrl}/tracker.js" data-endpoint="${baseUrl}" defer></script>`);
+  });
 
   // Admin friendships endpoint (for admin panel)
   app.get("/api/community/admin/friendships", isAuthenticated, async (req, res) => {

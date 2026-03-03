@@ -17,8 +17,9 @@ import {
   Shield,
   Users2,
   Sparkles,
-  Bell,
   CreditCard,
+  BarChart3,
+  Link2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -49,8 +50,9 @@ const engageItems = [
   { title: "Conversations", url: "/admin/conversations", icon: MessagesSquare },
   { title: "Support", url: "/admin/support", icon: LifeBuoy },
   { title: "Community", url: "/admin/community", icon: Users2 },
-  { title: "Notifications", url: "/admin/notifications", icon: Bell },
   { title: "Leads", url: "/admin/lead-generator", icon: Target },
+  { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
+  { title: "Link Tracker", url: "/admin/link-tracker", icon: Link2 },
 ];
 
 const manageItems = [

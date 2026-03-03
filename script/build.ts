@@ -3,7 +3,6 @@ import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
 
 const allowlist = [
-  "@aws-sdk/client-sns",
   "@google/generative-ai",
   "@google-cloud/storage",
   "@notionhq/client",

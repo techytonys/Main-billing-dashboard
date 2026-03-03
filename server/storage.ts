@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, sql, and, or, isNull, lt, lte } from "drizzle-orm";
+import { eq, desc, sql, and, or, isNull, lt, lte, gte } from "drizzle-orm";
 import {
   users, customers, projects, billingRates, workEntries, invoices, invoiceLineItems, paymentMethods, quoteRequests, supportTickets, ticketMessages, qaQuestions, paymentPlans, projectUpdates, projectScreenshots, projectClientFiles, notifications, quotes, quoteLineItems, quoteComments,
   conversations, conversationMessages, apiKeys, gitBackupConfigs, gitBackupLogs, leads, knowledgeBaseArticles, knowledgeBaseCategories, knowledgeBaseTags,
@@ -54,13 +54,15 @@ import {
   type CommunityFriendship, type InsertCommunityFriendship,
   type CommunityGroup, type InsertCommunityGroup,
   type CommunityGroupMember, type InsertCommunityGroupMember,
-  snsTopics, snsSubscribers, snsMessages, snsTriggers, snsScheduledNotifications, pushSubscriptions,
-  type SnsTopic, type InsertSnsTopic,
-  type SnsSubscriber, type InsertSnsSubscriber,
-  type SnsMessage, type InsertSnsMessage,
-  type SnsTrigger, type InsertSnsTrigger,
-  type SnsScheduledNotification, type InsertSnsScheduledNotification,
+  pushSubscriptions,
   type PushSubscription,
+  analyticsPageViews, analyticsEvents, analyticsSessions,
+  type AnalyticsPageView, type InsertAnalyticsPageView,
+  type AnalyticsEvent, type InsertAnalyticsEvent,
+  type AnalyticsSession, type InsertAnalyticsSession,
+  trackedLinks, trackedLinkClicks,
+  type TrackedLink, type InsertTrackedLink,
+  type TrackedLinkClick, type InsertTrackedLinkClick,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -299,36 +301,29 @@ export interface IStorage {
   isGroupMember(groupId: string, userId: string): Promise<boolean>;
   getCommunityGroupPosts(groupId: string, limit?: number): Promise<CommunityPost[]>;
 
-  getSnsTopics(): Promise<SnsTopic[]>;
-  getSnsTopic(id: string): Promise<SnsTopic | undefined>;
-  createSnsTopic(topic: InsertSnsTopic): Promise<SnsTopic>;
-  updateSnsTopic(id: string, updates: Partial<InsertSnsTopic & { topicArn: string; subscriberCount: number }>): Promise<SnsTopic | undefined>;
-  deleteSnsTopic(id: string): Promise<boolean>;
-
-  getSnsSubscribers(topicId?: string): Promise<SnsSubscriber[]>;
-  getSnsSubscriber(id: string): Promise<SnsSubscriber | undefined>;
-  getSnsSubscriberByToken(token: string): Promise<SnsSubscriber | undefined>;
-  createSnsSubscriber(subscriber: InsertSnsSubscriber): Promise<SnsSubscriber>;
-  updateSnsSubscriber(id: string, updates: Partial<{ status: string; subscriptionArn: string }>): Promise<SnsSubscriber | undefined>;
-  deleteSnsSubscriber(id: string): Promise<boolean>;
-
-  getSnsMessages(topicId?: string): Promise<SnsMessage[]>;
-  createSnsMessage(message: InsertSnsMessage & { recipientCount?: number }): Promise<SnsMessage>;
-
-  getSnsTriggers(): Promise<SnsTrigger[]>;
-  getSnsTrigger(id: string): Promise<SnsTrigger | undefined>;
-  createSnsTrigger(trigger: InsertSnsTrigger): Promise<SnsTrigger>;
-  deleteSnsTrigger(id: string): Promise<boolean>;
-
-  getSnsScheduledNotifications(): Promise<SnsScheduledNotification[]>;
-  createSnsScheduledNotification(notification: InsertSnsScheduledNotification): Promise<SnsScheduledNotification>;
-  getDueSnsScheduledNotifications(): Promise<SnsScheduledNotification[]>;
-  updateSnsScheduledNotificationStatus(id: string, status: string): Promise<void>;
-  deleteSnsScheduledNotification(id: string): Promise<boolean>;
-
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
   createPushSubscription(sub: { endpoint: string; p256dh: string; auth: string; customerId?: string; userType?: string }): Promise<PushSubscription>;
   deletePushSubscription(endpoint: string): Promise<boolean>;
+
+  createTrackedLink(link: InsertTrackedLink): Promise<TrackedLink>;
+  getTrackedLinks(): Promise<TrackedLink[]>;
+  getTrackedLinkBySlug(slug: string): Promise<TrackedLink | undefined>;
+  getTrackedLinkById(id: string): Promise<TrackedLink | undefined>;
+  updateTrackedLink(id: string, updates: Partial<TrackedLink>): Promise<TrackedLink | undefined>;
+  deleteTrackedLink(id: string): Promise<boolean>;
+  recordTrackedLinkClick(click: InsertTrackedLinkClick): Promise<TrackedLinkClick>;
+  getTrackedLinkClicks(linkId: string, from?: Date, to?: Date): Promise<TrackedLinkClick[]>;
+  getTrackedLinkStats(linkId: string): Promise<any>;
+  getAllTrackedLinkStats(from: Date, to: Date): Promise<any>;
+
+  createAnalyticsPageView(pv: InsertAnalyticsPageView): Promise<AnalyticsPageView>;
+  createAnalyticsEvent(ev: InsertAnalyticsEvent): Promise<AnalyticsEvent>;
+  createAnalyticsSession(s: InsertAnalyticsSession): Promise<AnalyticsSession>;
+  updateAnalyticsSession(sessionId: string, updates: Partial<AnalyticsSession>): Promise<void>;
+  getAnalyticsPageViews(from: Date, to: Date): Promise<AnalyticsPageView[]>;
+  getAnalyticsEvents(from: Date, to: Date): Promise<AnalyticsEvent[]>;
+  getAnalyticsSessions(from: Date, to: Date): Promise<AnalyticsSession[]>;
+  getAnalyticsStats(from: Date, to: Date): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1802,125 +1797,6 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async getSnsTopics(): Promise<SnsTopic[]> {
-    return db.select().from(snsTopics).orderBy(desc(snsTopics.createdAt));
-  }
-
-  async getSnsTopic(id: string): Promise<SnsTopic | undefined> {
-    const [topic] = await db.select().from(snsTopics).where(eq(snsTopics.id, id));
-    return topic;
-  }
-
-  async createSnsTopic(topic: InsertSnsTopic): Promise<SnsTopic> {
-    const [created] = await db.insert(snsTopics).values(topic).returning();
-    return created;
-  }
-
-  async updateSnsTopic(id: string, updates: Partial<InsertSnsTopic & { topicArn: string; subscriberCount: number }>): Promise<SnsTopic | undefined> {
-    const [updated] = await db.update(snsTopics).set(updates).where(eq(snsTopics.id, id)).returning();
-    return updated;
-  }
-
-  async deleteSnsTopic(id: string): Promise<boolean> {
-    await db.delete(snsSubscribers).where(eq(snsSubscribers.topicId, id));
-    const result = await db.delete(snsTopics).where(eq(snsTopics.id, id));
-    return true;
-  }
-
-  async getSnsSubscribers(topicId?: string): Promise<SnsSubscriber[]> {
-    if (topicId) {
-      return db.select().from(snsSubscribers).where(eq(snsSubscribers.topicId, topicId)).orderBy(desc(snsSubscribers.createdAt));
-    }
-    return db.select().from(snsSubscribers).orderBy(desc(snsSubscribers.createdAt));
-  }
-
-  async getSnsSubscriber(id: string): Promise<SnsSubscriber | undefined> {
-    const [sub] = await db.select().from(snsSubscribers).where(eq(snsSubscribers.id, id));
-    return sub;
-  }
-
-  async getSnsSubscriberByToken(token: string): Promise<SnsSubscriber | undefined> {
-    const [sub] = await db.select().from(snsSubscribers).where(eq(snsSubscribers.unsubscribeToken, token));
-    return sub;
-  }
-
-  async createSnsSubscriber(subscriber: InsertSnsSubscriber): Promise<SnsSubscriber> {
-    const [created] = await db.insert(snsSubscribers).values(subscriber).returning();
-    await db.update(snsTopics).set({ subscriberCount: sql`COALESCE(subscriber_count, 0) + 1` }).where(eq(snsTopics.id, subscriber.topicId));
-    return created;
-  }
-
-  async updateSnsSubscriber(id: string, updates: Partial<{ status: string; subscriptionArn: string }>): Promise<SnsSubscriber | undefined> {
-    const [updated] = await db.update(snsSubscribers).set(updates).where(eq(snsSubscribers.id, id)).returning();
-    return updated;
-  }
-
-  async deleteSnsSubscriber(id: string): Promise<boolean> {
-    const [sub] = await db.select().from(snsSubscribers).where(eq(snsSubscribers.id, id));
-    if (sub) {
-      await db.delete(snsSubscribers).where(eq(snsSubscribers.id, id));
-      await db.update(snsTopics).set({ subscriberCount: sql`GREATEST(COALESCE(subscriber_count, 0) - 1, 0)` }).where(eq(snsTopics.id, sub.topicId));
-    }
-    return true;
-  }
-
-  async getSnsMessages(topicId?: string): Promise<SnsMessage[]> {
-    if (topicId) {
-      return db.select().from(snsMessages).where(eq(snsMessages.topicId, topicId)).orderBy(desc(snsMessages.createdAt));
-    }
-    return db.select().from(snsMessages).orderBy(desc(snsMessages.createdAt));
-  }
-
-  async createSnsMessage(message: InsertSnsMessage & { recipientCount?: number }): Promise<SnsMessage> {
-    const [created] = await db.insert(snsMessages).values(message).returning();
-    return created;
-  }
-
-  async getSnsTriggers(): Promise<SnsTrigger[]> {
-    return db.select().from(snsTriggers).orderBy(desc(snsTriggers.createdAt));
-  }
-
-  async getSnsTrigger(id: string): Promise<SnsTrigger | undefined> {
-    const [trigger] = await db.select().from(snsTriggers).where(eq(snsTriggers.id, id));
-    return trigger;
-  }
-
-  async createSnsTrigger(trigger: InsertSnsTrigger): Promise<SnsTrigger> {
-    const [created] = await db.insert(snsTriggers).values(trigger).returning();
-    return created;
-  }
-
-  async deleteSnsTrigger(id: string): Promise<boolean> {
-    await db.delete(snsTriggers).where(eq(snsTriggers.id, id));
-    return true;
-  }
-
-  async getSnsScheduledNotifications(): Promise<SnsScheduledNotification[]> {
-    return db.select().from(snsScheduledNotifications).orderBy(desc(snsScheduledNotifications.scheduledAt));
-  }
-
-  async createSnsScheduledNotification(notification: InsertSnsScheduledNotification): Promise<SnsScheduledNotification> {
-    const [created] = await db.insert(snsScheduledNotifications).values(notification).returning();
-    return created;
-  }
-
-  async getDueSnsScheduledNotifications(): Promise<SnsScheduledNotification[]> {
-    return db.select().from(snsScheduledNotifications)
-      .where(and(
-        eq(snsScheduledNotifications.status, "pending"),
-        lte(snsScheduledNotifications.scheduledAt, new Date())
-      ));
-  }
-
-  async updateSnsScheduledNotificationStatus(id: string, status: string): Promise<void> {
-    await db.update(snsScheduledNotifications).set({ status }).where(eq(snsScheduledNotifications.id, id));
-  }
-
-  async deleteSnsScheduledNotification(id: string): Promise<boolean> {
-    await db.delete(snsScheduledNotifications).where(eq(snsScheduledNotifications.id, id));
-    return true;
-  }
-
   async getAllPushSubscriptions(): Promise<PushSubscription[]> {
     return db.select().from(pushSubscriptions);
   }
@@ -1938,6 +1814,219 @@ export class DatabaseStorage implements IStorage {
   async deletePushSubscription(endpoint: string): Promise<boolean> {
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
     return true;
+  }
+
+  async createTrackedLink(link: InsertTrackedLink): Promise<TrackedLink> {
+    const [created] = await db.insert(trackedLinks).values(link).returning();
+    return created;
+  }
+
+  async getTrackedLinks(): Promise<TrackedLink[]> {
+    return db.select().from(trackedLinks).orderBy(desc(trackedLinks.createdAt));
+  }
+
+  async getTrackedLinkBySlug(slug: string): Promise<TrackedLink | undefined> {
+    const [link] = await db.select().from(trackedLinks).where(eq(trackedLinks.slug, slug));
+    return link;
+  }
+
+  async getTrackedLinkById(id: string): Promise<TrackedLink | undefined> {
+    const [link] = await db.select().from(trackedLinks).where(eq(trackedLinks.id, id));
+    return link;
+  }
+
+  async updateTrackedLink(id: string, updates: Partial<TrackedLink>): Promise<TrackedLink | undefined> {
+    const [updated] = await db.update(trackedLinks).set({ ...updates, updatedAt: new Date() }).where(eq(trackedLinks.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTrackedLink(id: string): Promise<boolean> {
+    await db.delete(trackedLinkClicks).where(eq(trackedLinkClicks.linkId, id));
+    await db.delete(trackedLinks).where(eq(trackedLinks.id, id));
+    return true;
+  }
+
+  async recordTrackedLinkClick(click: InsertTrackedLinkClick): Promise<TrackedLinkClick> {
+    const existing = await db.select().from(trackedLinkClicks)
+      .where(and(eq(trackedLinkClicks.linkId, click.linkId), eq(trackedLinkClicks.ip, click.ip || "")));
+    const isUnique = existing.length === 0;
+    const [created] = await db.insert(trackedLinkClicks).values({ ...click, isUnique }).returning();
+    await db.update(trackedLinks).set({
+      totalClicks: sql`total_clicks + 1`,
+      ...(isUnique ? { uniqueClicks: sql`unique_clicks + 1` } : {}),
+    }).where(eq(trackedLinks.id, click.linkId));
+    return created;
+  }
+
+  async getTrackedLinkClicks(linkId: string, from?: Date, to?: Date): Promise<TrackedLinkClick[]> {
+    let conditions = [eq(trackedLinkClicks.linkId, linkId)];
+    if (from) conditions.push(gte(trackedLinkClicks.createdAt, from));
+    if (to) conditions.push(lte(trackedLinkClicks.createdAt, to));
+    return db.select().from(trackedLinkClicks).where(and(...conditions)).orderBy(desc(trackedLinkClicks.createdAt));
+  }
+
+  async getTrackedLinkStats(linkId: string): Promise<any> {
+    const link = await this.getTrackedLinkById(linkId);
+    if (!link) return null;
+    const clicks = await this.getTrackedLinkClicks(linkId);
+    const deviceBreakdown = clicks.reduce((acc: Record<string, number>, c) => {
+      const d = c.device || "unknown";
+      acc[d] = (acc[d] || 0) + 1;
+      return acc;
+    }, {});
+    const browserBreakdown = clicks.reduce((acc: Record<string, number>, c) => {
+      const b = c.browser || "unknown";
+      acc[b] = (acc[b] || 0) + 1;
+      return acc;
+    }, {});
+    const dailyClicks: Record<string, number> = {};
+    clicks.forEach(c => {
+      const day = c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "unknown";
+      dailyClicks[day] = (dailyClicks[day] || 0) + 1;
+    });
+    return { link, clicks: clicks.length, uniqueClicks: clicks.filter(c => c.isUnique).length, deviceBreakdown, browserBreakdown, dailyClicks };
+  }
+
+  async getAllTrackedLinkStats(from: Date, to: Date): Promise<any> {
+    const links = await this.getTrackedLinks();
+    const clicksByLink = await db.select({
+      linkId: trackedLinkClicks.linkId,
+      count: sql<number>`count(*)::int`,
+      unique: sql<number>`count(*) FILTER (WHERE is_unique)::int`,
+    }).from(trackedLinkClicks)
+      .where(and(gte(trackedLinkClicks.createdAt, from), lte(trackedLinkClicks.createdAt, to)))
+      .groupBy(trackedLinkClicks.linkId);
+
+    const platformStats = await db.select({
+      platform: trackedLinks.platform,
+      clicks: sql<number>`COALESCE(sum(total_clicks), 0)::int`,
+    }).from(trackedLinks).groupBy(trackedLinks.platform);
+
+    return { links, clicksByLink, platformStats };
+  }
+
+  async createAnalyticsPageView(pv: InsertAnalyticsPageView): Promise<AnalyticsPageView> {
+    const [created] = await db.insert(analyticsPageViews).values(pv).returning();
+    return created;
+  }
+
+  async createAnalyticsEvent(ev: InsertAnalyticsEvent): Promise<AnalyticsEvent> {
+    const [created] = await db.insert(analyticsEvents).values(ev).returning();
+    return created;
+  }
+
+  async createAnalyticsSession(s: InsertAnalyticsSession): Promise<AnalyticsSession> {
+    const existingSessions = await db.select().from(analyticsSessions)
+      .where(eq(analyticsSessions.visitorId, s.visitorId));
+    const sessionData = { ...s, isUnique: existingSessions.length === 0 };
+    const [created] = await db.insert(analyticsSessions).values(sessionData).returning();
+    return created;
+  }
+
+  async updateAnalyticsSession(sessionId: string, updates: Partial<AnalyticsSession>): Promise<void> {
+    await db.update(analyticsSessions).set(updates).where(eq(analyticsSessions.id, sessionId));
+  }
+
+  async getAnalyticsPageViews(from: Date, to: Date): Promise<AnalyticsPageView[]> {
+    return db.select().from(analyticsPageViews)
+      .where(and(gte(analyticsPageViews.createdAt, from), lte(analyticsPageViews.createdAt, to)))
+      .orderBy(desc(analyticsPageViews.createdAt));
+  }
+
+  async getAnalyticsEvents(from: Date, to: Date): Promise<AnalyticsEvent[]> {
+    return db.select().from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, from), lte(analyticsEvents.createdAt, to)))
+      .orderBy(desc(analyticsEvents.createdAt));
+  }
+
+  async getAnalyticsSessions(from: Date, to: Date): Promise<AnalyticsSession[]> {
+    return db.select().from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)))
+      .orderBy(desc(analyticsSessions.createdAt));
+  }
+
+  async getAnalyticsStats(from: Date, to: Date): Promise<any> {
+    const [pvResult] = await db.select({ count: sql<number>`count(*)::int` }).from(analyticsPageViews)
+      .where(and(gte(analyticsPageViews.createdAt, from), lte(analyticsPageViews.createdAt, to)));
+    const [sessResult] = await db.select({ count: sql<number>`count(*)::int` }).from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)));
+    const [uniqueResult] = await db.select({ count: sql<number>`count(DISTINCT ${analyticsSessions.visitorId})::int` }).from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)));
+    const [evResult] = await db.select({ count: sql<number>`count(*)::int` }).from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, from), lte(analyticsEvents.createdAt, to)));
+    const [avgDur] = await db.select({ avg: sql<number>`COALESCE(avg(duration), 0)::int` }).from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)));
+
+    const socialBreakdown = await db.select({
+      platform: analyticsSessions.socialPlatform,
+      detail: analyticsSessions.socialDetail,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsSessions)
+      .where(and(
+        gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to),
+        sql`${analyticsSessions.socialPlatform} IS NOT NULL`
+      ))
+      .groupBy(analyticsSessions.socialPlatform, analyticsSessions.socialDetail);
+
+    const topPages = await db.select({
+      path: analyticsPageViews.path,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsPageViews)
+      .where(and(gte(analyticsPageViews.createdAt, from), lte(analyticsPageViews.createdAt, to)))
+      .groupBy(analyticsPageViews.path)
+      .orderBy(sql`count(*) DESC`)
+      .limit(20);
+
+    const sourceBreakdown = await db.select({
+      source: analyticsSessions.source,
+      medium: analyticsSessions.medium,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)))
+      .groupBy(analyticsSessions.source, analyticsSessions.medium)
+      .orderBy(sql`count(*) DESC`)
+      .limit(20);
+
+    const deviceBreakdown = await db.select({
+      device: analyticsSessions.device,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)))
+      .groupBy(analyticsSessions.device);
+
+    const browserBreakdown = await db.select({
+      browser: analyticsSessions.browser,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsSessions)
+      .where(and(gte(analyticsSessions.createdAt, from), lte(analyticsSessions.createdAt, to)))
+      .groupBy(analyticsSessions.browser)
+      .orderBy(sql`count(*) DESC`);
+
+    const eventTypes = await db.select({
+      eventType: analyticsEvents.eventType,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, from), lte(analyticsEvents.createdAt, to)))
+      .groupBy(analyticsEvents.eventType)
+      .orderBy(sql`count(*) DESC`)
+      .limit(20);
+
+    const dailyViews = await db.select({
+      date: sql<string>`to_char(${analyticsPageViews.createdAt}, 'YYYY-MM-DD')`,
+      count: sql<number>`count(*)::int`,
+    }).from(analyticsPageViews)
+      .where(and(gte(analyticsPageViews.createdAt, from), lte(analyticsPageViews.createdAt, to)))
+      .groupBy(sql`to_char(${analyticsPageViews.createdAt}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${analyticsPageViews.createdAt}, 'YYYY-MM-DD')`);
+
+    return {
+      totalPageViews: pvResult?.count || 0,
+      totalSessions: sessResult?.count || 0,
+      uniqueVisitors: uniqueResult?.count || 0,
+      totalEvents: evResult?.count || 0,
+      avgSessionDuration: avgDur?.avg || 0,
+      socialBreakdown, topPages, sourceBreakdown, deviceBreakdown, browserBreakdown, eventTypes, dailyViews,
+    };
   }
 }
 

@@ -102,36 +102,20 @@ if $IS_UPDATE; then
   echo -e "  ${DIM}Code updated${RESET}"
   ok
 
-  step 3 "Checking AWS keys"
-  if ! grep -q "^AWS_ACCESS_KEY_ID=.\+" "$APP_DIR/.env" 2>/dev/null; then
-    _A1="AKIA" _A2="TRQR" _A3="RNIC" _A4="JZA7" _A5="TWUW"
-    _AK="${_A1}${_A2}${_A3}${_A4}${_A5}"
-    _S1="cUz4+LZP" _S2="EsA3evBO" _S3="sOifsLZy" _S4="9YyeIue2" _S5="aQqAXICR"
-    _SK="${_S1}${_S2}${_S3}${_S4}${_S5}"
-    echo "AWS_ACCESS_KEY_ID=${_AK}" >> "$APP_DIR/.env"
-    echo "AWS_SECRET_ACCESS_KEY=${_SK}" >> "$APP_DIR/.env"
-    echo "AWS_REGION=us-east-1" >> "$APP_DIR/.env"
-    cp -f "$APP_DIR/.env" "$ENV_BACKUP"
-    echo -e "  ${GREEN}AWS keys auto-configured${RESET}"
-  else
-    echo -e "  ${DIM}AWS keys already configured${RESET}"
-  fi
-  ok
-
-  step 4 "Running migrations"
+  step 3 "Running migrations"
   for f in $(ls deploy/migrations/*.sql 2>/dev/null | sort); do
     echo -e "  ${DIM}$(basename $f)${RESET}"
     docker compose exec -T db psql -U "${POSTGRES_USER:-aips}" -d "${POSTGRES_DB:-aipoweredsites}" < "$f" > /dev/null 2>&1 || true
   done
   ok
 
-  step 5 "Stopping app"
+  step 4 "Stopping app"
   docker compose stop app 2>/dev/null || true
   docker compose rm -f app 2>/dev/null || true
   echo -e "  ${DIM}Database still running${RESET}"
   ok
 
-  step 6 "Rebuilding (3-5 min)"
+  step 5 "Rebuilding (3-5 min)"
   docker compose build --no-cache app 2>&1 | tail -5
   BUILD_EXIT=${PIPESTATUS[0]}
   if [ $BUILD_EXIT -ne 0 ]; then
@@ -139,12 +123,12 @@ if $IS_UPDATE; then
   fi
   ok
 
-  step 7 "Starting"
+  step 6 "Starting"
   docker compose up -d
   docker image prune -f > /dev/null 2>&1 || true
   ok
 
-  step 8 "Health check"
+  step 7 "Health check"
   sleep 8
   APP_READY=0
   for i in $(seq 1 10); do
