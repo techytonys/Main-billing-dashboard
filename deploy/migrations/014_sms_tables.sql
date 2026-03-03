@@ -81,3 +81,16 @@ CREATE TABLE IF NOT EXISTS sms_list_members (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_list_members_unique ON sms_list_members(list_id, subscriber_id);
 CREATE INDEX IF NOT EXISTS idx_sms_list_members_list ON sms_list_members(list_id);
 CREATE INDEX IF NOT EXISTS idx_sms_list_members_sub ON sms_list_members(subscriber_id);
+
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS consent_given BOOLEAN DEFAULT false;
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS consent_text TEXT;
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS consent_ip VARCHAR(50);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS consent_user_agent TEXT;
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS company VARCHAR(200);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS website VARCHAR(500);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS state VARCHAR(50);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS referral_source VARCHAR(100);
+ALTER TABLE sms_subscribers ADD COLUMN IF NOT EXISTS interests TEXT;

@@ -49,6 +49,9 @@ import Community from "@/pages/community";
 import CommunityAccount from "@/pages/community-account";
 import CommunityResetPassword from "@/pages/community-reset-password";
 import SmsMessaging from "@/pages/sms-messaging";
+import SmsSubscribe from "@/pages/sms-subscribe";
+import PrivacyPolicy from "@/pages/privacy-policy";
+import TermsOfService from "@/pages/terms-of-service";
 import LoginPage from "@/pages/login";
 
 function DashboardRouter() {
@@ -227,6 +230,9 @@ function AppRouter() {
       <Route path="/conversation/:token" component={ConversationPage} />
       <Route path="/api/docs" component={ApiDocs} />
       <Route path="/help" component={PublicHelp} />
+      <Route path="/subscribe" component={SmsSubscribe} />
+      <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/terms" component={TermsOfService} />
       <Route path="/community">{() => <Community />}</Route>
       <Route path="/community/account" component={CommunityAccount} />
       <Route path="/community/reset-password" component={CommunityResetPassword} />

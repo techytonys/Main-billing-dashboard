@@ -324,6 +324,21 @@ ${urls}
     try {
       const parsed = insertProjectSchema.parse(req.body);
       const project = await storage.createProject(parsed);
+
+      if (parsed.customerId) {
+        const customer = await storage.getCustomer(parsed.customerId);
+        if (customer?.email && customer.portalToken) {
+          const portalUrl = `${getSiteBaseUrl(req)}/portal/${customer.portalToken}`;
+          sendPortalWelcomeEmail({
+            customerName: customer.name,
+            customerEmail: customer.email,
+            portalUrl,
+          }).catch((err) => {
+            console.error("Failed to send portal welcome email:", err);
+          });
+        }
+      }
+
       res.status(201).json(project);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Invalid project data" });
@@ -6583,6 +6598,9 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (!user) return res.status(401).json({ error: "Not authenticated" });
       const { addresseeId } = req.body;
       if (!addresseeId) return res.status(400).json({ error: "addresseeId required" });
+      const isBlocked = await storage.isCommunityBlocked(addresseeId, user.id);
+      const hasBlocked = await storage.isCommunityBlocked(user.id, addresseeId);
+      if (isBlocked || hasBlocked) return res.status(400).json({ error: "Unable to send friend request" });
       const existing = await storage.getCommunityFriendship(user.id, addresseeId);
       if (existing) return res.status(400).json({ error: "Friend request already exists" });
       const friendship = await storage.createCommunityFriendship({
@@ -6655,6 +6673,67 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const friendIds = await storage.getCommunityFriends(user.id);
       const friends = await Promise.all(friendIds.map(id => storage.getCommunityUser(id)));
       res.json(friends.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==================== Community Blocks ====================
+
+  app.get("/api/community/blocks", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const blocks = await storage.getCommunityBlocks(user.id);
+      const blockedUsers = await Promise.all(
+        blocks.map(async (b) => {
+          const u = await storage.getCommunityUser(b.blockedId);
+          return u ? { ...b, blockedUser: { id: u.id, displayName: u.displayName, avatarUrl: u.avatarUrl } } : null;
+        })
+      );
+      res.json(blockedUsers.filter(Boolean));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/community/blocked-ids", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const ids = await storage.getCommunityBlockedIds(user.id);
+      res.json(ids);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/community/blocks", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { blockedId, reason } = req.body;
+      if (!blockedId) return res.status(400).json({ error: "blockedId required" });
+      if (blockedId === user.id) return res.status(400).json({ error: "Cannot block yourself" });
+      const existing = await storage.isCommunityBlocked(user.id, blockedId);
+      if (existing) return res.status(400).json({ error: "User is already blocked" });
+      const block = await storage.createCommunityBlock({
+        blockerId: user.id,
+        blockedId,
+        reason: reason || null,
+      });
+      res.json(block);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/community/blocks/:blockedId", async (req, res) => {
+    try {
+      const user = await getCommunityUser(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      await storage.deleteCommunityBlock(user.id, req.params.blockedId);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -7200,6 +7279,91 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     try {
       const stats = await storage.getSmsStats();
       res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/public/sms/subscribe", async (req, res) => {
+    try {
+      const { firstName, lastName, phone, email, company, website, city, state, referralSource, interests, consentGiven } = req.body;
+      if (!firstName || !lastName || !phone) {
+        return res.status(400).json({ error: "First name, last name, and phone number are required" });
+      }
+      if (!consentGiven) {
+        return res.status(400).json({ error: "You must consent to receive SMS messages" });
+      }
+
+      const cleanPhone = phone.replace(/[^\d+]/g, "");
+      if (cleanPhone.length < 10) {
+        return res.status(400).json({ error: "Please enter a valid phone number" });
+      }
+
+      const existing = await storage.getSmsSubscribers();
+      const alreadyExists = existing.find(s => s.phone === cleanPhone && s.status === "active");
+      if (alreadyExists) {
+        return res.status(409).json({ error: "This phone number is already subscribed" });
+      }
+
+      const resubscribe = existing.find(s => s.phone === cleanPhone && s.status !== "active");
+
+      const consentText = `I agree to receive recurring SMS messages from AI Powered Sites at the number provided. Message frequency varies. Message and data rates may apply. Reply STOP to opt out. Reply HELP for help. I have read and agree to the Terms of Service and Privacy Policy.`;
+      const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+
+      const subscriberData: any = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name: `${firstName.trim()} ${lastName.trim()}`,
+        email: email?.trim() || undefined,
+        company: company?.trim() || undefined,
+        website: website?.trim() || undefined,
+        city: city?.trim() || undefined,
+        state: state?.trim() || undefined,
+        referralSource: referralSource || undefined,
+        interests: interests || undefined,
+        status: "active",
+        source: "web_form",
+        consentGiven: true,
+        consentText,
+        consentIp: clientIp,
+        consentUserAgent: req.headers["user-agent"] || "unknown",
+      };
+
+      let subscriber;
+      if (resubscribe) {
+        subscriber = await storage.updateSmsSubscriber(resubscribe.id, subscriberData);
+        await storage.resubscribeSmsSubscriber(resubscribe.id);
+      } else {
+        subscriber = await storage.createSmsSubscriber({ ...subscriberData, phone: cleanPhone });
+      }
+
+      if (email) {
+        try {
+          const { addNewsletterContact } = await import("./email");
+          await addNewsletterContact({ email: email.trim(), firstName: firstName.trim(), lastName: lastName.trim() });
+        } catch (e) {}
+      }
+
+      try {
+        const { sendPushToAll } = await import("./push");
+        await sendPushToAll("New SMS Subscriber", `${firstName} ${lastName} (${cleanPhone}) just subscribed via web form${company ? ` — ${company}` : ""}`, "/admin/sms");
+      } catch (e) {}
+
+      res.status(201).json({ success: true, subscriberId: subscriber.id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to subscribe" });
+    }
+  });
+
+  app.get("/api/public/sms/unsubscribe", async (req, res) => {
+    const phone = (req.query.phone as string)?.replace(/[^\d+]/g, "");
+    if (!phone) return res.status(400).json({ error: "Phone number required" });
+    try {
+      const subs = await storage.getSmsSubscribers();
+      const sub = subs.find(s => s.phone === phone && s.status === "active");
+      if (!sub) return res.status(404).json({ error: "Subscriber not found" });
+      await storage.unsubscribeSmsSubscriber(sub.id);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

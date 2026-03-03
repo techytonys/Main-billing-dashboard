@@ -21,6 +21,7 @@ import {
   BarChart3,
   Link2,
   MessageSquare,
+  Bell,
 } from "lucide-react";
 import {
   Sidebar,
@@ -55,6 +56,7 @@ const engageItems = [
   { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
   { title: "Link Tracker", url: "/admin/link-tracker", icon: Link2 },
   { title: "SMS", url: "/admin/sms", icon: MessageSquare },
+  { title: "Subscribe", url: "/subscribe", icon: Bell },
 ];
 
 const manageItems = [

@@ -1329,7 +1329,11 @@ export default function LandingPage() {
           </div>
           <div className="border-t border-white/5 pt-6 flex flex-wrap items-center justify-between gap-4">
             <p className="text-xs text-white/20">&copy; {new Date().getFullYear()} AI Powered Sites. All rights reserved.</p>
-            <p className="text-xs text-white/20">Built with AI. Powered by passion.</p>
+            <div className="flex items-center gap-4">
+              <a href="/privacy" className="text-xs text-white/30 hover:text-white/60 transition-colors" data-testid="link-footer-privacy">Privacy Policy</a>
+              <a href="/terms" className="text-xs text-white/30 hover:text-white/60 transition-colors" data-testid="link-footer-terms">Terms of Service</a>
+              <span className="text-xs text-white/20">Built with AI. Powered by passion.</span>
+            </div>
           </div>
         </div>
       </footer>

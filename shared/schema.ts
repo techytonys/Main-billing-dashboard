@@ -731,6 +731,18 @@ export const insertCommunityFriendshipSchema = createInsertSchema(communityFrien
 export type CommunityFriendship = typeof communityFriendships.$inferSelect;
 export type InsertCommunityFriendship = z.infer<typeof insertCommunityFriendshipSchema>;
 
+export const communityBlocks = pgTable("community_blocks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  blockerId: varchar("blocker_id").notNull(),
+  blockedId: varchar("blocked_id").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunityBlockSchema = createInsertSchema(communityBlocks).omit({ id: true, createdAt: true });
+export type CommunityBlock = typeof communityBlocks.$inferSelect;
+export type InsertCommunityBlock = z.infer<typeof insertCommunityBlockSchema>;
+
 export const communityGroups = pgTable("community_groups", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -877,12 +889,24 @@ export type InsertTrackedLinkClick = z.infer<typeof insertTrackedLinkClickSchema
 export const smsSubscribers = pgTable("sms_subscribers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 200 }),
+  firstName: varchar("first_name", { length: 100 }),
+  lastName: varchar("last_name", { length: 100 }),
   phone: varchar("phone", { length: 20 }).notNull(),
   email: varchar("email", { length: 255 }),
+  company: varchar("company", { length: 200 }),
+  website: varchar("website", { length: 500 }),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  referralSource: varchar("referral_source", { length: 100 }),
+  interests: text("interests"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   source: varchar("source", { length: 100 }),
   tags: text("tags"),
   notes: text("notes"),
+  consentGiven: boolean("consent_given").default(false),
+  consentText: text("consent_text"),
+  consentIp: varchar("consent_ip", { length: 50 }),
+  consentUserAgent: text("consent_user_agent"),
   optedInAt: timestamp("opted_in_at").defaultNow(),
   optedOutAt: timestamp("opted_out_at"),
   deletedAt: timestamp("deleted_at"),

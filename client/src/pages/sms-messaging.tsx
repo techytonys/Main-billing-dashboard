@@ -627,36 +627,111 @@ function ListsTab() {
     },
   });
 
+  const [showBroadcastList, setShowBroadcastList] = useState(false);
+  const [broadcastMsg, setBroadcastMsg] = useState("");
+  const [showAddNew, setShowAddNew] = useState(false);
+  const [newFirstName, setNewFirstName] = useState("");
+  const [newLastName, setNewLastName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [addSearch, setAddSearch] = useState("");
+
   const colors = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ef4444", "#ec4899", "#06b6d4", "#f97316"];
+
+  const broadcastToListMutation = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/sms/lists/${selectedList!.id}/send`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ body: broadcastMsg }) });
+      if (!r.ok) throw new Error("Failed to send");
+      return r.json();
+    },
+    onSuccess: (data) => {
+      setShowBroadcastList(false);
+      setBroadcastMsg("");
+      toast({ title: `Message queued to ${data.sent} contact(s)` });
+    },
+  });
+
+  const createAndAddMutation = useMutation({
+    mutationFn: async () => {
+      const cleanPhone = newPhone.replace(/[^\d+]/g, "");
+      const phoneFormatted = cleanPhone.length === 10 ? `+1${cleanPhone}` : cleanPhone.startsWith("+") ? cleanPhone : `+${cleanPhone}`;
+      const r = await fetch("/api/sms/subscribers", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ firstName: newFirstName.trim(), lastName: newLastName.trim(), name: `${newFirstName.trim()} ${newLastName.trim()}`, phone: phoneFormatted, email: newEmail.trim() || undefined, status: "active", source: "manual_list_add" }) });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error || "Failed to create"); }
+      const sub = await r.json();
+      const r2 = await fetch(`/api/sms/lists/${selectedList!.id}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ subscriberIds: [sub.id] }) });
+      return r2.json();
+    },
+    onSuccess: () => {
+      refetchMembers();
+      queryClient.invalidateQueries({ queryKey: ["/api/sms/lists"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sms/subscribers"] });
+      setShowAddNew(false); setNewFirstName(""); setNewLastName(""); setNewPhone(""); setNewEmail("");
+      toast({ title: "Contact created and added to list" });
+    },
+    onError: (err: any) => { toast({ title: "Error", description: err.message, variant: "destructive" }); },
+  });
 
   if (selectedList) {
     const filteredMembers = members.filter(m => !searchMembers || m.name?.toLowerCase().includes(searchMembers.toLowerCase()) || m.phone.includes(searchMembers));
     const memberIds = new Set(members.map(m => m.id));
-    const availableToAdd = allSubscribers.filter(s => s.status === "active" && !memberIds.has(s.id));
+    const availableToAdd = allSubscribers.filter(s => s.status === "active" && !memberIds.has(s.id)).filter(s => !addSearch || s.name?.toLowerCase().includes(addSearch.toLowerCase()) || s.phone.includes(addSearch) || s.email?.toLowerCase().includes(addSearch.toLowerCase()));
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setSelectedList(null)} data-testid="button-back-to-lists">
-            <ArrowUpDown className="w-4 h-4 mr-1" /> Back to Lists
-          </Button>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedList.color || "#3b82f6" }} />
-            <h3 className="text-lg font-semibold">{selectedList.name}</h3>
-            <Badge variant="secondary">{members.length} contacts</Badge>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => { setSelectedList(null); setShowAddMembers(false); setShowBroadcastList(false); }} data-testid="button-back-to-lists">
+              <ArrowUpDown className="w-4 h-4 mr-1" /> Back to Lists
+            </Button>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedList.color || "#3b82f6" }} />
+              <h3 className="text-lg font-semibold">{selectedList.name}</h3>
+              <Badge variant="secondary">{members.length} contacts</Badge>
+            </div>
           </div>
+          <Button onClick={() => setShowBroadcastList(true)} className="gap-2" variant="default" disabled={members.length === 0} data-testid="button-broadcast-list">
+            <Send className="w-4 h-4" /> Broadcast to List
+          </Button>
         </div>
 
         {selectedList.description && (
           <p className="text-sm text-muted-foreground">{selectedList.description}</p>
         )}
 
+        <Dialog open={showBroadcastList} onOpenChange={setShowBroadcastList}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Send className="w-5 h-5" /> Broadcast to {selectedList.name}</DialogTitle>
+              <DialogDescription>Send an SMS to all {members.filter(m => m.status === "active").length} active contacts in this list.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium">Message</label>
+                <textarea
+                  value={broadcastMsg}
+                  onChange={(e) => setBroadcastMsg(e.target.value)}
+                  placeholder="Type your message here... Use {{name}} for personalization."
+                  className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-1"
+                  data-testid="textarea-broadcast-msg"
+                />
+                <p className="text-xs text-muted-foreground mt-1">{broadcastMsg.length}/160 characters • {broadcastMsg.length > 160 ? Math.ceil(broadcastMsg.length / 153) + " segments" : "1 segment"}</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowBroadcastList(false)}>Cancel</Button>
+              <Button onClick={() => broadcastToListMutation.mutate()} disabled={!broadcastMsg.trim() || broadcastToListMutation.isPending} className="gap-2" data-testid="button-send-broadcast">
+                <Send className="w-4 h-4" /> {broadcastToListMutation.isPending ? "Sending..." : "Send Now"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search contacts..." value={searchMembers} onChange={(e) => setSearchMembers(e.target.value)} className="pl-9" data-testid="input-search-members" />
           </div>
-          <Button onClick={() => setShowAddMembers(true)} className="gap-2" data-testid="button-add-contacts">
+          <Button onClick={() => { setShowAddMembers(true); setShowAddNew(false); setAddSearch(""); }} className="gap-2" data-testid="button-add-contacts">
             <UserPlus2 className="w-4 h-4" /> Add Contacts
           </Button>
         </div>
@@ -664,31 +739,78 @@ function ListsTab() {
         {showAddMembers && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Add Contacts to {selectedList.name}</CardTitle>
-              <CardDescription>{availableToAdd.length} active contacts not yet in this list</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Add Contacts to {selectedList.name}</CardTitle>
+                  <CardDescription>Add existing subscribers or create a new contact.</CardDescription>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setShowAddNew(!showAddNew)} className="gap-1" data-testid="button-toggle-add-new">
+                  <Plus className="w-3 h-3" /> New Contact
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent>
-              {availableToAdd.length > 0 ? (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {availableToAdd.map(sub => (
-                    <div key={sub.id} className="flex items-center justify-between p-2 rounded hover:bg-muted" data-testid={`row-add-member-${sub.id}`}>
-                      <div className="flex items-center gap-3">
-                        <Phone className="w-4 h-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{sub.name || "Unknown"}</p>
-                          <p className="text-xs text-muted-foreground">{sub.phone}</p>
-                        </div>
+            <CardContent className="space-y-4">
+              {showAddNew && (
+                <Card className="border-dashed border-primary/30 bg-primary/5">
+                  <CardContent className="pt-4 pb-4 space-y-3">
+                    <p className="text-sm font-medium flex items-center gap-2"><UserPlus2 className="w-4 h-4" /> Create New Contact & Add to List</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">First Name *</label>
+                        <Input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} placeholder="John" data-testid="input-new-firstname" />
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => addMembersMutation.mutate([sub.id])} data-testid={`button-add-${sub.id}`}>
-                        <Plus className="w-3 h-3 mr-1" /> Add
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Last Name *</label>
+                        <Input value={newLastName} onChange={(e) => setNewLastName(e.target.value)} placeholder="Doe" data-testid="input-new-lastname" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Phone Number *</label>
+                      <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+1 (555) 123-4567" type="tel" data-testid="input-new-phone" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Email Address</label>
+                      <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="john@example.com" type="email" data-testid="input-new-email" />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setShowAddNew(false)}>Cancel</Button>
+                      <Button size="sm" onClick={() => createAndAddMutation.mutate()} disabled={!newFirstName.trim() || !newLastName.trim() || !newPhone.trim() || createAndAddMutation.isPending} data-testid="button-save-new-contact">
+                        {createAndAddMutation.isPending ? "Creating..." : "Create & Add"}
                       </Button>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">All active contacts are already in this list</p>
+                  </CardContent>
+                </Card>
               )}
-              <div className="flex justify-end mt-3">
+
+              <div>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input placeholder="Search existing subscribers..." value={addSearch} onChange={(e) => setAddSearch(e.target.value)} className="pl-9" data-testid="input-search-add" />
+                </div>
+                {availableToAdd.length > 0 ? (
+                  <div className="space-y-1 max-h-[250px] overflow-y-auto">
+                    {availableToAdd.map(sub => (
+                      <div key={sub.id} className="flex items-center justify-between p-2 rounded hover:bg-muted" data-testid={`row-add-member-${sub.id}`}>
+                        <div className="flex items-center gap-3">
+                          <Phone className="w-4 h-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{sub.name || "Unknown"}</p>
+                            <p className="text-xs text-muted-foreground">{sub.phone}{sub.email ? ` • ${sub.email}` : ""}</p>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => addMembersMutation.mutate([sub.id])} disabled={addMembersMutation.isPending} data-testid={`button-add-${sub.id}`}>
+                          <Plus className="w-3 h-3 mr-1" /> Add
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    {allSubscribers.length === 0 ? "No subscribers yet. Create a new contact above to get started." : "All matching contacts are already in this list."}
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end">
                 <Button variant="ghost" size="sm" onClick={() => setShowAddMembers(false)}>Close</Button>
               </div>
             </CardContent>
@@ -701,6 +823,7 @@ function ListsTab() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
+                <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -710,6 +833,7 @@ function ListsTab() {
                 <TableRow key={m.id} data-testid={`row-member-${m.id}`}>
                   <TableCell className="font-medium">{m.name || "—"}</TableCell>
                   <TableCell>{m.phone}</TableCell>
+                  <TableCell className="text-muted-foreground">{m.email || "—"}</TableCell>
                   <TableCell><StatusBadge status={m.status} /></TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => removeMemberMutation.mutate(m.id)} data-testid={`button-remove-member-${m.id}`}>
@@ -718,7 +842,7 @@ function ListsTab() {
                   </TableCell>
                 </TableRow>
               )) : (
-                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No contacts in this list yet. Click "Add Contacts" to get started.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No contacts in this list yet. Click "Add Contacts" to get started.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

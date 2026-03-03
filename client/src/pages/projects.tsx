@@ -717,12 +717,19 @@ export default function Projects() {
       const res = await apiRequest("POST", "/api/projects", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       setProjectDialogOpen(false);
+      const customer = customers?.find(c => c.id === variables.customerId);
+      const hasEmail = customer?.email;
       setProjectForm({ customerId: "", name: "", description: "" });
-      toast({ title: "Project created", description: "New project has been added." });
+      toast({
+        title: "Project created",
+        description: hasEmail
+          ? `New project has been added. A portal link email has been sent to ${customer.name}.`
+          : "New project has been added.",
+      });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

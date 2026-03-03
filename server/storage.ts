@@ -44,7 +44,7 @@ import {
   passwordResetTokens, type PasswordResetToken,
   communityUsers, communitySessions, type CommunitySession, communityMessages,
   communityPosts, communityComments, communityReactions, communityNotifications,
-  communityFriendships, communityGroups, communityGroupMembers,
+  communityFriendships, communityBlocks, communityGroups, communityGroupMembers,
   type CommunityUser, type InsertCommunityUser,
   type CommunityMessage, type InsertCommunityMessage,
   type CommunityPost, type InsertCommunityPost,
@@ -52,6 +52,7 @@ import {
   type CommunityReaction, type InsertCommunityReaction,
   type CommunityNotification, type InsertCommunityNotification,
   type CommunityFriendship, type InsertCommunityFriendship,
+  type CommunityBlock, type InsertCommunityBlock,
   type CommunityGroup, type InsertCommunityGroup,
   type CommunityGroupMember, type InsertCommunityGroupMember,
   pushSubscriptions,
@@ -295,6 +296,12 @@ export interface IStorage {
   updateCommunityFriendship(id: string, status: string): Promise<CommunityFriendship | undefined>;
   deleteCommunityFriendship(id: string): Promise<boolean>;
   getCommunityFriends(userId: string): Promise<string[]>;
+
+  getCommunityBlocks(userId: string): Promise<CommunityBlock[]>;
+  getCommunityBlockedIds(userId: string): Promise<string[]>;
+  createCommunityBlock(block: InsertCommunityBlock): Promise<CommunityBlock>;
+  deleteCommunityBlock(blockerId: string, blockedId: string): Promise<boolean>;
+  isCommunityBlocked(blockerId: string, blockedId: string): Promise<boolean>;
 
   getCommunityGroups(): Promise<CommunityGroup[]>;
   getCommunityGroup(id: string): Promise<CommunityGroup | undefined>;
@@ -1621,6 +1628,9 @@ export class DatabaseStorage implements IStorage {
     await db.delete(communityFriendships).where(
       or(eq(communityFriendships.requesterId, id), eq(communityFriendships.addresseeId, id))
     );
+    await db.delete(communityBlocks).where(
+      or(eq(communityBlocks.blockerId, id), eq(communityBlocks.blockedId, id))
+    );
     await db.delete(communityGroupMembers).where(eq(communityGroupMembers.userId, id));
     await db.delete(communitySessions).where(eq(communitySessions.userId, id));
     await db.delete(communityMessages).where(eq(communityMessages.userId, id));
@@ -1742,6 +1752,38 @@ export class DatabaseStorage implements IStorage {
         sql`${communityFriendships.requesterId} = ${userId} OR ${communityFriendships.addresseeId} = ${userId}`
       ));
     return friendships.map(f => f.requesterId === userId ? f.addresseeId : f.requesterId);
+  }
+
+  async getCommunityBlocks(userId: string): Promise<CommunityBlock[]> {
+    return db.select().from(communityBlocks)
+      .where(eq(communityBlocks.blockerId, userId))
+      .orderBy(desc(communityBlocks.createdAt));
+  }
+
+  async getCommunityBlockedIds(userId: string): Promise<string[]> {
+    const blocks = await db.select({ blockedId: communityBlocks.blockedId })
+      .from(communityBlocks)
+      .where(eq(communityBlocks.blockerId, userId));
+    return blocks.map(b => b.blockedId);
+  }
+
+  async createCommunityBlock(block: InsertCommunityBlock): Promise<CommunityBlock> {
+    const [created] = await db.insert(communityBlocks).values(block).returning();
+    await db.delete(communityFriendships)
+      .where(sql`(${communityFriendships.requesterId} = ${block.blockerId} AND ${communityFriendships.addresseeId} = ${block.blockedId}) OR (${communityFriendships.requesterId} = ${block.blockedId} AND ${communityFriendships.addresseeId} = ${block.blockerId})`);
+    return created;
+  }
+
+  async deleteCommunityBlock(blockerId: string, blockedId: string): Promise<boolean> {
+    await db.delete(communityBlocks)
+      .where(and(eq(communityBlocks.blockerId, blockerId), eq(communityBlocks.blockedId, blockedId)));
+    return true;
+  }
+
+  async isCommunityBlocked(blockerId: string, blockedId: string): Promise<boolean> {
+    const [block] = await db.select().from(communityBlocks)
+      .where(and(eq(communityBlocks.blockerId, blockerId), eq(communityBlocks.blockedId, blockedId)));
+    return !!block;
   }
 
   async getCommunityGroups(): Promise<CommunityGroup[]> {

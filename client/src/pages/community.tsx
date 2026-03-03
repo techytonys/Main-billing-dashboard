@@ -668,14 +668,17 @@ interface CommentSectionProps {
   displayName: string;
   authorType: string;
   authorAvatar?: string;
+  blockedIds?: Set<string>;
 }
 
-function CommentSection({ postId, isAdmin, displayName, authorType, authorAvatar }: CommentSectionProps) {
+function CommentSection({ postId, isAdmin, displayName, authorType, authorAvatar, blockedIds }: CommentSectionProps) {
   const [commentBody, setCommentBody] = useState("");
 
-  const { data: comments = [], isLoading } = useQuery<CommunityComment[]>({
+  const { data: rawComments = [], isLoading } = useQuery<CommunityComment[]>({
     queryKey: ["/api/community/posts", postId, "comments"],
   });
+
+  const comments = rawComments.filter((c: any) => !c.authorUserId || !blockedIds?.has(c.authorUserId));
 
   const addComment = useMutation({
     mutationFn: async (data: { authorName: string; authorAvatar?: string; authorType: string; body: string }) => {
@@ -907,13 +910,16 @@ interface PostCardProps {
   userAvatar?: string;
   currentUserId?: string;
   members?: CommunityMember[];
+  blockedIds?: Set<string>;
   onNeedName: () => void;
   onDelete: (id: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onEdit: (post: CommunityPost) => void;
+  onBlock?: (userId: string) => void;
+  onUnblock?: (userId: string) => void;
 }
 
-function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentUserId, members = [], onNeedName, onDelete, onPin, onEdit }: PostCardProps) {
+function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentUserId, members = [], blockedIds, onNeedName, onDelete, onPin, onEdit, onBlock, onUnblock }: PostCardProps) {
   const { toast } = useToast();
   const [showComments, setShowComments] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
@@ -1058,7 +1064,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentU
             </div>
           </div>
 
-          {(isAdmin || post.authorName === displayName || (currentUserId && post.authorUserId === currentUserId)) && (
+          {(isAdmin || currentUserId || post.authorName === displayName) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1070,7 +1076,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentU
                   <MoreHorizontal className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-44">
                 {(isAdmin || post.authorName === displayName || (currentUserId && post.authorUserId === currentUserId)) && (
                   <DropdownMenuItem onClick={() => onEdit(post)} data-testid={`menu-edit-post-${post.id}`}>
                     <Pencil className="w-4 h-4 mr-2" />
@@ -1087,6 +1093,20 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentU
                   <DropdownMenuItem onClick={() => onDelete(post.id)} className="text-destructive focus:text-destructive" data-testid={`menu-delete-post-${post.id}`}>
                     <Trash2 className="w-4 h-4 mr-2" />
                     Delete
+                  </DropdownMenuItem>
+                )}
+                {currentUserId && post.authorUserId && post.authorUserId !== currentUserId && onBlock && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (confirm(`Block ${post.authorName}? You will no longer see their posts or comments.`)) {
+                        onBlock(post.authorUserId!);
+                      }
+                    }}
+                    className="text-destructive focus:text-destructive"
+                    data-testid={`menu-block-user-${post.id}`}
+                  >
+                    <Shield className="w-4 h-4 mr-2" />
+                    Block User
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -1212,6 +1232,7 @@ function PostCard({ post, isAdmin, displayName, authorType, userAvatar, currentU
               displayName={displayName}
               authorType={authorType}
               authorAvatar={userAvatar}
+              blockedIds={blockedIds}
             />
           </div>
         </>
@@ -1906,6 +1927,9 @@ function LeftSidebar({
   onFeedFilterChange,
   currentUserId,
   isAdmin,
+  onBlock,
+  onUnblock,
+  blockedIds,
 }: {
   postCount: number;
   isLoggedIn: boolean;
@@ -1916,9 +1940,13 @@ function LeftSidebar({
   feedFilter: string;
   onFeedFilterChange: (filter: string) => void;
   currentUserId?: string;
+  onBlock?: (userId: string) => void;
+  onUnblock?: (userId: string) => void;
+  blockedIds?: Set<string>;
 }) {
   const { toast } = useToast();
   const [showFriendRequests, setShowFriendRequests] = useState(false);
+  const [showBlockedUsers, setShowBlockedUsers] = useState(false);
 
   const { data: members = [] } = useQuery<CommunityMember[]>({
     queryKey: ["/api/community/members"],
@@ -1935,6 +1963,11 @@ function LeftSidebar({
 
   const { data: friends = [] } = useQuery<CommunityFriend[]>({
     queryKey: ["/api/community/friends"],
+    enabled: isLoggedIn,
+  });
+
+  const { data: blockedUsers = [] } = useQuery<any[]>({
+    queryKey: ["/api/community/blocks"],
     enabled: isLoggedIn,
   });
 
@@ -2147,25 +2180,61 @@ function LeftSidebar({
                   </div>
                   {isLoggedIn && !isSelf && (
                     <div className="shrink-0 flex items-center gap-0.5">
-                      {isFriend ? (
-                        <span className="text-[11px] text-green-600 dark:text-green-400 font-medium flex items-center gap-0.5" data-testid={`badge-friend-${member.id}`}>
-                          <UserCheck className="w-3 h-3" />
-                        </span>
-                      ) : isPendingOut ? (
-                        <span className="text-[11px] text-muted-foreground font-medium" data-testid={`badge-pending-${member.id}`}>
-                          Pending
-                        </span>
-                      ) : (
+                      {blockedIds?.has(member.id) ? (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-muted-foreground"
-                          onClick={() => sendFriendRequest.mutate(member.id)}
-                          disabled={sendFriendRequest.isPending}
-                          data-testid={`button-add-friend-${member.id}`}
+                          className="h-7 w-7 text-destructive/70 hover:text-destructive"
+                          onClick={() => onUnblock?.(member.id)}
+                          title="Unblock user"
+                          data-testid={`button-unblock-${member.id}`}
                         >
-                          <UserPlus2 className="w-3.5 h-3.5" />
+                          <Shield className="w-3.5 h-3.5" />
                         </Button>
+                      ) : (
+                        <>
+                          {isFriend ? (
+                            <span className="text-[11px] text-green-600 dark:text-green-400 font-medium flex items-center gap-0.5" data-testid={`badge-friend-${member.id}`}>
+                              <UserCheck className="w-3 h-3" />
+                            </span>
+                          ) : isPendingOut ? (
+                            <span className="text-[11px] text-muted-foreground font-medium" data-testid={`badge-pending-${member.id}`}>
+                              Pending
+                            </span>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground"
+                              onClick={() => sendFriendRequest.mutate(member.id)}
+                              disabled={sendFriendRequest.isPending}
+                              data-testid={`button-add-friend-${member.id}`}
+                            >
+                              <UserPlus2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" data-testid={`button-member-menu-${member.id}`}>
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-36">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (confirm(`Block ${member.displayName}? You will no longer see their posts or comments.`)) {
+                                    onBlock?.(member.id);
+                                  }
+                                }}
+                                className="text-destructive focus:text-destructive"
+                                data-testid={`menu-block-member-${member.id}`}
+                              >
+                                <Shield className="w-4 h-4 mr-2" />
+                                Block
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </>
                       )}
                       {isAdmin && (
                         <Button
@@ -2189,6 +2258,47 @@ function LeftSidebar({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {isLoggedIn && blockedUsers.length > 0 && (
+        <div className="bg-card rounded-xl border p-5" data-testid="panel-blocked-users">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-destructive/70" />
+              <h3 className="font-semibold text-sm">Blocked Users</h3>
+              <Badge variant="secondary" className="h-5 text-[10px] px-1.5">{blockedUsers.length}</Badge>
+            </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowBlockedUsers(!showBlockedUsers)} data-testid="button-toggle-blocked-users">
+              {showBlockedUsers ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
+          {showBlockedUsers && (
+            <div className="space-y-2">
+              {blockedUsers.map((block: any) => (
+                <div key={block.id} className="flex items-center justify-between gap-2" data-testid={`blocked-user-${block.blockedId}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Avatar className="h-7 w-7 shrink-0">
+                      {block.blockedUser?.avatarUrl && <AvatarImage src={block.blockedUser.avatarUrl} />}
+                      <AvatarFallback className="text-[10px] font-bold bg-muted">
+                        {getInitials(block.blockedUser?.displayName || "?")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <p className="text-sm truncate">{block.blockedUser?.displayName || "Unknown"}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => onUnblock?.(block.blockedId)}
+                    data-testid={`button-unblock-user-${block.blockedId}`}
+                  >
+                    Unblock
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2374,6 +2484,11 @@ export default function Community({ isAdmin: isAdminProp = false, portalToken }:
     enabled: auth.isLoggedIn || (isAdmin && adminAutoLoggedIn),
   });
 
+  const { data: blockedIds = [] } = useQuery<string[]>({
+    queryKey: ["/api/community/blocked-ids"],
+    enabled: auth.isLoggedIn || (isAdmin && adminAutoLoggedIn),
+  });
+
   const { data: groups = [] } = useQuery<CommunityGroup[]>({
     queryKey: ["/api/community/groups"],
   });
@@ -2453,22 +2568,49 @@ export default function Community({ isAdmin: isAdminProp = false, portalToken }:
     },
   });
 
+  const blockUser = useMutation({
+    mutationFn: async (blockedId: string) => {
+      await apiRequest("POST", "/api/community/blocks", { blockedId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/blocked-ids"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/community/blocks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/community/friendships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/community/friends"] });
+      toast({ title: "User blocked", description: "You will no longer see their posts or messages." });
+    },
+  });
+
+  const unblockUser = useMutation({
+    mutationFn: async (blockedId: string) => {
+      await apiRequest("DELETE", `/api/community/blocks/${blockedId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/community/blocked-ids"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/community/blocks"] });
+      toast({ title: "User unblocked" });
+    },
+  });
+
   const handleNeedName = () => {
     if (!displayName) {
       setAuthDialogOpen(true);
     }
   };
 
+  const blockedIdSet = new Set(blockedIds);
   const friendUserIds = new Set(friends.map((f) => f.id));
 
   const filteredPosts = (() => {
+    let result: CommunityPost[];
     if (feedFilter === "group" && selectedGroupId) {
-      return groupPosts;
+      result = groupPosts;
+    } else if (feedFilter === "friends") {
+      result = posts.filter((p) => p.authorUserId && friendUserIds.has(p.authorUserId));
+    } else {
+      result = posts;
     }
-    if (feedFilter === "friends") {
-      return posts.filter((p) => p.authorUserId && friendUserIds.has(p.authorUserId));
-    }
-    return posts;
+    return result.filter((p) => !p.authorUserId || !blockedIdSet.has(p.authorUserId));
   })();
 
   const sortedPosts = [...filteredPosts].sort((a, b) => {
@@ -2640,6 +2782,9 @@ export default function Community({ isAdmin: isAdminProp = false, portalToken }:
               feedFilter={feedFilter}
               onFeedFilterChange={setFeedFilter}
               currentUserId={auth.user?.id}
+              blockedIds={blockedIdSet}
+              onBlock={(userId) => blockUser.mutate(userId)}
+              onUnblock={(userId) => unblockUser.mutate(userId)}
             />
           </div>
 
@@ -2771,6 +2916,7 @@ export default function Community({ isAdmin: isAdminProp = false, portalToken }:
                     userAvatar={userAvatar}
                     currentUserId={auth.user?.id}
                     members={allMembers}
+                    blockedIds={blockedIdSet}
                     onNeedName={handleNeedName}
                     onDelete={(id) => deletePost.mutate(id)}
                     onPin={(id, isPinned) => pinPost.mutate({ id, isPinned })}
@@ -2780,6 +2926,8 @@ export default function Community({ isAdmin: isAdminProp = false, portalToken }:
                       setEditBody(p.body);
                       setEditImageUrl(p.imageUrl || "");
                     }}
+                    onBlock={(userId) => blockUser.mutate(userId)}
+                    onUnblock={(userId) => unblockUser.mutate(userId)}
                   />
                 ))}
               </div>
