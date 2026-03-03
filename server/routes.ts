@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews } from "@shared/schema";
+import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews, analyticsEvents } from "@shared/schema";
 import crypto from "crypto";
 import { z } from "zod";
 import { sql, and, gte, lte } from "drizzle-orm";
@@ -7252,6 +7252,17 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       else from.setDate(from.getDate() - 7);
       const sessions = await storage.getAnalyticsSessions(from, now);
       res.json(sessions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/analytics/reset", isAuthenticated, async (_req, res) => {
+    try {
+      await db.delete(analyticsPageViews);
+      await db.delete(analyticsEvents);
+      await db.delete(analyticsSessions);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

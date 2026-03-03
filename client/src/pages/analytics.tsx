@@ -1,12 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, Users, MousePointerClick, Clock, Smartphone, Monitor, Tablet, Copy, Check, TrendingUp, BarChart3, Activity, Globe, Radio } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Eye, Users, MousePointerClick, Clock, Smartphone, Monitor, Tablet, Copy, Check, TrendingUp, BarChart3, Activity, Globe, Radio, Trash2 } from "lucide-react";
 import { usePageTitle } from "@/hooks/use-page-title";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 const countryFlags: Record<string, string> = {
   US: "\u{1F1FA}\u{1F1F8}", CA: "\u{1F1E8}\u{1F1E6}", GB: "\u{1F1EC}\u{1F1E7}", IE: "\u{1F1EE}\u{1F1EA}",
@@ -237,8 +240,26 @@ export default function Analytics() {
   usePageTitle("Analytics");
   const [range, setRange] = useState("7d");
   const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   const fetchAuth = (url: string) => fetch(url, { credentials: "include" }).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); });
+
+  const resetMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/analytics/reset"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/traffic-chart"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/countries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/pageviews"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/live"] });
+      toast({ title: "Analytics Reset", description: "All analytics data has been cleared." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to reset analytics data.", variant: "destructive" });
+    },
+  });
 
   const { data: stats, isLoading } = useQuery<any>({
     queryKey: ["/api/analytics/stats", range],
@@ -281,17 +302,46 @@ export default function Analytics() {
           <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
           <p className="text-sm text-muted-foreground mt-1">Track page views, visitors, events, and traffic</p>
         </div>
-        <Select value={range} onValueChange={setRange}>
-          <SelectTrigger className="w-[140px]" data-testid="select-range">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="24h">Last 24 hours</SelectItem>
-            <SelectItem value="7d">Last 7 days</SelectItem>
-            <SelectItem value="30d">Last 30 days</SelectItem>
-            <SelectItem value="90d">Last 90 days</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-3">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10" data-testid="button-reset-analytics">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Reset All
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset All Analytics?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete all page views, events, and sessions. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel data-testid="button-cancel-reset">Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => resetMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  data-testid="button-confirm-reset"
+                  disabled={resetMutation.isPending}
+                >
+                  {resetMutation.isPending ? "Resetting..." : "Yes, Reset Everything"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Select value={range} onValueChange={setRange}>
+            <SelectTrigger className="w-[140px]" data-testid="select-range">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">Last 24 hours</SelectItem>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="90d">Last 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
