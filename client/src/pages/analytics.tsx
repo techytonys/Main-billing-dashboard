@@ -298,12 +298,12 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6" data-testid="page-analytics">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Analytics</h1>
           <p className="text-sm text-muted-foreground mt-1">Track page views, visitors, events, and traffic</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -325,16 +325,16 @@ export default function Analytics() {
             }}
           >
             {selfTrackingBlocked ? (
-              <><ShieldOff className="w-4 h-4 mr-2" />Tracking Blocked</>
+              <><ShieldOff className="w-4 h-4 mr-2" /><span className="hidden sm:inline">Tracking Blocked</span><span className="sm:hidden">Blocked</span></>
             ) : (
-              <><Shield className="w-4 h-4 mr-2" />Block My Visits</>
+              <><Shield className="w-4 h-4 mr-2" /><span className="hidden sm:inline">Block My Visits</span><span className="sm:hidden">Block</span></>
             )}
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10" data-testid="button-reset-analytics">
                 <Trash2 className="w-4 h-4 mr-2" />
-                Reset All
+                <span className="hidden sm:inline">Reset All</span><span className="sm:hidden">Reset</span>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -358,7 +358,7 @@ export default function Analytics() {
             </AlertDialogContent>
           </AlertDialog>
           <Select value={range} onValueChange={setRange}>
-            <SelectTrigger className="w-[140px]" data-testid="select-range">
+            <SelectTrigger className="w-[130px]" data-testid="select-range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -381,7 +381,7 @@ export default function Analytics() {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 <StatCard title="Page Views" value={stats?.totalPageViews?.toLocaleString() || "0"} icon={Eye} />
                 <StatCard title="Sessions" value={stats?.totalSessions?.toLocaleString() || "0"} icon={Activity} />
                 <StatCard title="Unique Visitors" value={stats?.uniqueVisitors?.toLocaleString() || "0"} icon={Users} />
@@ -446,13 +446,15 @@ export default function Analytics() {
           </div>
 
           <Tabs defaultValue="sources" className="space-y-4">
-            <TabsList data-testid="tabs-analytics">
-              <TabsTrigger value="sources">Traffic Sources</TabsTrigger>
-              <TabsTrigger value="pages">Top Pages</TabsTrigger>
-              <TabsTrigger value="events">Events</TabsTrigger>
-              <TabsTrigger value="devices">Devices</TabsTrigger>
-              <TabsTrigger value="install">Install Script</TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto -mx-1 px-1">
+              <TabsList data-testid="tabs-analytics" className="w-full sm:w-auto">
+                <TabsTrigger value="sources">Sources</TabsTrigger>
+                <TabsTrigger value="pages">Pages</TabsTrigger>
+                <TabsTrigger value="events">Events</TabsTrigger>
+                <TabsTrigger value="devices">Devices</TabsTrigger>
+                <TabsTrigger value="install">Install</TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="sources">
               <Card>

@@ -42,6 +42,7 @@ import LeadGenerator from "@/pages/lead-generator";
 import Analytics from "@/pages/analytics";
 import LinkTracker from "@/pages/link-tracker";
 import LinodeServers from "@/pages/linode-servers";
+import DnsDomains from "@/pages/dns-domains";
 import KnowledgeBase from "@/pages/knowledge-base";
 import Licenses from "@/pages/licenses";
 import PublicHelp from "@/pages/public-help";
@@ -74,6 +75,7 @@ function DashboardRouter() {
       <Route path="/admin/analytics" component={Analytics} />
       <Route path="/admin/link-tracker" component={LinkTracker} />
       <Route path="/admin/servers" component={LinodeServers} />
+      <Route path="/admin/dns-domains" component={DnsDomains} />
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/licenses" component={Licenses} />
       <Route path="/admin/sms" component={SmsMessaging} />

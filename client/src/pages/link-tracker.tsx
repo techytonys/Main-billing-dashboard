@@ -262,7 +262,7 @@ function LinkCard({ link, onDelete }: { link: any; onDelete: () => void }) {
   return (
     <Card className={`transition-all ${!link.isActive ? "opacity-60" : ""}`} data-testid={`card-link-${link.id}`}>
       <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0 flex-1">
             <div className="p-2 rounded-lg bg-muted/50 shrink-0">
               <PlatformIcon platform={link.platform} className="w-5 h-5" />
@@ -283,18 +283,19 @@ function LinkCard({ link, onDelete }: { link: any; onDelete: () => void }) {
               <p className="text-[11px] text-muted-foreground mt-1 truncate">→ {link.destinationUrl}</p>
             </div>
           </div>
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="text-right">
+          <div className="flex items-center gap-4 shrink-0 pl-11 sm:pl-0">
+            <div className="text-left sm:text-right">
               <div className="flex items-center gap-1.5">
                 <MousePointerClick className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-lg font-bold">{link.totalClicks || 0}</span>
+                <span className="text-[10px] text-muted-foreground sm:hidden">clicks · {link.uniqueClicks || 0} unique</span>
               </div>
-              <p className="text-[10px] text-muted-foreground">{link.uniqueClicks || 0} unique</p>
+              <p className="text-[10px] text-muted-foreground hidden sm:block">{link.uniqueClicks || 0} unique</p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t flex-wrap">
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowDetails(!showDetails)} data-testid={`button-details-${link.id}`}>
             <BarChart3 className="w-3 h-3 mr-1" /> {showDetails ? "Hide" : "Details"}
           </Button>
@@ -389,15 +390,15 @@ export default function LinkTracker() {
 
   return (
     <div className="space-y-6" data-testid="page-link-tracker">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Link Tracker</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Link Tracker</h1>
           <p className="text-sm text-muted-foreground mt-1">Create trackable links for every social platform</p>
         </div>
         <CreateLinkDialog onCreated={() => {}} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">

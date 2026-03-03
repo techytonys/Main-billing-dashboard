@@ -15,6 +15,7 @@ export const customers = pgTable("customers", {
   notes: text("notes"),
   portalToken: text("portal_token").default(sql`gen_random_uuid()`),
   stripeCustomerId: text("stripe_customer_id"),
+  websiteDomain: text("website_domain"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -485,6 +486,12 @@ export const linodeServers = pgTable("linode_servers", {
   sshPort: integer("ssh_port"),
   sshPublicKey: text("ssh_public_key"),
   serverSetupComplete: boolean("server_setup_complete").default(false),
+  serverType: text("server_type").default("standard"),
+  wordpressDomain: text("wordpress_domain"),
+  wordpressSiteTitle: text("wordpress_site_title"),
+  wordpressAdminUser: text("wordpress_admin_user"),
+  wordpressAdminPass: text("wordpress_admin_pass"),
+  wordpressReady: boolean("wordpress_ready").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -512,6 +519,21 @@ export const insertLicenseSchema = createInsertSchema(licenses).omit({ id: true,
 
 export type License = typeof licenses.$inferSelect;
 export type InsertLicense = z.infer<typeof insertLicenseSchema>;
+
+export const dnsZones = pgTable("dns_zones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id"),
+  serverId: varchar("server_id"),
+  linodeDomainId: integer("linode_domain_id"),
+  domain: text("domain").notNull(),
+  soaEmail: text("soa_email"),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDnsZoneSchema = createInsertSchema(dnsZones).omit({ id: true, createdAt: true });
+export type DnsZone = typeof dnsZones.$inferSelect;
+export type InsertDnsZone = z.infer<typeof insertDnsZoneSchema>;
 
 export const licenseActivations = pgTable("license_activations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -774,6 +796,7 @@ export type InsertCommunityGroupMember = z.infer<typeof insertCommunityGroupMemb
 
 export const analyticsPageViews = pgTable("analytics_page_views", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siteId: varchar("site_id", { length: 255 }),
   sessionId: varchar("session_id").notNull(),
   visitorId: varchar("visitor_id").notNull(),
   url: text("url").notNull(),
@@ -801,6 +824,7 @@ export type InsertAnalyticsPageView = z.infer<typeof insertAnalyticsPageViewSche
 
 export const analyticsEvents = pgTable("analytics_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siteId: varchar("site_id", { length: 255 }),
   sessionId: varchar("session_id").notNull(),
   visitorId: varchar("visitor_id").notNull(),
   eventType: text("event_type").notNull(),
@@ -821,6 +845,7 @@ export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
 
 export const analyticsSessions = pgTable("analytics_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siteId: varchar("site_id", { length: 255 }),
   visitorId: varchar("visitor_id").notNull(),
   startedAt: timestamp("started_at").defaultNow(),
   endedAt: timestamp("ended_at"),
@@ -849,6 +874,7 @@ export type InsertAnalyticsSession = z.infer<typeof insertAnalyticsSessionSchema
 
 export const trackedLinks = pgTable("tracked_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id"),
   slug: varchar("slug", { length: 50 }).notNull().unique(),
   destinationUrl: text("destination_url").notNull(),
   platform: varchar("platform", { length: 50 }).notNull(),

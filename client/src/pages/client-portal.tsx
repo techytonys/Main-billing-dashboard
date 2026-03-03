@@ -1212,6 +1212,22 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
   const [rootPassword, setRootPassword] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [provisionedServerIp, setProvisionedServerIp] = useState<string | null>(null);
+  const [serverMode, setServerMode] = useState<"standard" | "wordpress">("standard");
+  const [wpDomain, setWpDomain] = useState("");
+  const [wpSiteTitle, setWpSiteTitle] = useState("");
+  const [wpCredentials, setWpCredentials] = useState<{ user: string; pass: string; domain: string } | null>(null);
+  const [showDns, setShowDns] = useState(false);
+  const [dnsNewDomain, setDnsNewDomain] = useState("");
+  const [dnsServerId, setDnsServerId] = useState("");
+  const [showAddRecord, setShowAddRecord] = useState<string | null>(null);
+  const [recordType, setRecordType] = useState("A");
+  const [recordName, setRecordName] = useState("");
+  const [recordTarget, setRecordTarget] = useState("");
+  const [editingRecord, setEditingRecord] = useState<any>(null);
+  const [editRecordName, setEditRecordName] = useState("");
+  const [editRecordTarget, setEditRecordTarget] = useState("");
+  const [editRecordTtl, setEditRecordTtl] = useState("3600");
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   const { data: serverTypes } = useQuery<ServerType[]>({
     queryKey: ["/api/portal", token, "server-types"],
@@ -1231,6 +1247,26 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
       return res.json();
     },
     enabled: showProvision,
+  });
+
+  const { data: dnsZones, refetch: refetchDns } = useQuery<any[]>({
+    queryKey: ["/api/portal", token, "dns-zones"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/dns-zones`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: dnsRecords } = useQuery<any[]>({
+    queryKey: ["/api/portal", token, "dns-records", selectedZoneId],
+    queryFn: async () => {
+      if (!selectedZoneId) return [];
+      const res = await fetch(`/api/portal/${token}/dns-zones/${selectedZoneId}/records`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedZoneId,
   });
 
   const provisionMutation = useMutation({
@@ -1254,6 +1290,107 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
     },
   });
 
+  const wpProvisionMutation = useMutation({
+    mutationFn: async (data: { typeId: string; region: string; label: string; domain: string; siteTitle: string }) => {
+      const res = await apiRequest("POST", `/api/portal/${token}/servers/provision-wordpress`, data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "servers"] });
+      refetchDns();
+      setRootPassword(data.rootPassword);
+      setProvisionedServerIp(data.server.ipv4 || "Assigning...");
+      setWpCredentials({ user: data.wpAdminUser, pass: data.wpAdminPass, domain: data.domain });
+      setShowProvision(false);
+      setShowPasswordDialog(true);
+      setSelectedType("");
+      setSelectedRegion("");
+      setServerLabel("");
+      setWpDomain("");
+      setWpSiteTitle("");
+      toast({ title: "WordPress Server Provisioned!", description: "WordPress is being installed in the background. You'll get a notification when it's ready." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Provisioning Failed", description: err.message || "Could not create WordPress server.", variant: "destructive" });
+    },
+  });
+
+  const createDnsZoneMutation = useMutation({
+    mutationFn: async (data: { domain: string; serverId?: string }) => {
+      const res = await apiRequest("POST", `/api/portal/${token}/dns-zones`, data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      refetchDns();
+      setDnsNewDomain("");
+      setDnsServerId("");
+      toast({
+        title: "DNS Zone Created",
+        description: `Point your domain's nameservers to: ${data.nameservers?.join(", ") || "ns1.linode.com - ns5.linode.com"}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to create DNS zone", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const addRecordMutation = useMutation({
+    mutationFn: async (data: { zoneId: string; type: string; name: string; target: string }) => {
+      const res = await apiRequest("POST", `/api/portal/${token}/dns-zones/${data.zoneId}/records`, {
+        type: data.type, name: data.name, target: data.target,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "dns-records", selectedZoneId] });
+      setShowAddRecord(null);
+      setRecordName("");
+      setRecordTarget("");
+      toast({ title: "DNS Record Added" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to add record", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteRecordMutation = useMutation({
+    mutationFn: async ({ zoneId, recordId }: { zoneId: string; recordId: number }) => {
+      const res = await apiRequest("DELETE", `/api/portal/${token}/dns-zones/${zoneId}/records/${recordId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "dns-records", selectedZoneId] });
+      toast({ title: "DNS Record Deleted" });
+    },
+  });
+
+  const editRecordMutation = useMutation({
+    mutationFn: async ({ zoneId, recordId, data }: { zoneId: string; recordId: number; data: any }) => {
+      const res = await apiRequest("PUT", `/api/portal/${token}/dns-zones/${zoneId}/records/${recordId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "dns-records", selectedZoneId] });
+      setEditingRecord(null);
+      toast({ title: "DNS Record Updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update record", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteDnsZoneMutation = useMutation({
+    mutationFn: async (zoneId: string) => {
+      const res = await apiRequest("DELETE", `/api/portal/${token}/dns-zones/${zoneId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchDns();
+      setSelectedZoneId(null);
+      toast({ title: "DNS Zone Deleted" });
+    },
+  });
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedIp(id);
@@ -1273,7 +1410,7 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
 
   return (
     <div className="space-y-6" data-testid="section-servers">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
             <Server className="w-5 h-5 text-white" />
@@ -1283,10 +1420,16 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
             <p className="text-xs text-muted-foreground">Provision and manage your cloud servers</p>
           </div>
         </div>
-        <Button onClick={() => setShowProvision(true)} data-testid="button-new-server">
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Server
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowDns(true)} data-testid="button-manage-dns">
+            <Globe className="w-4 h-4 mr-1.5" />
+            DNS
+          </Button>
+          <Button onClick={() => { setServerMode("standard"); setShowProvision(true); }} data-testid="button-new-server">
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Server
+          </Button>
+        </div>
       </div>
 
       <Card className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800">
@@ -1338,10 +1481,17 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
                       </p>
                     </div>
                   </div>
-                  <Badge className={statusColor(srv.status)} data-testid={`badge-status-${srv.id}`}>
-                    {srv.status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />}
-                    {srv.status}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {srv.serverType === "wordpress" && (
+                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" data-testid={`badge-wp-${srv.id}`}>
+                        WordPress
+                      </Badge>
+                    )}
+                    <Badge className={statusColor(srv.status)} data-testid={`badge-status-${srv.id}`}>
+                      {srv.status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />}
+                      {srv.status}
+                    </Badge>
+                  </div>
                 </div>
               </div>
               <div className="p-4 space-y-3">
@@ -1359,6 +1509,53 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
                     <span>{srv.disk ? `${(srv.disk / 1024).toFixed(0)} GB` : "—"}</span>
                   </div>
                 </div>
+
+                {srv.serverType === "wordpress" && (
+                  <div className={`rounded-lg p-3 ${srv.wordpressReady ? "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800" : "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"}`}>
+                    {srv.wordpressReady ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                          <CheckCircle className="w-4 h-4" />
+                          WordPress Ready
+                        </div>
+                        {srv.wordpressDomain && (
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={srv.wordpressDomain.match(/^[0-9]/) ? `http://${srv.wordpressDomain}` : `https://${srv.wordpressDomain}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                              data-testid={`link-wp-site-${srv.id}`}
+                            >
+                              <Globe className="w-3 h-3" />
+                              {srv.wordpressDomain}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                            <a
+                              href={`${srv.wordpressDomain.match(/^[0-9]/) ? `http://${srv.wordpressDomain}` : `https://${srv.wordpressDomain}`}/wp-admin`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-purple-600 hover:underline flex items-center gap-1 ml-2"
+                              data-testid={`link-wp-admin-${srv.id}`}
+                            >
+                              WP Admin
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-500">
+                          <ShieldAlert className="w-3 h-3" />
+                          SSL secured by Caddy
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Installing WordPress... You'll be notified when it's ready.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {srv.ipv4 && (
                   <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-3">
@@ -1408,14 +1605,68 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
           </DialogHeader>
           <div className="space-y-5">
             <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Server Type</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setServerMode("standard")}
+                  data-testid="button-mode-standard"
+                  className={`text-left rounded-lg border-2 p-4 transition-all ${serverMode === "standard" ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20" : "border-border hover:border-blue-300"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Server className="w-4 h-4 text-blue-500" />
+                    <span className="font-semibold text-sm">Standard Server</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Blank Linux server with SSH access, security hardening, and Docker</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServerMode("wordpress")}
+                  data-testid="button-mode-wordpress"
+                  className={`text-left rounded-lg border-2 p-4 transition-all ${serverMode === "wordpress" ? "border-purple-500 bg-purple-50/50 dark:bg-purple-950/20" : "border-border hover:border-purple-300"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Globe className="w-4 h-4 text-purple-500" />
+                    <span className="font-semibold text-sm">WordPress Server</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">WordPress pre-installed with Caddy, auto-SSL, MariaDB, and PHP 8.3</p>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
               <Label className="text-xs font-medium">Server Name</Label>
               <Input
                 value={serverLabel}
                 onChange={(e) => setServerLabel(e.target.value)}
-                placeholder="my-web-server"
+                placeholder={serverMode === "wordpress" ? "my-wordpress-site" : "my-web-server"}
                 data-testid="input-server-label"
               />
             </div>
+
+            {serverMode === "wordpress" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Domain Name <span className="text-muted-foreground">(optional)</span></Label>
+                  <Input
+                    value={wpDomain}
+                    onChange={(e) => setWpDomain(e.target.value)}
+                    placeholder="example.com"
+                    data-testid="input-wp-domain"
+                  />
+                  <p className="text-[11px] text-muted-foreground">Leave blank to use the server IP. You can add a domain later. SSL is automatic via Caddy.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Site Title <span className="text-muted-foreground">(optional)</span></Label>
+                  <Input
+                    value={wpSiteTitle}
+                    onChange={(e) => setWpSiteTitle(e.target.value)}
+                    placeholder="My Awesome Website"
+                    data-testid="input-wp-title"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label className="text-xs font-medium">Choose a Plan</Label>
@@ -1515,38 +1766,53 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
               <Button variant="outline" className="flex-1" onClick={() => setShowProvision(false)}>
                 Cancel
               </Button>
-              <Button
-                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                disabled={!selectedType || !selectedRegion || !serverLabel.trim() || provisionMutation.isPending}
-                onClick={() => provisionMutation.mutate({ typeId: selectedType, region: selectedRegion, label: serverLabel.trim() })}
-                data-testid="button-provision-server"
-              >
-                {provisionMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Provisioning...</>
-                ) : (
-                  <><Server className="w-4 h-4 mr-1.5" /> Provision Server</>
-                )}
-              </Button>
+              {serverMode === "wordpress" ? (
+                <Button
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  disabled={!selectedType || !selectedRegion || !serverLabel.trim() || wpProvisionMutation.isPending}
+                  onClick={() => wpProvisionMutation.mutate({ typeId: selectedType, region: selectedRegion, label: serverLabel.trim(), domain: wpDomain.trim(), siteTitle: wpSiteTitle.trim() || "My WordPress Site" })}
+                  data-testid="button-provision-wordpress"
+                >
+                  {wpProvisionMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Provisioning...</>
+                  ) : (
+                    <><Globe className="w-4 h-4 mr-1.5" /> Launch WordPress</>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+                  disabled={!selectedType || !selectedRegion || !serverLabel.trim() || provisionMutation.isPending}
+                  onClick={() => provisionMutation.mutate({ typeId: selectedType, region: selectedRegion, label: serverLabel.trim() })}
+                  data-testid="button-provision-server"
+                >
+                  {provisionMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Provisioning...</>
+                  ) : (
+                    <><Server className="w-4 h-4 mr-1.5" /> Provision Server</>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+      <Dialog open={showPasswordDialog} onOpenChange={(open) => { setShowPasswordDialog(open); if (!open) { setWpCredentials(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-emerald-600">
               <Check className="w-5 h-5" />
-              Server Created Successfully!
+              {wpCredentials ? "WordPress Server Created!" : "Server Created Successfully!"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Card className="p-4 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
               <p className="text-sm font-medium text-amber-900 dark:text-amber-200 mb-1">
-                ⚠️ Save these credentials — they won't be shown again!
+                Save these credentials — they won't be shown again!
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                You'll need this password to log into your server via SSH.
+                {wpCredentials ? "WordPress is installing in the background. You'll get a notification when it's ready." : "You'll need this password to log into your server via SSH."}
               </p>
             </Card>
 
@@ -1571,12 +1837,263 @@ function PortalServersTab({ token, servers, serversLoading }: { token: string; s
                 </div>
               </div>
 
-              
+              {wpCredentials && (
+                <>
+                  <div className="pt-2 border-t">
+                    <p className="text-xs font-semibold mb-2 text-purple-700 dark:text-purple-400">WordPress Credentials</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-muted-foreground">WordPress Admin URL</Label>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                      <code className="text-xs font-mono flex-1" data-testid="text-wp-admin-url">
+                        {wpCredentials.domain.match(/^[0-9]/) ? `http://${wpCredentials.domain}` : `https://${wpCredentials.domain}`}/wp-admin
+                      </code>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyToClipboard(`${wpCredentials.domain.match(/^[0-9]/) ? `http://${wpCredentials.domain}` : `https://${wpCredentials.domain}`}/wp-admin`, "wp-url")} data-testid="button-copy-wp-url">
+                        {copiedIp === "wp-url" ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-muted-foreground">WP Admin Username</Label>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                      <code className="text-xs font-mono flex-1" data-testid="text-wp-user">{wpCredentials.user}</code>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyToClipboard(wpCredentials.user, "wp-user")} data-testid="button-copy-wp-user">
+                        {copiedIp === "wp-user" ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-muted-foreground">WP Admin Password</Label>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                      <code className="text-xs font-mono flex-1 break-all" data-testid="text-wp-pass">{wpCredentials.pass}</code>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => copyToClipboard(wpCredentials.pass, "wp-pass")} data-testid="button-copy-wp-pass">
+                        {copiedIp === "wp-pass" ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            <Button className="w-full" onClick={() => setShowPasswordDialog(false)} data-testid="button-close-password">
+            <Button className="w-full" onClick={() => { setShowPasswordDialog(false); setWpCredentials(null); }} data-testid="button-close-password">
               I've Saved My Credentials
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDns} onOpenChange={setShowDns}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5 text-indigo-500" />
+              DNS Management
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">Manage your domain DNS records. Point your domain nameservers to Linode to use this.</p>
+          </DialogHeader>
+          <div className="space-y-5">
+            <Card className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800">
+              <p className="text-xs font-medium text-indigo-900 dark:text-indigo-200 mb-2">Nameservers</p>
+              <p className="text-[11px] text-indigo-700 dark:text-indigo-400 mb-2">
+                Point your domain's nameservers to these at your domain registrar:
+              </p>
+              <div className="space-y-1">
+                {["ns1.linode.com", "ns2.linode.com", "ns3.linode.com", "ns4.linode.com", "ns5.linode.com"].map(ns => (
+                  <div key={ns} className="flex items-center gap-2">
+                    <code className="text-xs font-mono text-indigo-800 dark:text-indigo-300">{ns}</code>
+                    <Button variant="ghost" size="sm" className="h-5 px-1" onClick={() => copyToClipboard(ns, ns)}>
+                      {copiedIp === ns ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Add Domain</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={dnsNewDomain}
+                  onChange={(e) => setDnsNewDomain(e.target.value)}
+                  placeholder="example.com"
+                  className="flex-1"
+                  data-testid="input-dns-domain"
+                />
+                <Select value={dnsServerId} onValueChange={setDnsServerId}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-dns-server">
+                    <SelectValue placeholder="Link to server..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No server</SelectItem>
+                    {servers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  disabled={!dnsNewDomain.trim() || createDnsZoneMutation.isPending}
+                  onClick={() => createDnsZoneMutation.mutate({ domain: dnsNewDomain.trim(), serverId: dnsServerId === "none" ? undefined : dnsServerId })}
+                  data-testid="button-add-dns-zone"
+                >
+                  {createDnsZoneMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+                </Button>
+              </div>
+            </div>
+
+            {(dnsZones || []).length === 0 ? (
+              <Card className="p-6 text-center">
+                <Globe className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No DNS zones yet. Add a domain above.</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {(dnsZones || []).map((zone: any) => (
+                  <Card key={zone.id} className="overflow-hidden" data-testid={`card-dns-${zone.id}`}>
+                    <div className="p-3 border-b bg-muted/30 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-indigo-500" />
+                        <span className="font-semibold text-sm">{zone.domain}</span>
+                        <Badge variant="secondary" className="text-[10px]">{zone.status}</Badge>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => setSelectedZoneId(selectedZoneId === zone.id ? null : zone.id)}
+                          data-testid={`button-toggle-records-${zone.id}`}
+                        >
+                          {selectedZoneId === zone.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-red-500 hover:text-red-700"
+                          onClick={() => deleteDnsZoneMutation.mutate(zone.id)}
+                          data-testid={`button-delete-zone-${zone.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    {selectedZoneId === zone.id && (
+                      <div className="p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium">DNS Records</p>
+                          <Button size="sm" variant="outline" onClick={() => setShowAddRecord(zone.id)} data-testid={`button-add-record-${zone.id}`}>
+                            <Plus className="w-3 h-3 mr-1" /> Add Record
+                          </Button>
+                        </div>
+                        {showAddRecord === zone.id && (
+                          <Card className="p-3 bg-muted/30">
+                            <div className="flex gap-2 items-end">
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">Type</Label>
+                                <Select value={recordType} onValueChange={setRecordType}>
+                                  <SelectTrigger className="h-8 w-20 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {["A", "AAAA", "CNAME", "MX", "TXT", "NS", "SRV"].map(t => (
+                                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1 flex-1">
+                                <Label className="text-[10px]">Name</Label>
+                                <Input className="h-8 text-xs" value={recordName} onChange={(e) => setRecordName(e.target.value)} placeholder="@ or subdomain" />
+                              </div>
+                              <div className="space-y-1 flex-1">
+                                <Label className="text-[10px]">Target</Label>
+                                <Input className="h-8 text-xs" value={recordTarget} onChange={(e) => setRecordTarget(e.target.value)} placeholder="IP or value" />
+                              </div>
+                              <Button size="sm" className="h-8" disabled={!recordTarget.trim() || addRecordMutation.isPending}
+                                onClick={() => addRecordMutation.mutate({ zoneId: zone.id, type: recordType, name: recordName, target: recordTarget })}
+                              >
+                                {addRecordMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                              </Button>
+                            </div>
+                          </Card>
+                        )}
+                        {(dnsRecords || []).length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-3">No records found</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {(dnsRecords || []).map((r: any) => (
+                              editingRecord?.id === r.id ? (
+                                <Card key={r.id} className="p-3 bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline" className="text-[10px] w-14 justify-center shrink-0">{r.type}</Badge>
+                                      <span className="text-xs text-muted-foreground">Editing record</span>
+                                    </div>
+                                    <div className="flex gap-2 items-end">
+                                      <div className="space-y-1 flex-1">
+                                        <Label className="text-[10px]">Name</Label>
+                                        <Input className="h-8 text-xs" value={editRecordName} onChange={(e) => setEditRecordName(e.target.value)} placeholder="@ or subdomain" />
+                                      </div>
+                                      <div className="space-y-1 flex-1">
+                                        <Label className="text-[10px]">Target</Label>
+                                        <Input className="h-8 text-xs" value={editRecordTarget} onChange={(e) => setEditRecordTarget(e.target.value)} placeholder="IP or value" />
+                                      </div>
+                                      <div className="space-y-1 w-20">
+                                        <Label className="text-[10px]">TTL</Label>
+                                        <Input className="h-8 text-xs" value={editRecordTtl} onChange={(e) => setEditRecordTtl(e.target.value)} />
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2 justify-end">
+                                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingRecord(null)}>Cancel</Button>
+                                      <Button size="sm" className="h-7 text-xs" disabled={!editRecordTarget.trim() || editRecordMutation.isPending}
+                                        onClick={() => editRecordMutation.mutate({
+                                          zoneId: zone.id, recordId: r.id,
+                                          data: { type: r.type, name: editRecordName, target: editRecordTarget, ttl_sec: parseInt(editRecordTtl) || 3600, priority: r.priority }
+                                        })}
+                                        data-testid={`button-save-record-${r.id}`}
+                                      >
+                                        {editRecordMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
+                                        Save
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </Card>
+                              ) : (
+                                <div key={r.id} className="flex items-center gap-2 text-xs p-2 rounded bg-muted/30" data-testid={`record-${r.id}`}>
+                                  <Badge variant="outline" className="text-[10px] w-14 justify-center shrink-0">{r.type}</Badge>
+                                  <span className="font-mono text-muted-foreground min-w-[80px]">{r.name || "@"}</span>
+                                  <span className="font-mono flex-1 truncate">{r.target}</span>
+                                  <span className="text-muted-foreground">TTL: {r.ttl_sec || 300}s</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-1"
+                                    onClick={() => {
+                                      setEditingRecord(r);
+                                      setEditRecordName(r.name || "");
+                                      setEditRecordTarget(r.target || "");
+                                      setEditRecordTtl(String(r.ttl_sec || 3600));
+                                    }}
+                                    data-testid={`button-edit-record-${r.id}`}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-1 text-red-500 hover:text-red-700"
+                                    onClick={() => deleteRecordMutation.mutate({ zoneId: zone.id, recordId: r.id })}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

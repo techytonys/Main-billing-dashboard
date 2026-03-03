@@ -193,8 +193,8 @@ function SubscribersTab() {
       </div>
 
       <Card>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="min-w-[700px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">
@@ -202,10 +202,10 @@ function SubscribersTab() {
                 </TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead className="hidden sm:table-cell">Email</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Joined</TableHead>
+                <TableHead className="hidden md:table-cell">Source</TableHead>
+                <TableHead className="hidden md:table-cell">Joined</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -226,7 +226,7 @@ function SubscribersTab() {
                       {sub.phone}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     {sub.email ? (
                       <div className="flex items-center gap-1.5">
                         <Mail className="w-3.5 h-3.5 text-muted-foreground" />
@@ -235,8 +235,8 @@ function SubscribersTab() {
                     ) : "—"}
                   </TableCell>
                   <TableCell><StatusBadge status={sub.status} /></TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{sub.source || "—"}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
+                  <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{sub.source || "—"}</TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
                     {sub.optedInAt ? new Date(sub.optedInAt).toLocaleDateString() : "—"}
                   </TableCell>
                   <TableCell>
@@ -398,9 +398,9 @@ function EventsTab() {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
         <p className="text-sm text-muted-foreground">Configure events that trigger SMS messages. System events fire automatically; custom events can be triggered manually or via API.</p>
-        <Button onClick={() => setShowCreate(true)} data-testid="button-create-event">
+        <Button onClick={() => setShowCreate(true)} className="shrink-0 self-start sm:self-auto" data-testid="button-create-event">
           <Plus className="w-4 h-4 mr-2" />
           Create Event
         </Button>
@@ -817,13 +817,13 @@ function ListsTab() {
           </Card>
         )}
 
-        <Card>
-          <Table>
+        <Card className="overflow-x-auto">
+          <Table className="min-w-[500px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead className="hidden sm:table-cell">Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -833,7 +833,7 @@ function ListsTab() {
                 <TableRow key={m.id} data-testid={`row-member-${m.id}`}>
                   <TableCell className="font-medium">{m.name || "—"}</TableCell>
                   <TableCell>{m.phone}</TableCell>
-                  <TableCell className="text-muted-foreground">{m.email || "—"}</TableCell>
+                  <TableCell className="hidden sm:table-cell text-muted-foreground">{m.email || "—"}</TableCell>
                   <TableCell><StatusBadge status={m.status} /></TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => removeMemberMutation.mutate(m.id)} data-testid={`button-remove-member-${m.id}`}>
@@ -991,10 +991,10 @@ function AnalyticsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Message performance and subscriber trends over time.</p>
         <Select value={days} onValueChange={setDays}>
-          <SelectTrigger className="w-[150px]" data-testid="select-analytics-days">
+          <SelectTrigger className="w-[150px] shrink-0" data-testid="select-analytics-days">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1014,7 +1014,7 @@ function AnalyticsTab() {
         <RateCard label="Unsubscribe Rate" value={a.unsubscribeRate} icon={UserMinus} color="text-red-400" trend={`${a.totalFailed} failed`} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
         {[
           { label: "Total Sent", value: a.totalSent, icon: Send, color: "text-blue-500" },
           { label: "Delivered", value: a.totalDelivered, icon: CheckCircle2, color: "text-emerald-500" },
@@ -1250,16 +1250,16 @@ function MessagesTab() {
         </CardTitle>
         <CardDescription>All outbound SMS messages. Messages are queued until Twilio is connected.</CardDescription>
       </CardHeader>
-      <CardContent className="p-0">
-        <Table>
+      <CardContent className="p-0 overflow-x-auto">
+        <Table className="min-w-[600px]">
           <TableHeader>
             <TableRow>
               <TableHead>Recipient</TableHead>
               <TableHead>Phone</TableHead>
-              <TableHead>Event</TableHead>
+              <TableHead className="hidden sm:table-cell">Event</TableHead>
               <TableHead>Message</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Time</TableHead>
+              <TableHead className="hidden sm:table-cell">Time</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1271,10 +1271,10 @@ function MessagesTab() {
               <TableRow key={msg.id} data-testid={`row-message-${msg.id}`}>
                 <TableCell className="font-medium">{msg.subscriberName || "—"}</TableCell>
                 <TableCell className="font-mono text-sm">{msg.subscriberPhone}</TableCell>
-                <TableCell>{msg.eventName ? <Badge variant="outline" className="text-xs">{msg.eventName}</Badge> : "—"}</TableCell>
-                <TableCell className="max-w-[300px] truncate text-sm">{msg.body}</TableCell>
+                <TableCell className="hidden sm:table-cell">{msg.eventName ? <Badge variant="outline" className="text-xs">{msg.eventName}</Badge> : "—"}</TableCell>
+                <TableCell className="max-w-[200px] sm:max-w-[300px] truncate text-sm">{msg.body}</TableCell>
                 <TableCell><StatusBadge status={msg.status} /></TableCell>
-                <TableCell className="text-muted-foreground text-sm">
+                <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
                   {msg.createdAt ? new Date(msg.createdAt).toLocaleString() : "—"}
                 </TableCell>
               </TableRow>
@@ -1299,23 +1299,23 @@ export default function SmsMessaging() {
   });
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-            <MessageSquare className="w-7 h-7 text-primary" />
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+            <MessageSquare className="w-6 sm:w-7 h-6 sm:h-7 text-primary" />
             SMS Messaging
           </h1>
-          <p className="text-muted-foreground mt-1">Manage subscribers, configure event triggers, and send targeted SMS messages.</p>
+          <p className="text-sm text-muted-foreground mt-1">Manage subscribers, configure event triggers, and send targeted SMS messages.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowBroadcast(true)} data-testid="button-broadcast">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setShowBroadcast(true)} data-testid="button-broadcast">
             <Megaphone className="w-4 h-4 mr-2" />
             Broadcast
           </Button>
-          <Badge variant="outline" className="px-3 py-2 gap-1.5">
+          <Badge variant="outline" className="px-3 py-2 gap-1.5 text-xs">
             <Radio className="w-3.5 h-3.5 text-amber-500" />
-            Twilio: Not Connected
+            <span className="hidden sm:inline">Twilio: </span>Not Connected
           </Badge>
         </div>
       </div>
@@ -1323,28 +1323,30 @@ export default function SmsMessaging() {
       <StatsCards stats={stats} />
 
       <Tabs defaultValue="subscribers" className="space-y-4">
-        <TabsList data-testid="tabs-sms">
-          <TabsTrigger value="subscribers" className="gap-2" data-testid="tab-subscribers">
-            <Users className="w-4 h-4" />
-            Subscribers
-          </TabsTrigger>
-          <TabsTrigger value="events" className="gap-2" data-testid="tab-events">
-            <Zap className="w-4 h-4" />
-            Events
-          </TabsTrigger>
-          <TabsTrigger value="messages" className="gap-2" data-testid="tab-messages">
-            <MessageSquare className="w-4 h-4" />
-            Messages
-          </TabsTrigger>
-          <TabsTrigger value="lists" className="gap-2" data-testid="tab-lists">
-            <ListChecks className="w-4 h-4" />
-            Lists
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="gap-2" data-testid="tab-analytics">
-            <BarChart3 className="w-4 h-4" />
-            Analytics
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <TabsList data-testid="tabs-sms" className="w-full sm:w-auto">
+            <TabsTrigger value="subscribers" className="gap-1.5 text-xs sm:text-sm" data-testid="tab-subscribers">
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Subscribers</span><span className="sm:hidden">Subs</span>
+            </TabsTrigger>
+            <TabsTrigger value="events" className="gap-1.5 text-xs sm:text-sm" data-testid="tab-events">
+              <Zap className="w-4 h-4" />
+              Events
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="gap-1.5 text-xs sm:text-sm" data-testid="tab-messages">
+              <MessageSquare className="w-4 h-4" />
+              <span className="hidden sm:inline">Messages</span><span className="sm:hidden">Msgs</span>
+            </TabsTrigger>
+            <TabsTrigger value="lists" className="gap-1.5 text-xs sm:text-sm" data-testid="tab-lists">
+              <ListChecks className="w-4 h-4" />
+              Lists
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-1.5 text-xs sm:text-sm" data-testid="tab-analytics">
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">Analytics</span><span className="sm:hidden">Stats</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="subscribers">
           <SubscribersTab />

@@ -4022,6 +4022,485 @@ curl -sL ${setupUrl} | bash
     }
   });
 
+  app.post("/api/portal/:token/servers/provision-wordpress", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const existingLicenses = await storage.getLicenses(customer.id);
+      const hasActiveLicense = existingLicenses.some(l => l.status === "active");
+      if (!hasActiveLicense) {
+        await storage.createLicense({
+          customerId: customer.id,
+          licenseKey: generateLicenseKey(),
+          status: "active",
+          maxActivations: 0,
+          expiresAt: null,
+          notes: "Auto-issued during WordPress provisioning",
+        });
+      }
+
+      const { typeId, region, label, domain, siteTitle } = req.body;
+      if (!typeId || !region || !label) {
+        return res.status(400).json({ error: "Server type, region, and label are required" });
+      }
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Server provisioning not configured" });
+
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+      const rootPass = `AiPS-${Date.now()}-${Math.random().toString(36).slice(2, 10)}!`;
+      const wpAdminUser = "admin";
+      const wpAdminPass = `WP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}!`;
+
+      let monthlyPriceCents = 0;
+      try {
+        const typesRes = await fetch(`https://api.linode.com/v4/linode/types/${typeId}`, { headers: linodeHeaders });
+        if (typesRes.ok) {
+          const typeData = await typesRes.json();
+          monthlyPriceCents = Math.round((typeData.price?.monthly || 0) * 100);
+        }
+      } catch {}
+
+      const { randomUUID } = await import("crypto");
+      const preGeneratedId = randomUUID();
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+      let apiUrl = `${protocol}://${host}`;
+      if (apiUrl.includes("localhost") && process.env.REPLIT_DEV_DOMAIN) {
+        apiUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+      }
+
+      const setupUrl = `${apiUrl}/api/server-setup/${req.params.token}/${preGeneratedId}`;
+      const wpSetupUrl = `${apiUrl}/api/wordpress-setup/${req.params.token}/${preGeneratedId}`;
+
+      const cloudInitScript = `#!/bin/bash
+apt-get update -qq && apt-get install -y -qq curl jq > /dev/null 2>&1
+curl -sL ${setupUrl} | bash
+curl -sL ${wpSetupUrl} | bash
+`;
+      const userDataBase64 = Buffer.from(cloudInitScript).toString("base64");
+
+      const response = await fetch("https://api.linode.com/v4/linode/instances", {
+        method: "POST",
+        headers: linodeHeaders,
+        body: JSON.stringify({
+          type: typeId,
+          region,
+          label: `wp-${label}-${customer.id.substring(0, 6)}`,
+          image: "linode/ubuntu24.04",
+          root_pass: rootPass,
+          booted: true,
+          tags: ["aipoweredsites", "wordpress", "client-provisioned"],
+          metadata: {
+            user_data: userDataBase64,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return res.status(response.status).json({ error: data.errors?.[0]?.reason || "Failed to provision WordPress server" });
+      }
+
+      const server = await storage.createLinodeServer({
+        linodeId: data.id,
+        label: data.label,
+        customerId: customer.id,
+        region: data.region,
+        planType: data.type,
+        planLabel: data.specs?.type_class || typeId,
+        status: data.status,
+        ipv4: data.ipv4?.[0] || null,
+        ipv6: data.ipv6 || null,
+        vcpus: data.specs?.vcpus || null,
+        memory: data.specs?.memory || null,
+        disk: data.specs?.disk || null,
+        monthlyPriceCents,
+        markupPercent: 50,
+        serverType: "wordpress",
+        wordpressDomain: domain || null,
+        wordpressSiteTitle: siteTitle || label || null,
+        wordpressAdminUser: wpAdminUser,
+        wordpressAdminPass: wpAdminPass,
+      }, preGeneratedId);
+
+      if (domain) {
+        try {
+          const domainRes = await fetch(`${LINODE_API_BASE}/domains`, {
+            method: "POST",
+            headers: linodeHeaders,
+            body: JSON.stringify({
+              type: "master",
+              domain: domain,
+              soa_email: customer.email || `admin@${domain}`,
+              tags: ["aipoweredsites"],
+            }),
+          });
+          if (domainRes.ok) {
+            const domainData = await domainRes.json();
+            await storage.createDnsZone({
+              customerId: customer.id,
+              serverId: preGeneratedId,
+              linodeDomainId: domainData.id,
+              domain: domain,
+              soaEmail: customer.email || `admin@${domain}`,
+              status: "active",
+            });
+
+            const serverIp = data.ipv4?.[0];
+            if (serverIp) {
+              await fetch(`${LINODE_API_BASE}/domains/${domainData.id}/records`, {
+                method: "POST",
+                headers: linodeHeaders,
+                body: JSON.stringify({ type: "A", name: "", target: serverIp, ttl_sec: 300 }),
+              });
+              await fetch(`${LINODE_API_BASE}/domains/${domainData.id}/records`, {
+                method: "POST",
+                headers: linodeHeaders,
+                body: JSON.stringify({ type: "A", name: "www", target: serverIp, ttl_sec: 300 }),
+              });
+            }
+          }
+        } catch (dnsErr: any) {
+          console.error("DNS zone creation failed:", dnsErr.message);
+        }
+      }
+
+      res.json({
+        server,
+        rootPassword: rootPass,
+        wpAdminUser,
+        wpAdminPass,
+        domain: domain || data.ipv4?.[0] || "Assigning...",
+        autoSetup: true,
+      });
+    } catch (err: any) {
+      console.error("WordPress provision error:", err.message);
+      res.status(500).json({ error: err.message || "Failed to provision WordPress server" });
+    }
+  });
+
+  app.post("/api/portal/:token/servers/:serverId/wordpress-ready", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const servers = await storage.getLinodeServersByCustomerId(customer.id);
+      const server = servers.find(s => s.id === req.params.serverId);
+      if (!server) return res.status(404).json({ message: "Server not found" });
+
+      const { wordpressDomain, wordpressAdminUser, wordpressAdminPass, wordpressUrl, serverIp } = req.body;
+
+      await storage.updateLinodeServer(server.id, {
+        wordpressReady: true,
+        wordpressDomain: wordpressDomain || server.wordpressDomain,
+        wordpressAdminUser: wordpressAdminUser || server.wordpressAdminUser,
+        wordpressAdminPass: wordpressAdminPass || server.wordpressAdminPass,
+      });
+
+      try {
+        await sendPushToCustomer(customer.id, {
+          title: "WordPress Is Ready!",
+          body: `Your WordPress site is live at ${wordpressUrl || wordpressDomain || serverIp}`,
+          url: `/portal/${req.params.token}`,
+        });
+      } catch {}
+
+      if (customer.email) {
+        try {
+          const { sendEmail } = await import("./email");
+          const siteUrl = wordpressUrl || `https://${wordpressDomain}` || `http://${serverIp}`;
+          await sendEmail({
+            to: customer.email,
+            subject: `Your WordPress Site Is Ready!`,
+            html: `<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 640px; margin: 0 auto;">
+<div style="background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 30px; border-radius: 12px 12px 0 0;">
+  <h1 style="color: #fff; margin: 0 0 5px;">🎉 WordPress Is Ready!</h1>
+  <p style="color: #94a3b8; margin: 0; font-size: 14px;">Your WordPress site has been installed and is live.</p>
+</div>
+<div style="padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+<h2 style="color: #1a1a2e; font-size: 16px; border-bottom: 2px solid #10b981; padding-bottom: 8px;">🌐 Your WordPress Site</h2>
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+<tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Site URL</td><td style="padding: 10px; border: 1px solid #e2e8f0; font-family: monospace;"><a href="${siteUrl}">${siteUrl}</a></td></tr>
+<tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Admin URL</td><td style="padding: 10px; border: 1px solid #e2e8f0; font-family: monospace;"><a href="${siteUrl}/wp-admin">${siteUrl}/wp-admin</a></td></tr>
+<tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Admin User</td><td style="padding: 10px; border: 1px solid #e2e8f0; font-family: monospace;">${wordpressAdminUser}</td></tr>
+<tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Admin Pass</td><td style="padding: 10px; border: 1px solid #e2e8f0; font-family: monospace;">${wordpressAdminPass}</td></tr>
+<tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Server IP</td><td style="padding: 10px; border: 1px solid #e2e8f0; font-family: monospace;">${serverIp}</td></tr>
+</table>
+<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+  <p style="color: #166534; font-size: 13px; margin: 0;">🔒 SSL is handled automatically by Caddy. Your site is secured with HTTPS.</p>
+</div>
+<p style="color: #64748b; font-size: 12px;">Change your admin password after first login for security.</p>
+</div></div>`,
+          });
+        } catch {}
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("WordPress ready callback error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/wordpress-setup/:token/:serverId", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).send("# Invalid portal token");
+
+      const servers = await storage.getLinodeServersByCustomerId(customer.id);
+      const server = servers.find(s => s.id === req.params.serverId) || null;
+
+      const fs = await import("fs");
+      const path = await import("path");
+      const scriptPath = path.join(process.cwd(), "scripts", "wordpress-setup.sh");
+      let script = fs.readFileSync(scriptPath, "utf-8");
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
+      let apiUrl = `${protocol}://${host}`;
+      if (apiUrl.includes("localhost") && process.env.REPLIT_DEV_DOMAIN) {
+        apiUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+      }
+
+      const envBlock = [
+        `export SETUP_API_URL="${apiUrl}"`,
+        `export SETUP_PORTAL_TOKEN="${req.params.token}"`,
+        `export SETUP_SERVER_ID="${req.params.serverId}"`,
+        `export SETUP_WP_DOMAIN="${server?.wordpressDomain || ""}"`,
+        `export SETUP_WP_TITLE="${server?.wordpressSiteTitle || server?.label || "My WordPress Site"}"`,
+        `export SETUP_WP_ADMIN_USER="${server?.wordpressAdminUser || "admin"}"`,
+        `export SETUP_WP_ADMIN_PASS="${server?.wordpressAdminPass || ""}"`,
+        `export SETUP_WP_ADMIN_EMAIL="${customer.email || ""}"`,
+      ].join("\n");
+
+      script = script.replace(
+        "#!/bin/bash\nset -euo pipefail",
+        `#!/bin/bash\nset -euo pipefail\n\n# Auto-configured WordPress setup\n${envBlock}\n`
+      );
+
+      res.setHeader("Content-Type", "text/plain");
+      res.send(script);
+    } catch (err: any) {
+      res.status(500).send(`# Error: ${err.message}`);
+    }
+  });
+
+  app.get("/api/portal/:token/dns-zones", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+      const zones = await storage.getDnsZones(customer.id);
+      res.json(zones);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/portal/:token/dns-zones", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const { domain, serverId } = req.body;
+      if (!domain) return res.status(400).json({ error: "Domain is required" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "DNS management not configured" });
+
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+
+      const domainRes = await fetch(`${LINODE_API_BASE}/domains`, {
+        method: "POST",
+        headers: linodeHeaders,
+        body: JSON.stringify({
+          type: "master",
+          domain,
+          soa_email: customer.email || `admin@${domain}`,
+          tags: ["aipoweredsites"],
+        }),
+      });
+
+      if (!domainRes.ok) {
+        const err = await domainRes.json();
+        return res.status(domainRes.status).json({ error: err.errors?.[0]?.reason || "Failed to create DNS zone" });
+      }
+
+      const domainData = await domainRes.json();
+
+      if (serverId) {
+        const server = (await storage.getLinodeServersByCustomerId(customer.id)).find(s => s.id === serverId);
+        if (server?.ipv4) {
+          await fetch(`${LINODE_API_BASE}/domains/${domainData.id}/records`, {
+            method: "POST",
+            headers: linodeHeaders,
+            body: JSON.stringify({ type: "A", name: "", target: server.ipv4, ttl_sec: 300 }),
+          });
+          await fetch(`${LINODE_API_BASE}/domains/${domainData.id}/records`, {
+            method: "POST",
+            headers: linodeHeaders,
+            body: JSON.stringify({ type: "A", name: "www", target: server.ipv4, ttl_sec: 300 }),
+          });
+        }
+      }
+
+      const zone = await storage.createDnsZone({
+        customerId: customer.id,
+        serverId: serverId || null,
+        linodeDomainId: domainData.id,
+        domain,
+        soaEmail: customer.email || `admin@${domain}`,
+        status: "active",
+      });
+
+      res.json({ zone, nameservers: ["ns1.linode.com", "ns2.linode.com", "ns3.linode.com", "ns4.linode.com", "ns5.linode.com"] });
+    } catch (err: any) {
+      console.error("DNS zone create error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/portal/:token/dns-zones/:zoneId/records", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone || zone.customerId !== customer.id) return res.status(404).json({ message: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.json([]);
+
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+      const recordsRes = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records`, { headers: linodeHeaders });
+      if (!recordsRes.ok) return res.json([]);
+      const data = await recordsRes.json();
+      res.json(data.data || []);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/portal/:token/dns-zones/:zoneId/records", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone || zone.customerId !== customer.id) return res.status(404).json({ message: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.status(500).json({ error: "DNS not configured" });
+
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+      const { type, name, target, ttl_sec, priority } = req.body;
+
+      const recordRes = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records`, {
+        method: "POST",
+        headers: linodeHeaders,
+        body: JSON.stringify({ type, name: name || "", target, ttl_sec: ttl_sec || 300, priority: priority || null }),
+      });
+
+      if (!recordRes.ok) {
+        const err = await recordRes.json();
+        return res.status(recordRes.status).json({ error: err.errors?.[0]?.reason || "Failed to create record" });
+      }
+
+      const record = await recordRes.json();
+      res.json(record);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/portal/:token/dns-zones/:zoneId/records/:recordId", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone || zone.customerId !== customer.id) return res.status(404).json({ message: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.status(500).json({ error: "DNS not configured" });
+
+      const { type, name, target, ttl_sec, priority, port, weight } = req.body;
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+      const updateRes = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records/${req.params.recordId}`, {
+        method: "PUT",
+        headers: linodeHeaders,
+        body: JSON.stringify({ type, name: name || "", target, ttl_sec: ttl_sec || 3600, priority, port, weight }),
+      });
+
+      const updateData = await updateRes.json();
+      if (!updateRes.ok) {
+        return res.status(updateRes.status).json({ error: updateData.errors?.[0]?.reason || "Failed to update record" });
+      }
+      res.json(updateData);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/portal/:token/dns-zones/:zoneId/records/:recordId", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone || zone.customerId !== customer.id) return res.status(404).json({ message: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.status(500).json({ error: "DNS not configured" });
+
+      const linodeHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
+      const delResp = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records/${req.params.recordId}`, {
+        method: "DELETE",
+        headers: linodeHeaders,
+      });
+
+      if (!delResp.ok && delResp.status !== 404) {
+        const errBody = await delResp.text();
+        return res.status(502).json({ error: `Linode API error: ${errBody}` });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/portal/:token/dns-zones/:zoneId", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ message: "Invalid portal link" });
+
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone || zone.customerId !== customer.id) return res.status(404).json({ message: "DNS zone not found" });
+
+      if (zone.linodeDomainId) {
+        const apiKey = process.env.LINODE_API_KEY;
+        if (apiKey) {
+          const delResp = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${apiKey}` },
+          });
+          if (!delResp.ok && delResp.status !== 404) {
+            const errBody = await delResp.text();
+            return res.status(502).json({ error: `Failed to delete DNS zone on Linode: ${errBody}` });
+          }
+        }
+      }
+
+      await storage.deleteDnsZone(zone.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/portal/:token/servers/:serverId/credentials", async (req, res) => {
     try {
       const customer = await storage.getCustomerByPortalToken(req.params.token);
@@ -4879,6 +5358,183 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     } catch (err: any) {
       console.error("Invoice generation error:", err.message);
       res.status(500).json({ error: "Failed to generate invoice" });
+    }
+  });
+
+  // ===== Admin DNS Management =====
+  app.get("/api/dns-zones", isAuthenticated, async (req, res) => {
+    try {
+      const zones = await storage.getDnsZones();
+      const zonesWithCustomer = await Promise.all(zones.map(async (zone) => {
+        let customerName = null;
+        if (zone.customerId) {
+          const customer = await storage.getCustomer(zone.customerId);
+          customerName = customer?.name || null;
+        }
+        return { ...zone, customerName };
+      }));
+      res.json(zonesWithCustomer);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/dns-zones/:zoneId/records", isAuthenticated, async (req, res) => {
+    try {
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone) return res.status(404).json({ error: "DNS zone not found" });
+      if (!zone.linodeDomainId) return res.json([]);
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.json([]);
+
+      const resp = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records`, {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+      });
+      if (!resp.ok) return res.json([]);
+      const data = await resp.json();
+      res.json(data.data || []);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/dns-zones", isAuthenticated, async (req, res) => {
+    try {
+      const { domain, soaEmail, customerId, serverId } = req.body;
+      if (!domain) return res.status(400).json({ error: "Domain is required" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "Linode API key not configured" });
+
+      const domainRes = await fetch(`${LINODE_API_BASE}/domains`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "master",
+          domain,
+          soa_email: soaEmail || `admin@${domain}`,
+          tags: ["aipoweredsites"],
+        }),
+      });
+
+      const domainData = await domainRes.json();
+      if (!domainRes.ok) {
+        return res.status(domainRes.status).json({ error: domainData.errors?.[0]?.reason || "Failed to create DNS zone" });
+      }
+
+      const zone = await storage.createDnsZone({
+        domain,
+        soaEmail: soaEmail || `admin@${domain}`,
+        linodeDomainId: domainData.id,
+        customerId: customerId || null,
+        serverId: serverId || null,
+        status: "active",
+      });
+
+      res.json(zone);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/dns-zones/:zoneId/records", isAuthenticated, async (req, res) => {
+    try {
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone) return res.status(404).json({ error: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.status(500).json({ error: "DNS not configured" });
+
+      const { type, name, target, ttl_sec, priority, port, weight } = req.body;
+      const recordRes = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type, name: name || "", target, ttl_sec: ttl_sec || 3600, priority, port, weight }),
+      });
+
+      const recordData = await recordRes.json();
+      if (!recordRes.ok) {
+        return res.status(recordRes.status).json({ error: recordData.errors?.[0]?.reason || "Failed to create record" });
+      }
+      res.json(recordData);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/dns-zones/:zoneId/records/:recordId", isAuthenticated, async (req, res) => {
+    try {
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone) return res.status(404).json({ error: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.status(500).json({ error: "DNS not configured" });
+
+      const { type, name, target, ttl_sec, priority, port, weight } = req.body;
+      const updateRes = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records/${req.params.recordId}`, {
+        method: "PUT",
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ type, name: name || "", target, ttl_sec: ttl_sec || 3600, priority, port, weight }),
+      });
+
+      const updateData = await updateRes.json();
+      if (!updateRes.ok) {
+        return res.status(updateRes.status).json({ error: updateData.errors?.[0]?.reason || "Failed to update record" });
+      }
+      res.json(updateData);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/dns-zones/:zoneId/records/:recordId", isAuthenticated, async (req, res) => {
+    try {
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone) return res.status(404).json({ error: "DNS zone not found" });
+
+      const apiKey = process.env.LINODE_API_KEY;
+      if (!apiKey || !zone.linodeDomainId) return res.status(500).json({ error: "DNS not configured" });
+
+      const delResp = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}/records/${req.params.recordId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${apiKey}` },
+      });
+
+      if (!delResp.ok && delResp.status !== 404) {
+        const errBody = await delResp.text();
+        return res.status(502).json({ error: `Linode API error: ${errBody}` });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/dns-zones/:zoneId", isAuthenticated, async (req, res) => {
+    try {
+      const zone = await storage.getDnsZone(req.params.zoneId);
+      if (!zone) return res.status(404).json({ error: "DNS zone not found" });
+
+      if (zone.linodeDomainId) {
+        const apiKey = process.env.LINODE_API_KEY;
+        if (apiKey) {
+          const delResp = await fetch(`${LINODE_API_BASE}/domains/${zone.linodeDomainId}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${apiKey}` },
+          });
+          if (!delResp.ok && delResp.status !== 404) {
+            const errBody = await delResp.text();
+            return res.status(502).json({ error: `Failed to delete DNS zone on Linode: ${errBody}` });
+          }
+        }
+      }
+
+      await storage.deleteDnsZone(zone.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

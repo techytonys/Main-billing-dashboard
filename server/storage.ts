@@ -70,6 +70,8 @@ import {
   trackedLinks, trackedLinkClicks,
   type TrackedLink, type InsertTrackedLink,
   type TrackedLinkClick, type InsertTrackedLinkClick,
+  dnsZones,
+  type DnsZone, type InsertDnsZone,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -233,6 +235,12 @@ export interface IStorage {
   createLinodeServer(server: InsertLinodeServer, id?: string): Promise<LinodeServer>;
   updateLinodeServer(id: string, updates: Partial<InsertLinodeServer>): Promise<LinodeServer | undefined>;
   deleteLinodeServer(id: string): Promise<boolean>;
+
+  getDnsZones(customerId?: string): Promise<DnsZone[]>;
+  getDnsZone(id: string): Promise<DnsZone | undefined>;
+  createDnsZone(zone: InsertDnsZone): Promise<DnsZone>;
+  updateDnsZone(id: string, updates: Partial<InsertDnsZone>): Promise<DnsZone | undefined>;
+  deleteDnsZone(id: string): Promise<boolean>;
 
   getLicenses(customerId?: string): Promise<License[]>;
   getLicense(id: string): Promise<License | undefined>;
@@ -1224,6 +1232,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLinodeServer(id: string): Promise<boolean> {
     const result = await db.delete(linodeServers).where(eq(linodeServers.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getDnsZones(customerId?: string): Promise<DnsZone[]> {
+    if (customerId) {
+      return db.select().from(dnsZones).where(eq(dnsZones.customerId, customerId)).orderBy(desc(dnsZones.createdAt));
+    }
+    return db.select().from(dnsZones).orderBy(desc(dnsZones.createdAt));
+  }
+
+  async getDnsZone(id: string): Promise<DnsZone | undefined> {
+    const [zone] = await db.select().from(dnsZones).where(eq(dnsZones.id, id));
+    return zone;
+  }
+
+  async createDnsZone(zone: InsertDnsZone): Promise<DnsZone> {
+    const [created] = await db.insert(dnsZones).values(zone).returning();
+    return created;
+  }
+
+  async updateDnsZone(id: string, updates: Partial<InsertDnsZone>): Promise<DnsZone | undefined> {
+    const [updated] = await db.update(dnsZones).set(updates).where(eq(dnsZones.id, id)).returning();
+    return updated;
+  }
+
+  async deleteDnsZone(id: string): Promise<boolean> {
+    const result = await db.delete(dnsZones).where(eq(dnsZones.id, id)).returning();
     return result.length > 0;
   }
 

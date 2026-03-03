@@ -195,7 +195,7 @@
 
   function trackPageView() {
     send("/api/analytics/pageview", {
-      sessionId: sessionId, visitorId: visitorId,
+      siteId: SITE_ID, sessionId: sessionId, visitorId: visitorId,
       url: window.location.href, path: window.location.pathname,
       title: document.title, referrer: document.referrer || null,
       source: sourceInfo.source, medium: sourceInfo.medium, campaign: sourceInfo.campaign,
