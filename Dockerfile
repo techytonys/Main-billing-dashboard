@@ -7,6 +7,7 @@ RUN npm ci --legacy-peer-deps 2>&1 | tail -5
 
 COPY tsconfig.json drizzle.config.ts vite.config.ts ./
 COPY tailwind.config.ts postcss.config.js components.json ./
+COPY attached_assets ./attached_assets
 COPY script ./script
 COPY client ./client
 COPY server ./server
