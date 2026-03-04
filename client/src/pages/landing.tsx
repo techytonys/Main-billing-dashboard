@@ -298,15 +298,11 @@ export default function LandingPage() {
   const [chatEmail, setChatEmail] = useState("");
   const [chatSubject, setChatSubject] = useState("");
   const [chatMessage, setChatMessage] = useState("");
-  const [auditUrl, setAuditUrl] = useState("");
-  const [auditEmail, setAuditEmail] = useState("");
-  const [auditResult, setAuditResult] = useState<any>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const [auditProgress, setAuditProgress] = useState(0);
-  const [auditStage, setAuditStage] = useState("");
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
+  const [subFirstName, setSubFirstName] = useState("");
+  const [subEmail, setSubEmail] = useState("");
+  const [subPhone, setSubPhone] = useState("");
+  const [subSubmitting, setSubSubmitting] = useState(false);
+  const [subSuccess, setSubSuccess] = useState(false);
   const { toast } = useToast();
   const { user, isLoading: authLoading, isAuthenticated: isLoggedIn } = useAuth();
 
@@ -315,145 +311,54 @@ export default function LandingPage() {
     return () => { document.title = "AI Powered Sites"; };
   }, []);
 
-  const auditStages = [
-    { pct: 4, label: "Connecting to website..." },
-    { pct: 9, label: "Fetching page content..." },
-    { pct: 14, label: "Analyzing page structure..." },
-    { pct: 19, label: "Checking title tags & meta data..." },
-    { pct: 24, label: "Scanning structured data (JSON-LD)..." },
-    { pct: 29, label: "Evaluating heading hierarchy..." },
-    { pct: 34, label: "Measuring server response time..." },
-    { pct: 39, label: "Checking image optimization..." },
-    { pct: 44, label: "Testing mobile responsiveness..." },
-    { pct: 49, label: "Inspecting security headers..." },
-    { pct: 54, label: "Auditing accessibility (ARIA, alt text)..." },
-    { pct: 59, label: "Reviewing Open Graph & social tags..." },
-    { pct: 64, label: "Analyzing content quality & readability..." },
-    { pct: 69, label: "Running keyword analysis..." },
-    { pct: 74, label: "Extracting keyword density..." },
-    { pct: 79, label: "Generating keyword recommendations..." },
-    { pct: 84, label: "Analyzing backlink profile..." },
-    { pct: 88, label: "Evaluating link structure..." },
-    { pct: 92, label: "Compiling priority recommendations..." },
-    { pct: 95, label: "Building your PDF report..." },
-    { pct: 98, label: "Finalizing results..." },
-  ];
+  const formatSubPhone = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  };
 
-  const runAudit = useMutation({
-    mutationFn: async () => {
-      setAuditLoading(true);
-      setAuditProgress(0);
-      setAuditStage("Initializing audit...");
-      setAuditResult(null);
-
-      const fetchPromise = fetch("/api/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: auditUrl }),
-      });
-
-      let stageIndex = 0;
-      const minDuration = 8000;
-      const stageInterval = minDuration / auditStages.length;
-
-      const progressPromise = new Promise<void>((resolve) => {
-        const tick = () => {
-          if (stageIndex < auditStages.length) {
-            setAuditProgress(auditStages[stageIndex].pct);
-            setAuditStage(auditStages[stageIndex].label);
-            stageIndex++;
-            setTimeout(tick, stageInterval + Math.random() * 200);
-          } else {
-            resolve();
-          }
-        };
-        setTimeout(tick, 300);
-      });
-
-      const [res] = await Promise.all([fetchPromise, progressPromise]);
-
-      setAuditProgress(100);
-      setAuditStage("Audit complete!");
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to audit website");
-      }
-
-      await new Promise(r => setTimeout(r, 600));
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setAuditLoading(false);
-      setAuditResult(data);
-      setEmailDialogOpen(true);
-      setTimeout(() => {
-        document.getElementById("audit-results")?.scrollIntoView({ behavior: "smooth" });
-      }, 300);
-    },
-    onError: (err: any) => {
-      setAuditLoading(false);
-      setAuditProgress(0);
-      toast({ title: "Audit failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const sendReport = async () => {
-    if (!auditEmail.trim() || !auditResult) return;
-    setSendingEmail(true);
+  const handleSubscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subFirstName.trim()) {
+      toast({ title: "First name required", variant: "destructive" });
+      return;
+    }
+    if (!subEmail.trim() || !/\S+@\S+\.\S+/.test(subEmail)) {
+      toast({ title: "Valid email required", variant: "destructive" });
+      return;
+    }
+    const digits = subPhone.replace(/\D/g, "");
+    if (digits.length < 10) {
+      toast({ title: "Valid 10-digit phone number required", variant: "destructive" });
+      return;
+    }
+    setSubSubmitting(true);
     try {
-      const res = await fetch("/api/audit/send-report", {
+      const phoneFormatted = `+1${digits}`;
+      const res = await fetch("/api/public/sms/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: auditEmail, auditData: auditResult }),
+        body: JSON.stringify({
+          firstName: subFirstName.trim(),
+          lastName: "",
+          phone: phoneFormatted,
+          email: subEmail.trim(),
+          consentGiven: true,
+        }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Failed to send report" }));
-        throw new Error(err.message || "Failed to send report");
+        toast({ title: data.error || "Something went wrong", variant: "destructive" });
+        return;
       }
-      toast({ title: "Report sent!", description: "Check your email for the full PDF report." });
-      setEmailDialogOpen(false);
-    } catch (err: any) {
-      toast({ title: "Send failed", description: err.message || "Could not send the report. You can still download it below.", variant: "destructive" });
+      setSubSuccess(true);
+      toast({ title: "You're subscribed!", description: "You'll receive updates from AI Powered Sites." });
+    } catch {
+      toast({ title: "Network error", description: "Please try again.", variant: "destructive" });
     } finally {
-      setSendingEmail(false);
+      setSubSubmitting(false);
     }
-  };
-
-  const downloadPdf = () => {
-    if (!auditResult?.pdfBase64) return;
-    const byteCharacters = atob(auditResult.pdfBase64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'website-audit-report.pdf';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const toggleCategory = (name: string) => {
-    setExpandedCategories(prev => ({ ...prev, [name]: !prev[name] }));
-  };
-
-  const categoryIcon = (iconName: string) => {
-    const icons: Record<string, any> = {
-      search: Search, zap: Zap, smartphone: Smartphone,
-      shield: Shield, eye: Eye, share2: Share2, fileText: FileText,
-    };
-    const Icon = icons[iconName] || BarChart3;
-    return <Icon className="w-4 h-4" />;
-  };
-
-  const statusBadge = (status: string) => {
-    if (status === 'pass') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"><CheckCircle2 className="w-3 h-3" /> Pass</span>;
-    if (status === 'warning') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">! Warning</span>;
-    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-500/15 text-red-400 border border-red-500/20"><X className="w-3 h-3" /> Fail</span>;
   };
 
   const startConversation = useMutation({
@@ -608,81 +513,92 @@ export default function LandingPage() {
               Custom websites, apps, and portals — powered by AI, built for growth. No templates. No compromises.
             </p>
 
-            <div className="max-w-2xl mx-auto mb-8" data-testid="audit-form">
-              <p className="text-sm font-medium text-white/70 mb-4 max-w-md mx-auto leading-relaxed">
-                Free instant website audit — SEO, speed, mobile, security & more with a detailed PDF report.
-              </p>
-              <div className="relative group">
-                <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-blue-500/20 via-violet-500/15 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-all duration-700" />
-                <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-b from-white/[0.08] to-white/[0.02]" />
-                <div className="relative bg-[#0c1121]/95 backdrop-blur-xl rounded-2xl border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.03),inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div className="flex items-center h-[56px]">
-                    <div className="flex items-center gap-3 pl-5 pr-3 flex-1 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/15 to-violet-500/10 border border-white/[0.06] flex items-center justify-center shrink-0">
-                        <Globe className="w-4 h-4 text-blue-400" />
-                      </div>
-                      <input
-                        placeholder="example.com"
-                        value={auditUrl}
-                        onChange={(e) => setAuditUrl(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && auditUrl.trim() && !runAudit.isPending) runAudit.mutate(); }}
-                        className="w-full bg-transparent text-white text-[15px] font-light tracking-wide placeholder:text-white/20 outline-none min-w-0"
-                        data-testid="input-audit-url"
-                      />
-                    </div>
-                    <button
-                      onClick={() => runAudit.mutate()}
-                      disabled={!auditUrl.trim() || runAudit.isPending}
-                      className="flex items-center justify-center gap-2 px-7 h-[40px] mx-2 bg-gradient-to-r from-blue-500 to-violet-500 text-white text-sm font-semibold rounded-xl transition-all duration-300 shrink-0 hover:from-blue-400 hover:to-violet-400 hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
-                      data-testid="button-audit-submit"
-                    >
-                      {runAudit.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <><Search className="w-3.5 h-3.5" /><span className="hidden sm:inline">Audit</span><ArrowRight className="w-3.5 h-3.5 sm:hidden" /></>
-                      )}
-                    </button>
+            <div className="max-w-xl mx-auto mb-8" data-testid="subscribe-form-hero">
+              {subSuccess ? (
+                <div className="relative bg-[#0c1121]/95 backdrop-blur-xl rounded-2xl border border-emerald-500/20 p-6 text-center shadow-[0_8px_40px_rgba(0,0,0,0.5)]">
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                    <CheckCircle2 className="w-7 h-7 text-white" />
                   </div>
+                  <h3 className="text-lg font-bold text-white mb-1">You're In!</h3>
+                  <p className="text-sm text-white/50">Thanks {subFirstName}! You'll receive updates, tips, and exclusive offers.</p>
                 </div>
-              </div>
-              {!auditLoading && (
-                <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 mt-4">
-                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />SEO & Keywords</span>
-                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />Speed & Performance</span>
-                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />Mobile & Security</span>
-                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-white/70"><CheckCircle2 className="w-3 h-3 text-emerald-400" />Free PDF Report</span>
-                </div>
+              ) : (
+                <form onSubmit={handleSubscribe}>
+                  <div className="relative group">
+                    <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-blue-500/20 via-violet-500/15 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-all duration-700" />
+                    <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-b from-white/[0.08] to-white/[0.02]" />
+                    <div className="relative bg-[#0c1121]/95 backdrop-blur-xl rounded-2xl border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.03),inset_0_1px_0_rgba(255,255,255,0.04)] p-5 sm:p-6">
+                      <p className="text-sm font-medium text-white/70 mb-4 text-center">
+                        Get exclusive tips, project updates & offers — straight to your phone.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                        <div className="relative">
+                          <input
+                            placeholder="First Name"
+                            value={subFirstName}
+                            onChange={(e) => setSubFirstName(e.target.value)}
+                            className="w-full h-11 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm pl-10 pr-3 placeholder:text-white/25 outline-none focus:border-blue-500/40 transition-colors"
+                            data-testid="input-hero-firstname"
+                          />
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25">
+                            <Sparkles className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <input
+                            placeholder="Email"
+                            type="email"
+                            value={subEmail}
+                            onChange={(e) => setSubEmail(e.target.value)}
+                            className="w-full h-11 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm pl-10 pr-3 placeholder:text-white/25 outline-none focus:border-blue-500/40 transition-colors"
+                            data-testid="input-hero-email"
+                          />
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25">
+                            <Mail className="w-4 h-4" />
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <input
+                            placeholder="(555) 123-4567"
+                            type="tel"
+                            value={subPhone}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, "").slice(0, 10);
+                              setSubPhone(formatSubPhone(raw));
+                            }}
+                            className="w-full h-11 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm pl-10 pr-3 placeholder:text-white/25 outline-none focus:border-blue-500/40 transition-colors"
+                            data-testid="input-hero-phone"
+                          />
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25">
+                            <Phone className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={subSubmitting}
+                        className="w-full flex items-center justify-center gap-2 h-11 bg-gradient-to-r from-blue-500 to-violet-500 text-white text-sm font-semibold rounded-xl transition-all duration-300 hover:from-blue-400 hover:to-violet-400 hover:shadow-[0_0_24px_rgba(99,102,241,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid="button-hero-subscribe"
+                      >
+                        {subSubmitting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            Get Updates
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-white/25 text-center mt-3 max-w-md mx-auto leading-relaxed px-2">
+                    By subscribing, you agree to receive SMS & email updates from AI Powered Sites. Msg & data rates may apply. Reply STOP to unsubscribe anytime. View our{" "}
+                    <a href="/privacy" className="text-white/40 underline underline-offset-2 hover:text-white/60">Privacy Policy</a>{" "}and{" "}
+                    <a href="/terms" className="text-white/40 underline underline-offset-2 hover:text-white/60">Terms</a>.
+                  </p>
+                </form>
               )}
             </div>
-
-            {auditLoading && (
-              <div className="max-w-2xl mx-auto mb-8 mt-4" data-testid="audit-progress">
-                <div className="relative p-[1px] rounded-xl bg-gradient-to-r from-blue-500/30 via-violet-500/30 to-blue-500/30">
-                  <div className="bg-[#0a0f1e] rounded-xl px-6 py-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                        <span className="text-sm text-white/70 font-medium">{auditStage}</span>
-                      </div>
-                      <span className="text-sm font-bold text-blue-400">{auditProgress}%</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-white/[0.06] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-blue-500 via-violet-500 to-blue-400 transition-all duration-500 ease-out"
-                        style={{ width: `${auditProgress}%` }}
-                      />
-                    </div>
-                    <div className="mt-3 flex items-center justify-center gap-4 text-[11px] text-white/30">
-                      <span>7 categories</span>
-                      <span className="w-1 h-1 rounded-full bg-white/20" />
-                      <span>50+ checks</span>
-                      <span className="w-1 h-1 rounded-full bg-white/20" />
-                      <span>Full PDF report</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
               <Button
@@ -700,203 +616,6 @@ export default function LandingPage() {
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0a0f] to-transparent" />
       </section>
 
-      {auditResult && (
-        <section id="audit-results" className="relative py-12 sm:py-20 border-t border-white/5">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-8 sm:mb-12">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 mb-4">
-                <BarChart3 className="w-4 h-4 text-blue-400" />
-                <span className="text-sm text-white/70">Audit Results</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3" data-testid="text-audit-results-title">
-                Your Website{" "}
-                <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">Score</span>
-              </h2>
-              <p className="text-white/40 text-sm max-w-lg mx-auto truncate">{auditResult.url}</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              <div className="sm:col-span-1 flex flex-col items-center justify-center p-6 rounded-xl border border-white/5 bg-white/[0.02]">
-                <div className={`w-20 h-20 rounded-xl flex items-center justify-center text-3xl font-bold text-white mb-2 ${
-                  auditResult.overallScore >= 75 ? 'bg-emerald-500/20 border border-emerald-500/30' :
-                  auditResult.overallScore >= 50 ? 'bg-yellow-500/20 border border-yellow-500/30' :
-                  'bg-red-500/20 border border-red-500/30'
-                }`} data-testid="text-audit-grade">
-                  {auditResult.grade}
-                </div>
-                <div className="text-2xl font-bold text-white" data-testid="text-audit-score">{auditResult.overallScore}<span className="text-sm text-white/40">/100</span></div>
-                {auditResult.gradeLabel && (
-                  <div className={`text-xs font-medium mt-1 ${
-                    auditResult.overallScore >= 75 ? 'text-emerald-400' : auditResult.overallScore >= 50 ? 'text-yellow-400' : 'text-red-400'
-                  }`}>{auditResult.gradeLabel}</div>
-                )}
-              </div>
-              <div className="sm:col-span-2 p-5 rounded-xl border border-white/5 bg-white/[0.02]">
-                <p className="text-sm text-white/60 leading-relaxed mb-3" data-testid="text-audit-summary">{auditResult.summary}</p>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <Button onClick={downloadPdf} size="sm" className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white text-xs" data-testid="button-download-pdf">
-                    <FileDown className="w-3.5 h-3.5 mr-1.5" />
-                    Download PDF Report
-                  </Button>
-                  <Button onClick={() => setEmailDialogOpen(true)} size="sm" variant="outline" className="border-white/15 text-white/80 bg-white/5 text-xs" data-testid="button-email-report">
-                    <Mail className="w-3.5 h-3.5 mr-1.5" />
-                    Email Report
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-8">
-              {auditResult.categories.map((cat: any) => {
-                const pct = Math.round((cat.score / cat.maxScore) * 100);
-                return (
-                  <button
-                    key={cat.name}
-                    onClick={() => toggleCategory(cat.name)}
-                    className={`p-3 rounded-lg border text-center transition-all ${
-                      expandedCategories[cat.name]
-                        ? 'border-blue-500/40 bg-blue-500/10'
-                        : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04]'
-                    }`}
-                    data-testid={`button-audit-category-${cat.name.toLowerCase().replace(/\s/g, '-')}`}
-                  >
-                    <div className={`text-lg font-bold mb-0.5 ${
-                      pct >= 75 ? 'text-emerald-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>{pct}%</div>
-                    <div className="text-[10px] text-white/50 leading-tight">{cat.name}</div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="space-y-3">
-              {auditResult.categories.map((cat: any) => {
-                const pct = Math.round((cat.score / cat.maxScore) * 100);
-                const isExpanded = expandedCategories[cat.name] !== false;
-                return (
-                  <div key={cat.name} className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden" data-testid={`audit-category-${cat.name.toLowerCase().replace(/\s/g, '-')}`}>
-                    <button
-                      onClick={() => toggleCategory(cat.name)}
-                      className="w-full flex items-center justify-between p-4 sm:p-5 hover:bg-white/[0.02] transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                          pct >= 75 ? 'bg-emerald-500/15 text-emerald-400' :
-                          pct >= 50 ? 'bg-yellow-500/15 text-yellow-400' :
-                          'bg-red-500/15 text-red-400'
-                        }`}>
-                          {categoryIcon(cat.icon)}
-                        </div>
-                        <span className="font-medium text-sm text-white/90">{cat.name}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 sm:w-32 h-1.5 rounded-full bg-white/5 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                pct >= 75 ? 'bg-emerald-400' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400'
-                              }`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className={`text-xs font-semibold min-w-[32px] text-right ${
-                            pct >= 75 ? 'text-emerald-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400'
-                          }`}>{pct}%</span>
-                        </div>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-white/30" /> : <ChevronDown className="w-4 h-4 text-white/30" />}
-                      </div>
-                    </button>
-                    {isExpanded && (
-                      <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-2.5 border-t border-white/5 pt-3">
-                        {cat.items.map((item: any, j: number) => (
-                          <div key={j} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 p-3 rounded-lg bg-white/[0.02]">
-                            <div className="shrink-0">{statusBadge(item.status)}</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium text-white/80 mb-0.5">{item.label}</div>
-                              <div className="text-[11px] text-white/40 break-words">{item.detail}</div>
-                              {item.recommendation && item.status !== 'pass' && (
-                                <div className="text-[11px] text-blue-400/70 mt-1 flex items-start gap-1">
-                                  <ArrowRight className="w-3 h-3 mt-0.5 shrink-0" />
-                                  <span>{item.recommendation}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-8 relative overflow-hidden rounded-2xl border border-blue-500/20" data-testid="audit-cta-banner">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-violet-600/15 to-blue-600/10" />
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-violet-500" />
-              <div className="relative p-6 sm:p-8 text-center">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 mb-4">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-300" />
-                  <span className="text-xs font-semibold text-blue-300 tracking-wide uppercase">Free Consultation</span>
-                </div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
-                  Get Your Free Website Strategy Session
-                </h3>
-                <p className="text-white/50 text-sm sm:text-base max-w-xl mx-auto mb-5 leading-relaxed">
-                  {auditResult.overallScore < 60
-                    ? `Your site is losing visitors and revenue. We'll show you exactly how to fix these issues and start growing your business online — at no cost.`
-                    : auditResult.overallScore < 80
-                    ? `Your site has real potential. Let us show you the quick wins that could boost your traffic by 50% or more — completely free.`
-                    : `Your site is performing well! Let's fine-tune it to unlock even more traffic and conversions — on us.`
-                  }
-                </p>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-5">
-                  <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>100% free, no strings attached</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Custom growth plan for your business</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>See results within days</span>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => setChatOpen(true)}
-                  size="lg"
-                  className="bg-gradient-to-r from-blue-500 to-violet-600 border-0 text-white font-semibold px-8 shadow-[0_0_24px_rgba(99,102,241,0.4)] hover:shadow-[0_0_32px_rgba(99,102,241,0.6)] hover:brightness-110 transition-all"
-                  data-testid="button-audit-free-consult"
-                >
-                  <Rocket className="w-4 h-4 mr-2" />
-                  Claim Your Free Consultation
-                </Button>
-                <p className="text-[11px] text-white/25 mt-3">
-                  Limited availability · Respond within 24 hours
-                </p>
-              </div>
-            </div>
-
-            {auditResult.topRecommendations?.length > 0 && (
-              <div className="mt-6 p-5 sm:p-6 rounded-xl border border-white/5 bg-white/[0.02]">
-                <h3 className="text-sm font-semibold text-white/90 mb-4 flex items-center gap-2">
-                  <Rocket className="w-4 h-4 text-blue-400" />
-                  Top Recommendations
-                </h3>
-                <div className="space-y-2.5">
-                  {auditResult.topRecommendations.slice(0, 6).map((rec: string, i: number) => (
-                    <div key={i} className="flex items-start gap-2.5 text-xs text-white/60 leading-relaxed">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center text-[10px] font-bold mt-0.5">{i + 1}</span>
-                      <span>{rec}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       <section id="stats" className="relative py-12 sm:py-20 border-y border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -1337,64 +1056,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-
-      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
-        <DialogContent className="sm:max-w-md bg-[#12121a] border-white/10 text-white">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Mail className="w-5 h-5 text-violet-400" />
-              Get Your Full Report
-            </DialogTitle>
-            <DialogDescription className="text-white/50">
-              Enter your email to receive the detailed PDF report with all recommendations.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="text-center">
-              <div className="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
-                <span className="text-2xl font-bold" style={{ color: auditResult?.overallScore >= 75 ? '#22c55e' : auditResult?.overallScore >= 50 ? '#eab308' : '#ef4444' }}>
-                  {auditResult?.grade}
-                </span>
-                <span className="text-white/50 text-sm">{auditResult?.overallScore}/100</span>
-              </div>
-            </div>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-violet-400" />
-              <input
-                type="email"
-                placeholder="your@email.com"
-                value={auditEmail}
-                onChange={(e) => setAuditEmail(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && auditEmail.trim()) sendReport(); }}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white text-sm placeholder:text-white/25 outline-none focus:border-violet-500/50 transition-colors"
-                data-testid="input-audit-email-dialog"
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={sendReport}
-                disabled={!auditEmail.trim() || sendingEmail}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-500 disabled:from-blue-600 disabled:to-violet-600 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all"
-                data-testid="button-send-report"
-              >
-                {sendingEmail ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {sendingEmail ? "Sending..." : "Email My Report"}
-              </button>
-              <button
-                onClick={() => { downloadPdf(); setEmailDialogOpen(false); }}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white/5 border border-white/10 text-white text-sm rounded-lg hover:bg-white/10 transition-colors"
-                data-testid="button-download-report-dialog"
-              >
-                <FileDown className="w-4 h-4" />
-                Download
-              </button>
-            </div>
-            <p className="text-[11px] text-white/30 text-center">
-              We'll include actionable tips to improve your score
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={chatOpen} onOpenChange={setChatOpen}>
         <DialogContent className="sm:max-w-lg bg-[#12121a] border-white/10 text-white">
