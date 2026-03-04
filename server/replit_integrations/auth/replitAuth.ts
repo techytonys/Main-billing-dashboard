@@ -34,7 +34,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: !isSelfHosted(),
+      secure: "auto" as any,
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
   });
@@ -61,8 +62,36 @@ async function upsertUser(claims: any) {
   });
 }
 
-function isSelfHosted(): boolean {
-  return !!process.env.ADMIN_PASSWORD && !process.env.REPL_ID;
+function hasReplitOidc(): boolean {
+  return !!process.env.REPL_ID;
+}
+
+function loginAdmin(req: any, res: any, adminEmail: string) {
+  const adminId = "admin-local";
+  authStorage.upsertUser({
+    id: adminId,
+    email: adminEmail,
+    firstName: "Anthony",
+    lastName: "Jackson",
+    profileImageUrl: null,
+  }).then(() => {
+    const user: any = {
+      claims: {
+        sub: adminId,
+        email: adminEmail,
+        username: adminEmail.split("@")[0],
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+      },
+      expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+    };
+
+    req.login(user, (err: any) => {
+      if (err) return res.status(500).json({ message: "Login failed" });
+      return res.json({ message: "ok", redirect: "/admin" });
+    });
+  }).catch(() => {
+    res.status(500).json({ message: "Login failed" });
+  });
 }
 
 export async function setupAuth(app: Express) {
@@ -87,106 +116,97 @@ export async function setupAuth(app: Express) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const adminId = "admin-local";
-    await authStorage.upsertUser({
-      id: adminId,
-      email: adminEmail,
-      firstName: "Anthony",
-      lastName: "Jackson",
-      profileImageUrl: null,
-    });
+    loginAdmin(req, res, adminEmail);
+  });
 
-    const user: any = {
-      claims: {
-        sub: adminId,
-        email: adminEmail,
-        username: adminEmail.split("@")[0],
-        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
-      },
-      expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
-    };
-
-    req.login(user, (err) => {
-      if (err) return res.status(500).json({ message: "Login failed" });
-      return res.json({ message: "ok", redirect: "/admin" });
+  app.get("/api/logout", (req, res) => {
+    const hasOidc = hasReplitOidc();
+    req.logout(async () => {
+      if (hasOidc) {
+        try {
+          const config = await getOidcConfig();
+          return res.redirect(
+            client.buildEndSessionUrl(config, {
+              client_id: process.env.REPL_ID!,
+              post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+            }).href
+          );
+        } catch {
+          return res.redirect("/");
+        }
+      }
+      res.redirect("/");
     });
   });
 
-  if (isSelfHosted()) {
-    console.log("[Auth] Self-hosted mode: using email/password login");
+  if (!hasReplitOidc()) {
+    console.log("[Auth] Email/password login only (no Replit OIDC)");
 
     app.get("/api/login", (_req, res) => {
       res.redirect("/login");
     });
 
-    app.get("/api/logout", (req, res) => {
-      req.logout(() => {
-        res.redirect("/");
-      });
-    });
-
     return;
   }
 
-  const config = await getOidcConfig();
+  console.log("[Auth] Email/password + Replit OIDC login both available");
 
-  const verify: VerifyFunction = async (
-    tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
-    verified: passport.AuthenticateCallback
-  ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    const claims = tokens.claims() as any;
-    console.log("[Auth] Login claims:", JSON.stringify(claims, null, 2));
-    await upsertUser(claims);
-    verified(null, user);
-  };
+  try {
+    const config = await getOidcConfig();
 
-  const registeredStrategies = new Set<string>();
+    const verify: VerifyFunction = async (
+      tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
+      verified: passport.AuthenticateCallback
+    ) => {
+      const user = {};
+      updateUserSession(user, tokens);
+      const claims = tokens.claims() as any;
+      console.log("[Auth] Login claims:", JSON.stringify(claims, null, 2));
+      await upsertUser(claims);
+      verified(null, user);
+    };
 
-  const ensureStrategy = (domain: string) => {
-    const strategyName = `replitauth:${domain}`;
-    if (!registeredStrategies.has(strategyName)) {
-      const strategy = new Strategy(
-        {
-          name: strategyName,
-          config,
-          scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
-        },
-        verify
-      );
-      passport.use(strategy);
-      registeredStrategies.add(strategyName);
-    }
-  };
+    const registeredStrategies = new Set<string>();
 
-  app.get("/api/login", (req, res, next) => {
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
-  });
+    const ensureStrategy = (domain: string) => {
+      const strategyName = `replitauth:${domain}`;
+      if (!registeredStrategies.has(strategyName)) {
+        const strategy = new Strategy(
+          {
+            name: strategyName,
+            config,
+            scope: "openid email profile offline_access",
+            callbackURL: `https://${domain}/api/callback`,
+          },
+          verify
+        );
+        passport.use(strategy);
+        registeredStrategies.add(strategyName);
+      }
+    };
 
-  app.get("/api/callback", (req, res, next) => {
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/admin",
-      failureRedirect: "/api/login",
-    })(req, res, next);
-  });
-
-  app.get("/api/logout", (req, res) => {
-    req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-        }).href
-      );
+    app.get("/api/login", (req, res, next) => {
+      ensureStrategy(req.hostname);
+      passport.authenticate(`replitauth:${req.hostname}`, {
+        prompt: "login consent",
+        scope: ["openid", "email", "profile", "offline_access"],
+      })(req, res, next);
     });
-  });
+
+    app.get("/api/callback", (req, res, next) => {
+      ensureStrategy(req.hostname);
+      passport.authenticate(`replitauth:${req.hostname}`, {
+        successReturnToOrRedirect: "/admin",
+        failureRedirect: "/api/login",
+      })(req, res, next);
+    });
+  } catch (err) {
+    console.log("[Auth] OIDC setup failed, email/password login still works:", err);
+
+    app.get("/api/login", (_req, res) => {
+      res.redirect("/login");
+    });
+  }
 }
 
 const ADMIN_IDENTIFIERS = new Set([
@@ -221,7 +241,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return next();
   }
 
-  if (isSelfHosted()) {
+  if (!hasReplitOidc()) {
     return res.status(401).json({ message: "Session expired" });
   }
 
