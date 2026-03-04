@@ -74,46 +74,46 @@ export async function setupAuth(app: Express) {
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
+  app.post("/api/login", async (req, res) => {
+    const { email, password } = req.body || {};
+    const adminEmail = process.env.ADMIN_EMAIL || "anthonyjacksonverizon@gmail.com";
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminPassword) {
+      return res.status(500).json({ message: "ADMIN_PASSWORD not configured" });
+    }
+
+    if (email !== adminEmail || password !== adminPassword) {
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    const adminId = "admin-local";
+    await authStorage.upsertUser({
+      id: adminId,
+      email: adminEmail,
+      firstName: "Anthony",
+      lastName: "Jackson",
+      profileImageUrl: null,
+    });
+
+    const user: any = {
+      claims: {
+        sub: adminId,
+        email: adminEmail,
+        username: adminEmail.split("@")[0],
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+      },
+      expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+    };
+
+    req.login(user, (err) => {
+      if (err) return res.status(500).json({ message: "Login failed" });
+      return res.json({ message: "ok", redirect: "/admin" });
+    });
+  });
+
   if (isSelfHosted()) {
     console.log("[Auth] Self-hosted mode: using email/password login");
-
-    app.post("/api/login", async (req, res) => {
-      const { email, password } = req.body || {};
-      const adminEmail = process.env.ADMIN_EMAIL || "anthonyjacksonverizon@gmail.com";
-      const adminPassword = process.env.ADMIN_PASSWORD;
-
-      if (!adminPassword) {
-        return res.status(500).json({ message: "ADMIN_PASSWORD not configured" });
-      }
-
-      if (email !== adminEmail || password !== adminPassword) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-
-      const adminId = "admin-local";
-      await authStorage.upsertUser({
-        id: adminId,
-        email: adminEmail,
-        firstName: "Anthony",
-        lastName: "Jackson",
-        profileImageUrl: null,
-      });
-
-      const user: any = {
-        claims: {
-          sub: adminId,
-          email: adminEmail,
-          username: adminEmail.split("@")[0],
-          exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
-        },
-        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
-      };
-
-      req.login(user, (err) => {
-        if (err) return res.status(500).json({ message: "Login failed" });
-        return res.json({ message: "ok", redirect: "/admin" });
-      });
-    });
 
     app.get("/api/login", (_req, res) => {
       res.redirect("/login");
