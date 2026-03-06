@@ -51,6 +51,8 @@ import CommunityAccount from "@/pages/community-account";
 import CommunityResetPassword from "@/pages/community-reset-password";
 import SmsMessaging from "@/pages/sms-messaging";
 import SmsSubscribe from "@/pages/sms-subscribe";
+import DirectorySubmissions from "@/pages/directory-submissions";
+import ContentCreator from "@/pages/content-creator";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import TermsOfService from "@/pages/terms-of-service";
 import LoginPage from "@/pages/login";
@@ -79,6 +81,8 @@ function DashboardRouter() {
       <Route path="/admin/knowledge-base" component={KnowledgeBase} />
       <Route path="/admin/licenses" component={Licenses} />
       <Route path="/admin/sms" component={SmsMessaging} />
+      <Route path="/admin/directories" component={DirectorySubmissions} />
+      <Route path="/admin/content-creator" component={ContentCreator} />
       <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />

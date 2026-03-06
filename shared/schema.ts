@@ -1007,4 +1007,20 @@ export const insertSmsMessageSchema = createInsertSchema(smsMessages).omit({ id:
 export type SmsMessage = typeof smsMessages.$inferSelect;
 export type InsertSmsMessage = z.infer<typeof insertSmsMessageSchema>;
 
+export const directorySubmissions = pgTable("directory_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  directoryName: text("directory_name").notNull(),
+  directoryUrl: text("directory_url").notNull(),
+  category: text("category").notNull(),
+  status: text("status").default("pending"),
+  submittedAt: timestamp("submitted_at"),
+  notes: text("notes"),
+  confirmationUrl: text("confirmation_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDirectorySubmissionSchema = createInsertSchema(directorySubmissions).omit({ id: true, createdAt: true });
+export type DirectorySubmission = typeof directorySubmissions.$inferSelect;
+export type InsertDirectorySubmission = z.infer<typeof insertDirectorySubmissionSchema>;
+
 

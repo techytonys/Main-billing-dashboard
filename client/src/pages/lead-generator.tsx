@@ -46,6 +46,12 @@ import {
   Sparkles,
   Eye,
   CheckCircle,
+  Send,
+  AlertTriangle,
+  Zap,
+  Copy,
+  Check,
+  FileText,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
 
@@ -68,6 +74,28 @@ const BUSINESS_TYPES = [
   { value: "photographer", label: "Photographers" },
   { value: "cleaning service", label: "Cleaning Services" },
   { value: "landscaping", label: "Landscaping" },
+  { value: "roofing", label: "Roofing" },
+  { value: "hvac", label: "HVAC" },
+  { value: "electrician", label: "Electricians" },
+  { value: "pest control", label: "Pest Control" },
+  { value: "moving company", label: "Moving Companies" },
+  { value: "daycare", label: "Daycare / Childcare" },
+  { value: "pet grooming", label: "Pet Grooming" },
+  { value: "tattoo shop", label: "Tattoo Shops" },
+  { value: "barber shop", label: "Barber Shops" },
+  { value: "nail salon", label: "Nail Salons" },
+  { value: "car wash", label: "Car Wash" },
+  { value: "towing service", label: "Towing" },
+  { value: "massage therapy", label: "Massage Therapy" },
+  { value: "tutoring", label: "Tutoring" },
+  { value: "notary", label: "Notary Services" },
+  { value: "pressure washing", label: "Pressure Washing" },
+  { value: "junk removal", label: "Junk Removal" },
+  { value: "handyman", label: "Handyman" },
+  { value: "locksmith", label: "Locksmith" },
+  { value: "food truck", label: "Food Trucks" },
+  { value: "church", label: "Churches" },
+  { value: "nonprofit", label: "Nonprofits" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -85,6 +113,79 @@ const STATUS_LABELS: Record<string, string> = {
   not_interested: "Not Interested",
   converted: "Converted",
 };
+
+const EMAIL_TEMPLATES = [
+  {
+    id: "cold-intro",
+    name: "Cold Introduction",
+    subject: "Quick question about {{businessName}}'s online presence",
+    body: `Hi there,
+
+I came across {{businessName}} while researching businesses in your area, and I noticed {{noWebsite ? "you don't currently have a website" : "there might be some opportunities to improve your online presence"}}.
+
+I help local businesses like yours get found on Google and turn visitors into customers. {{noWebsite ? "Having a professional website is one of the biggest factors in whether new customers find you or your competitors." : "Small changes to your website can make a big difference in how many customers find you."}}
+
+Would you be open to a quick 10-minute call this week? No pressure — I'd just like to understand your goals and see if I can help.
+
+Best,
+AI Powered Sites
+https://aipoweredsites.com`,
+  },
+  {
+    id: "audit-followup",
+    name: "Free Audit Offer",
+    subject: "I found some things on {{businessName}}'s website",
+    body: `Hi,
+
+I took a quick look at {{businessName}}'s website and found a few things that might be costing you customers — especially on mobile and in Google search rankings.
+
+I put together a free report that breaks it all down in plain English. No technical jargon, just what's working, what's not, and what would make the biggest impact.
+
+Want me to send it over? It's completely free, no strings attached.
+
+Best,
+AI Powered Sites
+https://aipoweredsites.com`,
+  },
+  {
+    id: "no-website",
+    name: "No Website Pitch",
+    subject: "{{businessName}} — are you losing customers to competitors?",
+    body: `Hi,
+
+I noticed {{businessName}} doesn't have a website yet. In today's market, that means potential customers searching for "{{category}} near me" are finding your competitors instead of you.
+
+Here's what a professional website would do for your business:
+• Show up when people search Google for your services
+• Let customers book, call, or message you 24/7
+• Build trust with reviews, photos, and your story
+• Look professional and stand out from competitors
+
+I build custom websites specifically for {{category}} businesses. I can have one live for you in about a week.
+
+Would you like to see some examples of what I've built for similar businesses? Happy to chat anytime.
+
+Best,
+AI Powered Sites
+https://aipoweredsites.com`,
+  },
+  {
+    id: "followup",
+    name: "Follow-up",
+    subject: "Re: {{businessName}}'s online presence",
+    body: `Hi,
+
+I reached out last week about {{businessName}}'s {{noWebsite ? "online presence" : "website"}} and wanted to follow up in case my message got buried.
+
+I work with local businesses like yours to help them get more customers from Google. {{noWebsite ? "A professional website is the single biggest thing you could do to grow right now." : "Even small improvements to your site could bring in more leads."}}
+
+If now isn't the right time, no worries at all. But if you're curious, I'm happy to show you what I had in mind — it would only take 10 minutes.
+
+Best,
+AI Powered Sites
+https://aipoweredsites.com`,
+  },
+];
 
 interface SearchResult {
   placeId: string;
@@ -130,6 +231,12 @@ interface PlaceDetails {
   googleMapsUrl: string | null;
 }
 
+function fillTemplate(template: string, vars: Record<string, any>): string {
+  return template.replace(/\{\{(\w+)\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"\}\}/g, (_, key, ifTrue, ifFalse) => {
+    return vars[key] ? ifTrue : ifFalse;
+  }).replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] || "");
+}
+
 export default function LeadGenerator() {
   usePageTitle("Lead Generator");
   const { toast } = useToast();
@@ -151,6 +258,14 @@ export default function LeadGenerator() {
   const [findFirstName, setFindFirstName] = useState("");
   const [findLastName, setFindLastName] = useState("");
   const [findEmailResult, setFindEmailResult] = useState<any>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailLead, setEmailLead] = useState<Lead | null>(null);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [showNoWebsiteOnly, setShowNoWebsiteOnly] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
   const { data: savedLeads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
@@ -165,8 +280,11 @@ export default function LeadGenerator() {
     onSuccess: (data) => {
       setSearchResults(data.results || []);
       setHasSearched(true);
+      const noWebsiteCount = (data.results || []).filter((r: SearchResult) => !r.category).length;
       if (data.results?.length === 0) {
         toast({ title: "No results", description: "Try a different search or zip code." });
+      } else {
+        toast({ title: `Found ${data.results.length} businesses` });
       }
     },
     onError: () => {
@@ -219,6 +337,25 @@ export default function LeadGenerator() {
       } else {
         toast({ title: "No email found", description: "Could not find an email for that person.", variant: "destructive" });
       }
+    },
+  });
+
+  const sendEmailMutation = useMutation({
+    mutationFn: async (data: { to: string; subject: string; html: string; leadId?: string }) => {
+      const res = await apiRequest("POST", "/api/leads/send-outreach", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        setEmailDialogOpen(false);
+        toast({ title: "Email sent!", description: `Outreach email sent to ${emailTo}` });
+      } else {
+        toast({ title: "Failed to send", description: data.error || "Email could not be sent", variant: "destructive" });
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to send email", variant: "destructive" });
     },
   });
 
@@ -291,9 +428,53 @@ export default function LeadGenerator() {
     }
   };
 
+  const openEmailDialog = (lead: Lead) => {
+    setEmailLead(lead);
+    const firstEmail = lead.emailGuess?.split(",")[0]?.trim() || "";
+    setEmailTo(firstEmail);
+    setSelectedTemplate("");
+    setEmailSubject("");
+    setEmailBody("");
+    setEmailDialogOpen(true);
+  };
+
+  const applyTemplate = (templateId: string) => {
+    const template = EMAIL_TEMPLATES.find(t => t.id === templateId);
+    if (!template || !emailLead) return;
+    setSelectedTemplate(templateId);
+    const vars = {
+      businessName: emailLead.businessName,
+      category: emailLead.category || "local",
+      noWebsite: !emailLead.website,
+    };
+    setEmailSubject(fillTemplate(template.subject, vars));
+    setEmailBody(fillTemplate(template.body, vars));
+  };
+
+  const handleSendEmail = () => {
+    if (!emailTo || !emailSubject || !emailBody) return;
+    const html = emailBody.split("\n").map(line =>
+      line.trim() === "" ? "<br>" : `<p style="margin:0 0 8px 0;font-family:sans-serif;font-size:15px;color:#333;">${line}</p>`
+    ).join("");
+    sendEmailMutation.mutate({
+      to: emailTo,
+      subject: emailSubject,
+      html,
+      leadId: emailLead?.id,
+    });
+  };
+
+  const copyEmail = (email: string) => {
+    navigator.clipboard.writeText(email);
+    setCopiedEmail(email);
+    setTimeout(() => setCopiedEmail(null), 2000);
+  };
+
   const filteredLeads = statusFilter === "all"
     ? savedLeads
     : savedLeads.filter(l => l.status === statusFilter);
+
+  const noWebsiteLeads = savedLeads.filter(l => !l.website);
 
   const leadStats = {
     total: savedLeads.length,
@@ -301,6 +482,7 @@ export default function LeadGenerator() {
     contacted: savedLeads.filter(l => l.status === "contacted").length,
     interested: savedLeads.filter(l => l.status === "interested").length,
     converted: savedLeads.filter(l => l.status === "converted").length,
+    noWebsite: noWebsiteLeads.length,
   };
 
   return (
@@ -312,7 +494,7 @@ export default function LeadGenerator() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Lead Generator</h1>
-            <p className="text-sm text-muted-foreground">Find local businesses that need a website or upgrade</p>
+            <p className="text-sm text-muted-foreground">Find local businesses, get their emails, and send outreach — all in one place</p>
           </div>
         </div>
       </div>
@@ -430,11 +612,21 @@ export default function LeadGenerator() {
 
           {searchResults.length > 0 && (
             <div>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <h2 className="text-lg font-semibold">{searchResults.length} businesses found</h2>
+                <Button
+                  variant={showNoWebsiteOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowNoWebsiteOnly(!showNoWebsiteOnly)}
+                  className="gap-1.5"
+                  data-testid="button-filter-no-website"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  No Website Only
+                </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {searchResults.map((result) => {
+                {searchResults.filter(() => true).map((result) => {
                   const isSaved = savedLeads.some(l => l.googlePlaceId === result.placeId);
                   return (
                     <Card
@@ -452,14 +644,16 @@ export default function LeadGenerator() {
                             <span className="truncate">{result.address}</span>
                           </div>
                         </div>
-                        {isSaved && (
-                          <Badge variant="secondary" className="ml-2 text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                            Saved
-                          </Badge>
-                        )}
+                        <div className="flex flex-col gap-1 items-end ml-2">
+                          {isSaved && (
+                            <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                              Saved
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center gap-3 mb-4 flex-wrap">
                         {result.rating && (
                           <div className="flex items-center gap-1">
                             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
@@ -512,7 +706,7 @@ export default function LeadGenerator() {
 
       {activeTab === "leads" && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Card className="p-4 text-center cursor-pointer hover:shadow-md transition-all" onClick={() => setStatusFilter("all")} data-testid="stat-total">
               <div className="text-2xl font-bold">{leadStats.total}</div>
               <div className="text-xs text-muted-foreground">Total</div>
@@ -533,7 +727,28 @@ export default function LeadGenerator() {
               <div className="text-2xl font-bold text-violet-500">{leadStats.converted}</div>
               <div className="text-xs text-muted-foreground">Converted</div>
             </Card>
+            <Card className="p-4 text-center cursor-pointer hover:shadow-md transition-all border-orange-500/20" onClick={() => setStatusFilter("all")} data-testid="stat-no-website">
+              <div className="text-2xl font-bold text-orange-500">{leadStats.noWebsite}</div>
+              <div className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                No Website
+              </div>
+            </Card>
           </div>
+
+          {leadStats.noWebsite > 0 && statusFilter === "all" && (
+            <Card className="p-4 border-orange-500/20 bg-orange-500/5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <Zap className="w-5 h-5 text-orange-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold">Hot Leads: {leadStats.noWebsite} businesses without a website</h3>
+                  <p className="text-xs text-muted-foreground">These are your easiest sales — they know they need one. Reach out by phone or send them an email.</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {leadsLoading ? (
             <div className="space-y-3">
@@ -566,8 +781,8 @@ export default function LeadGenerator() {
               {filteredLeads.map(lead => (
                 <Card
                   key={lead.id}
-                  className="p-5 hover:shadow-md transition-all duration-200 border-l-4"
-                  style={{ borderLeftColor: lead.status === "new" ? "#3b82f6" : lead.status === "contacted" ? "#f59e0b" : lead.status === "interested" ? "#10b981" : lead.status === "converted" ? "#8b5cf6" : "#ef4444" }}
+                  className={`p-5 hover:shadow-md transition-all duration-200 border-l-4 ${!lead.website ? "bg-orange-500/5 border-l-orange-500" : ""}`}
+                  style={{ borderLeftColor: !lead.website ? undefined : lead.status === "new" ? "#3b82f6" : lead.status === "contacted" ? "#f59e0b" : lead.status === "interested" ? "#10b981" : lead.status === "converted" ? "#8b5cf6" : "#ef4444" }}
                   data-testid={`card-lead-${lead.id}`}
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -577,6 +792,12 @@ export default function LeadGenerator() {
                         <Badge className={`text-xs ${STATUS_COLORS[lead.status] || ""}`}>
                           {STATUS_LABELS[lead.status] || lead.status}
                         </Badge>
+                        {!lead.website && (
+                          <Badge className="text-xs bg-orange-500/10 text-orange-600 border-orange-500/20 animate-pulse">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            No Website — Hot Lead!
+                          </Badge>
+                        )}
                         {lead.googleRating && (
                           <div className="flex items-center gap-1">
                             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -596,6 +817,9 @@ export default function LeadGenerator() {
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <Phone className="w-3.5 h-3.5 flex-shrink-0" />
                             <a href={`tel:${lead.phone}`} className="hover:text-foreground transition-colors">{lead.phone}</a>
+                            <button onClick={() => copyEmail(lead.phone!)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              {copiedEmail === lead.phone ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                            </button>
                           </div>
                         )}
                         {lead.website && (
@@ -611,6 +835,9 @@ export default function LeadGenerator() {
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <Mail className="w-3.5 h-3.5 flex-shrink-0" />
                             <span className="text-xs truncate" title={lead.emailGuess}>{lead.emailGuess.split(",")[0]}</span>
+                            <button onClick={() => copyEmail(lead.emailGuess!.split(",")[0].trim())} className="hover:text-foreground">
+                              {copiedEmail === lead.emailGuess!.split(",")[0].trim() ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                            </button>
                           </div>
                         )}
                       </div>
@@ -631,6 +858,29 @@ export default function LeadGenerator() {
                     </div>
 
                     <div className="flex flex-col gap-2">
+                      {lead.emailGuess && (
+                        <Button
+                          size="sm"
+                          onClick={() => openEmailDialog(lead)}
+                          className="gap-1.5 bg-gradient-to-r from-blue-500 to-violet-600 text-white text-xs"
+                          data-testid={`button-email-${lead.id}`}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Send Email
+                        </Button>
+                      )}
+                      {!lead.emailGuess && lead.phone && (
+                        <a href={`tel:${lead.phone}`}>
+                          <Button
+                            size="sm"
+                            className="gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs w-full"
+                            data-testid={`button-call-${lead.id}`}
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            Call
+                          </Button>
+                        </a>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -727,9 +977,12 @@ export default function LeadGenerator() {
                   </div>
                 )}
                 {!placeDetails.website && (
-                  <div className="flex items-center gap-3">
-                    <Globe className="w-4 h-4 text-red-400" />
-                    <span className="text-sm text-red-400 font-medium">No website found — great opportunity!</span>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                    <AlertTriangle className="w-5 h-5 text-orange-500" />
+                    <div>
+                      <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">No website — Hot Lead!</span>
+                      <p className="text-xs text-muted-foreground mt-0.5">This business needs a website. Save and contact them ASAP.</p>
+                    </div>
                   </div>
                 )}
                 {placeDetails.scrapedEmails?.length > 0 && (
@@ -1105,6 +1358,93 @@ export default function LeadGenerator() {
                 No email found for {findFirstName} {findLastName} at {placeDetails?.domain}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="w-5 h-5 text-blue-500" />
+              Send Outreach Email
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+              <Building2 className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">{emailLead?.businessName}</span>
+              {emailLead && !emailLead.website && (
+                <Badge className="text-[10px] bg-orange-500/10 text-orange-600 border-orange-500/20">No Website</Badge>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Use Template</label>
+              <Select value={selectedTemplate} onValueChange={applyTemplate}>
+                <SelectTrigger data-testid="select-email-template">
+                  <FileText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                  <SelectValue placeholder="Choose a template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {EMAIL_TEMPLATES.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">To</label>
+              <Input
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="email@example.com"
+                data-testid="input-email-to"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Subject</label>
+              <Input
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Subject line..."
+                data-testid="input-email-subject"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Message</label>
+              <Textarea
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                placeholder="Write your message..."
+                rows={10}
+                className="font-mono text-sm"
+                data-testid="textarea-email-body"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSendEmail}
+                disabled={!emailTo || !emailSubject || !emailBody || sendEmailMutation.isPending}
+                className="flex-1 gap-2 bg-gradient-to-r from-blue-500 to-violet-600 text-white"
+                data-testid="button-send-outreach"
+              >
+                {sendEmailMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</>
+                ) : (
+                  <><Send className="w-4 h-4" /> Send Email</>
+                )}
+              </Button>
+              <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>Cancel</Button>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground text-center">
+              Email will be sent via your configured email service. The lead will automatically be marked as "Contacted."
+            </p>
           </div>
         </DialogContent>
       </Dialog>

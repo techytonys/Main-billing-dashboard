@@ -72,6 +72,8 @@ import {
   type TrackedLinkClick, type InsertTrackedLinkClick,
   dnsZones,
   type DnsZone, type InsertDnsZone,
+  directorySubmissions,
+  type DirectorySubmission, type InsertDirectorySubmission,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -345,6 +347,12 @@ export interface IStorage {
   getAnalyticsEvents(from: Date, to: Date): Promise<AnalyticsEvent[]>;
   getAnalyticsSessions(from: Date, to: Date): Promise<AnalyticsSession[]>;
   getAnalyticsStats(from: Date, to: Date): Promise<any>;
+
+  getDirectorySubmissions(): Promise<DirectorySubmission[]>;
+  getDirectorySubmission(id: string): Promise<DirectorySubmission | undefined>;
+  createDirectorySubmission(sub: InsertDirectorySubmission): Promise<DirectorySubmission>;
+  updateDirectorySubmission(id: string, updates: Partial<InsertDirectorySubmission>): Promise<DirectorySubmission | undefined>;
+  deleteDirectorySubmission(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2346,6 +2354,30 @@ export class DatabaseStorage implements IStorage {
     if (memberships.length === 0) return [];
     const listIds = memberships.map(m => m.listId);
     return db.select().from(smsLists).where(sql`${smsLists.id} IN (${sql.join(listIds.map(id => sql`${id}`), sql`, `)})`);
+  }
+
+  async getDirectorySubmissions(): Promise<DirectorySubmission[]> {
+    return db.select().from(directorySubmissions).orderBy(desc(directorySubmissions.createdAt));
+  }
+
+  async getDirectorySubmission(id: string): Promise<DirectorySubmission | undefined> {
+    const [sub] = await db.select().from(directorySubmissions).where(eq(directorySubmissions.id, id));
+    return sub;
+  }
+
+  async createDirectorySubmission(sub: InsertDirectorySubmission): Promise<DirectorySubmission> {
+    const [created] = await db.insert(directorySubmissions).values(sub).returning();
+    return created;
+  }
+
+  async updateDirectorySubmission(id: string, updates: Partial<InsertDirectorySubmission>): Promise<DirectorySubmission | undefined> {
+    const [updated] = await db.update(directorySubmissions).set(updates).where(eq(directorySubmissions.id, id)).returning();
+    return updated;
+  }
+
+  async deleteDirectorySubmission(id: string): Promise<boolean> {
+    const result = await db.delete(directorySubmissions).where(eq(directorySubmissions.id, id)).returning();
+    return result.length > 0;
   }
 }
 

@@ -3818,6 +3818,139 @@ ${urls}
     }
   });
 
+  app.post("/api/content/generate", isAuthenticated, async (req, res) => {
+    try {
+      const { platform, contentType, topic, tone, includeHashtags, includeEmojis, businessNiche } = req.body;
+      if (!platform || !contentType || !topic) {
+        return res.status(400).json({ error: "Missing platform, contentType, or topic" });
+      }
+
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const charLimits: Record<string, number> = {
+        twitter: 280, instagram: 2200, facebook: 63206, linkedin: 3000,
+        tiktok: 2200, youtube: 5000, pinterest: 500, threads: 500,
+      };
+      const limit = charLimits[platform] || 2000;
+
+      const prompt = `You are a social media content expert for a web design / AI-powered websites business called "AI Powered Sites" (aipoweredsites.com). Generate a ${contentType} for ${platform}.
+
+Topic: ${topic}
+Tone: ${tone || "professional yet approachable"}
+Business niche: ${businessNiche || "web design, AI websites, digital solutions"}
+Character limit: ${limit}
+${includeHashtags ? "Include 5-10 relevant hashtags at the end." : "Do NOT include hashtags."}
+${includeEmojis ? "Use emojis naturally throughout the content." : "Do NOT use emojis."}
+
+${contentType === "reel" || contentType === "short" || contentType === "video" ? `Also include:
+- A hook (first 3 seconds script)
+- Scene-by-scene script (5-8 scenes)
+- On-screen text suggestions
+- Background music mood suggestion
+- Call to action` : ""}
+
+${contentType === "carousel" ? `Also include:
+- Slide-by-slide breakdown (5-10 slides)
+- Text for each slide
+- Image/visual description for each slide
+- Strong opening hook on slide 1
+- CTA on final slide` : ""}
+
+Respond in this exact JSON format:
+{
+  "content": "the main post/caption text",
+  "hook": "attention-grabbing first line (for all content types)",
+  "hashtags": ["hashtag1", "hashtag2"],
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "tips": ["tip 1 for better engagement", "tip 2", "tip 3"],
+  "bestTimeToPost": "recommended posting time",
+  "estimatedReach": "low/medium/high based on content quality",
+  ${(contentType === "reel" || contentType === "short" || contentType === "video") ? '"script": [{"scene": 1, "duration": "3s", "visual": "description", "text": "on-screen text", "narration": "voiceover"}], "musicMood": "mood suggestion",' : ""}
+  ${contentType === "carousel" ? '"slides": [{"number": 1, "headline": "text", "body": "text", "visualDescription": "what to show"}],' : ""}
+  "cta": "call to action text"
+}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.8,
+      });
+
+      const raw = completion.choices[0]?.message?.content || "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        res.json(parsed);
+      } else {
+        res.json({ content: raw, hashtags: [], keywords: [], tips: [], hook: "", cta: "" });
+      }
+    } catch (err: any) {
+      console.error("Content generation error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/content/tips", isAuthenticated, async (req, res) => {
+    try {
+      const { platform, contentType } = req.body;
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `Give me 8 actionable tips for creating high-performing ${contentType || "post"} content on ${platform || "social media"} for a web design business. Each tip should be specific and practical. Respond as a JSON array of strings: ["tip1", "tip2", ...]`
+        }],
+        max_tokens: 800,
+        temperature: 0.7,
+      });
+
+      const raw = completion.choices[0]?.message?.content || "[]";
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      res.json({ tips: jsonMatch ? JSON.parse(jsonMatch[0]) : [] });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/leads/send-outreach", isAuthenticated, async (req, res) => {
+    try {
+      const { to, subject, html, leadId } = req.body;
+      if (!to || !subject || !html) {
+        return res.status(400).json({ error: "Missing to, subject, or html" });
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(to)) {
+        return res.status(400).json({ error: "Invalid email address" });
+      }
+      if (leadId) {
+        const lead = await storage.getLead(leadId);
+        if (!lead) return res.status(404).json({ error: "Lead not found" });
+      }
+      const { sendEmail } = await import("./email");
+      const result = await sendEmail({ to, subject, html });
+      if (result.success && leadId) {
+        await storage.updateLead(leadId, {
+          status: "contacted",
+          lastContactedAt: new Date(),
+          notes: `Outreach email sent to ${to} on ${new Date().toLocaleDateString()}`,
+        });
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/portal/:token/servers", async (req, res) => {
     try {
       const customer = await storage.getCustomerByPortalToken(req.params.token);
@@ -5358,6 +5491,68 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     } catch (err: any) {
       console.error("Invoice generation error:", err.message);
       res.status(500).json({ error: "Failed to generate invoice" });
+    }
+  });
+
+  // ===== Directory Submissions =====
+  app.get("/api/directory-submissions", isAuthenticated, async (req, res) => {
+    try {
+      const submissions = await storage.getDirectorySubmissions();
+      res.json(submissions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/directory-submissions", isAuthenticated, async (req, res) => {
+    try {
+      const submission = await storage.createDirectorySubmission(req.body);
+      res.json(submission);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/directory-submissions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updates = { ...req.body };
+      if (updates.submittedAt) updates.submittedAt = new Date(updates.submittedAt);
+      if (updates.submittedAt === null) updates.submittedAt = null;
+      const updated = await storage.updateDirectorySubmission(req.params.id, updates);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/directory-submissions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteDirectorySubmission(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/directory-submissions/bulk", isAuthenticated, async (req, res) => {
+    try {
+      const { directories } = req.body;
+      if (!Array.isArray(directories)) return res.status(400).json({ error: "directories array required" });
+      const created = [];
+      for (const dir of directories) {
+        const existing = (await storage.getDirectorySubmissions()).find(
+          (s) => s.directoryName === dir.directoryName
+        );
+        if (!existing) {
+          const sub = await storage.createDirectorySubmission(dir);
+          created.push(sub);
+        }
+      }
+      res.json({ created: created.length, submissions: created });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -7583,7 +7778,14 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
 
   app.post("/api/tracked-links", isAuthenticated, async (req, res) => {
     try {
-      const link = await storage.createTrackedLink(req.body);
+      const data = { ...req.body };
+      if (!data.slug) {
+        const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        let slug = "";
+        for (let i = 0; i < 6; i++) slug += chars[Math.floor(Math.random() * chars.length)];
+        data.slug = slug;
+      }
+      const link = await storage.createTrackedLink(data);
       res.json(link);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -7990,8 +8192,8 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
   app.post("/api/public/sms/subscribe", async (req, res) => {
     try {
       const { firstName, lastName, phone, email, company, website, city, state, referralSource, interests, consentGiven } = req.body;
-      if (!firstName || !lastName || !phone) {
-        return res.status(400).json({ error: "First name, last name, and phone number are required" });
+      if (!firstName || !phone) {
+        return res.status(400).json({ error: "First name and phone number are required" });
       }
       if (!consentGiven) {
         return res.status(400).json({ error: "You must consent to receive SMS messages" });
@@ -8013,10 +8215,12 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       const consentText = `I agree to receive recurring SMS messages from AI Powered Sites at the number provided. Message frequency varies. Message and data rates may apply. Reply STOP to opt out. Reply HELP for help. I have read and agree to the Terms of Service and Privacy Policy.`;
       const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
 
+      const cleanFirst = firstName.trim();
+      const cleanLast = (lastName || "").trim();
       const subscriberData: any = {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        name: `${firstName.trim()} ${lastName.trim()}`,
+        firstName: cleanFirst,
+        lastName: cleanLast || undefined,
+        name: cleanLast ? `${cleanFirst} ${cleanLast}` : cleanFirst,
         email: email?.trim() || undefined,
         company: company?.trim() || undefined,
         website: website?.trim() || undefined,
@@ -8043,7 +8247,7 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
       if (email) {
         try {
           const { addNewsletterContact } = await import("./email");
-          await addNewsletterContact({ email: email.trim(), firstName: firstName.trim(), lastName: lastName.trim() });
+          await addNewsletterContact({ email: email.trim(), firstName: cleanFirst, lastName: cleanLast });
         } catch (e) {}
       }
 

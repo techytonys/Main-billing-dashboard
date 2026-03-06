@@ -23,6 +23,7 @@ import {
   Link2,
   MessageSquare,
   Bell,
+  Building2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -57,6 +58,8 @@ const engageItems = [
   { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
   { title: "Link Tracker", url: "/admin/link-tracker", icon: Link2 },
   { title: "SMS", url: "/admin/sms", icon: MessageSquare },
+  { title: "Directories", url: "/admin/directories", icon: Building2 },
+  { title: "Content Creator", url: "/admin/content-creator", icon: Sparkles },
   { title: "Subscribe", url: "/subscribe", icon: Bell },
 ];
 
