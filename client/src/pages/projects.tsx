@@ -432,7 +432,7 @@ function AdminClientFilesSection({ projectId }: { projectId: string }) {
           <span className="text-sm font-semibold">File Sharing</span>
           {files && files.length > 0 && <Badge variant="secondary" className="text-xs">{files.length}</Badge>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
             <SelectTrigger className="h-8 text-xs w-[130px]" data-testid={`select-file-category-${projectId}`}>
               <SelectValue />

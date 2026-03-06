@@ -1025,4 +1025,31 @@ export const insertDirectorySubmissionSchema = createInsertSchema(directorySubmi
 export type DirectorySubmission = typeof directorySubmissions.$inferSelect;
 export type InsertDirectorySubmission = z.infer<typeof insertDirectorySubmissionSchema>;
 
+export const seoKeywords = pgTable("seo_keywords", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  keyword: text("keyword").notNull(),
+  domain: text("domain").default("aipoweredsites.com"),
+  currentPosition: integer("current_position"),
+  previousPosition: integer("previous_position"),
+  positionChange: integer("position_change").default(0),
+  searchVolume: integer("search_volume"),
+  difficulty: text("difficulty"),
+  cpc: text("cpc"),
+  status: text("status").default("tracking"),
+  tags: text("tags"),
+  notes: text("notes"),
+  lastChecked: timestamp("last_checked"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
+export const seoKeywordHistory = pgTable("seo_keyword_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  keywordId: varchar("keyword_id").notNull(),
+  position: integer("position"),
+  checkedAt: timestamp("checked_at").defaultNow(),
+});
+
+export const insertSeoKeywordSchema = createInsertSchema(seoKeywords).omit({ id: true, createdAt: true });
+export type SeoKeyword = typeof seoKeywords.$inferSelect;
+export type InsertSeoKeyword = z.infer<typeof insertSeoKeywordSchema>;
+export type SeoKeywordHistoryEntry = typeof seoKeywordHistory.$inferSelect;

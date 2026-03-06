@@ -5581,6 +5581,137 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  // ===== SEO Keyword Research & Rank Tracker =====
+  app.get("/api/seo-keywords/suggest/:query", isAuthenticated, async (req, res) => {
+    try {
+      const q = encodeURIComponent(req.params.query);
+      const response = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox&q=${q}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return res.json([]);
+      const data = await response.json();
+      const suggestions = data[1] || [];
+      res.json(suggestions);
+    } catch {
+      res.json([]);
+    }
+  });
+
+  app.post("/api/seo-keywords/bulk-add", isAuthenticated, async (req, res) => {
+    try {
+      const { keywords } = req.body;
+      if (!Array.isArray(keywords)) return res.status(400).json({ error: "keywords array required" });
+
+      const existing = await storage.getSeoKeywords();
+      const existingSet = new Set(existing.map(k => k.keyword.toLowerCase()));
+      const created = [];
+
+      for (const kw of keywords) {
+        const kwText = typeof kw === "string" ? kw : kw.keyword;
+        if (!existingSet.has(kwText.toLowerCase())) {
+          const entry = await storage.createSeoKeyword({
+            keyword: kwText,
+            status: "tracking",
+          } as any);
+          created.push(entry);
+          existingSet.add(kwText.toLowerCase());
+        }
+      }
+
+      res.json({ created: created.length, keywords: created });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/seo-keywords", isAuthenticated, async (req, res) => {
+    try {
+      const keywords = await storage.getSeoKeywords();
+      res.json(keywords);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/seo-keywords", isAuthenticated, async (req, res) => {
+    try {
+      const { keyword, status, tags, notes, domain } = req.body;
+      if (!keyword || typeof keyword !== "string" || !keyword.trim()) {
+        return res.status(400).json({ error: "keyword is required" });
+      }
+      const created = await storage.createSeoKeyword({
+        keyword: keyword.trim(),
+        status: status || "tracking",
+        tags: tags || null,
+        notes: notes || null,
+        domain: domain || "aipoweredsites.com",
+      } as any);
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/seo-keywords/:id", isAuthenticated, async (req, res) => {
+    try {
+      const allowed = ["keyword", "status", "tags", "notes", "domain", "currentPosition", "previousPosition", "positionChange", "searchVolume", "difficulty", "cpc", "lastChecked"];
+      const updates: any = {};
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+      const updated = await storage.updateSeoKeyword(req.params.id, updates);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/seo-keywords/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteSeoKeyword(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/seo-keywords/:id/history", isAuthenticated, async (req, res) => {
+    try {
+      const history = await storage.getSeoKeywordHistory(req.params.id);
+      res.json(history);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/seo-keywords/:id/check-rank", isAuthenticated, async (req, res) => {
+    try {
+      const keyword = await storage.getSeoKeyword(req.params.id);
+      if (!keyword) return res.status(404).json({ error: "Not found" });
+
+      const position = parseInt(req.body.position);
+      if (isNaN(position) || position < 1 || position > 1000) {
+        return res.status(400).json({ error: "Position must be a number between 1 and 1000" });
+      }
+      const prevPosition = keyword.currentPosition;
+      const change = prevPosition != null && position != null ? prevPosition - position : 0;
+
+      await storage.createSeoKeywordHistoryEntry({ keywordId: keyword.id, position });
+      const updated = await storage.updateSeoKeyword(keyword.id, {
+        currentPosition: position,
+        previousPosition: prevPosition,
+        positionChange: change,
+        lastChecked: new Date(),
+      } as any);
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ===== Admin DNS Management =====
   app.get("/api/dns-zones", isAuthenticated, async (req, res) => {
     try {

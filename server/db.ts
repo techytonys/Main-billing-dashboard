@@ -567,6 +567,28 @@ export async function ensureTables() {
       user_id VARCHAR NOT NULL,
       role TEXT NOT NULL DEFAULT 'member',
       created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS seo_keywords (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      keyword TEXT NOT NULL,
+      domain TEXT DEFAULT 'aipoweredsites.com',
+      current_position INTEGER,
+      previous_position INTEGER,
+      position_change INTEGER DEFAULT 0,
+      search_volume INTEGER,
+      difficulty TEXT,
+      cpc TEXT,
+      status TEXT DEFAULT 'tracking',
+      tags TEXT,
+      notes TEXT,
+      last_checked TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS seo_keyword_history (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      keyword_id VARCHAR NOT NULL,
+      position INTEGER,
+      checked_at TIMESTAMP DEFAULT NOW()
     )`
   ];
 

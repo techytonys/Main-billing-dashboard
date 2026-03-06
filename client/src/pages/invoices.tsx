@@ -288,9 +288,9 @@ export default function Invoices() {
             <thead>
               <tr className="border-b bg-muted/30">
                 <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Invoice</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Customer</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Due Date</th>
+                <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">Customer</th>
+                <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden md:table-cell">Date</th>
+                <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Due Date</th>
                 <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</th>
                 <th className="py-3 px-4"></th>
@@ -310,9 +310,9 @@ export default function Invoices() {
                           <span className="font-medium">{inv.invoiceNumber}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-muted-foreground">{customer?.company || customer?.name || "—"}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{formatDate(inv.issuedAt)}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{formatDate(inv.dueDate)}</td>
+                      <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">{customer?.company || customer?.name || "—"}</td>
+                      <td className="py-3 px-4 text-muted-foreground hidden md:table-cell">{formatDate(inv.issuedAt)}</td>
+                      <td className="py-3 px-4 text-muted-foreground hidden lg:table-cell">{formatDate(inv.dueDate)}</td>
                       <td className="py-3 px-4">
                         <Badge variant="secondary" className={`text-xs ${getStatusColor(inv.status)}`}>
                           {inv.status}
@@ -380,7 +380,7 @@ export default function Invoices() {
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-5">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-md bg-muted/40" data-testid="detail-customer">
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Customer</p>
                   <p className="text-sm font-medium truncate">{selectedInvoice.customerName || customerMap.get(selectedInvoice.customerId)?.company || customerMap.get(selectedInvoice.customerId)?.name || "—"}</p>
@@ -416,8 +416,8 @@ export default function Invoices() {
               {selectedInvoice.lineItems && selectedInvoice.lineItems.length > 0 && (
                 <div>
                   <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-1">Line Items</h4>
-                  <div className="border rounded-md overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="border rounded-md overflow-x-auto">
+                    <table className="w-full text-sm min-w-[400px]">
                       <thead>
                         <tr className="bg-muted/30 border-b">
                           <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Item</th>
@@ -450,8 +450,8 @@ export default function Invoices() {
               {selectedInvoice.workEntries && selectedInvoice.workEntries.length > 0 && (
                 <div>
                   <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-1">Work Breakdown</h4>
-                  <div className="border rounded-md overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="border rounded-md overflow-x-auto">
+                    <table className="w-full text-sm min-w-[400px]">
                       <thead>
                         <tr className="bg-muted/30 border-b">
                           <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Type</th>

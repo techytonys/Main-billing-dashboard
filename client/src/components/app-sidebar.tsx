@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Bell,
   Building2,
+  Search,
 } from "lucide-react";
 import {
   Sidebar,
@@ -59,6 +60,7 @@ const engageItems = [
   { title: "Link Tracker", url: "/admin/link-tracker", icon: Link2 },
   { title: "SMS", url: "/admin/sms", icon: MessageSquare },
   { title: "Directories", url: "/admin/directories", icon: Building2 },
+  { title: "SEO Keywords", url: "/admin/seo-keywords", icon: Search },
   { title: "Content Creator", url: "/admin/content-creator", icon: Sparkles },
   { title: "Subscribe", url: "/subscribe", icon: Bell },
 ];

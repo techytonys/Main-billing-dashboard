@@ -74,6 +74,9 @@ import {
   type DnsZone, type InsertDnsZone,
   directorySubmissions,
   type DirectorySubmission, type InsertDirectorySubmission,
+  seoKeywords, seoKeywordHistory,
+  type SeoKeyword, type InsertSeoKeyword,
+  type SeoKeywordHistoryEntry,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -353,6 +356,14 @@ export interface IStorage {
   createDirectorySubmission(sub: InsertDirectorySubmission): Promise<DirectorySubmission>;
   updateDirectorySubmission(id: string, updates: Partial<InsertDirectorySubmission>): Promise<DirectorySubmission | undefined>;
   deleteDirectorySubmission(id: string): Promise<boolean>;
+
+  getSeoKeywords(): Promise<SeoKeyword[]>;
+  getSeoKeyword(id: string): Promise<SeoKeyword | undefined>;
+  createSeoKeyword(kw: InsertSeoKeyword): Promise<SeoKeyword>;
+  updateSeoKeyword(id: string, updates: Partial<InsertSeoKeyword>): Promise<SeoKeyword | undefined>;
+  deleteSeoKeyword(id: string): Promise<boolean>;
+  getSeoKeywordHistory(keywordId: string): Promise<SeoKeywordHistoryEntry[]>;
+  createSeoKeywordHistoryEntry(entry: { keywordId: string; position: number | null }): Promise<SeoKeywordHistoryEntry>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2378,6 +2389,40 @@ export class DatabaseStorage implements IStorage {
   async deleteDirectorySubmission(id: string): Promise<boolean> {
     const result = await db.delete(directorySubmissions).where(eq(directorySubmissions.id, id)).returning();
     return result.length > 0;
+  }
+
+  async getSeoKeywords(): Promise<SeoKeyword[]> {
+    return db.select().from(seoKeywords).orderBy(desc(seoKeywords.createdAt));
+  }
+
+  async getSeoKeyword(id: string): Promise<SeoKeyword | undefined> {
+    const [kw] = await db.select().from(seoKeywords).where(eq(seoKeywords.id, id));
+    return kw;
+  }
+
+  async createSeoKeyword(kw: InsertSeoKeyword): Promise<SeoKeyword> {
+    const [created] = await db.insert(seoKeywords).values(kw).returning();
+    return created;
+  }
+
+  async updateSeoKeyword(id: string, updates: Partial<InsertSeoKeyword>): Promise<SeoKeyword | undefined> {
+    const [updated] = await db.update(seoKeywords).set(updates).where(eq(seoKeywords.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSeoKeyword(id: string): Promise<boolean> {
+    await db.delete(seoKeywordHistory).where(eq(seoKeywordHistory.keywordId, id));
+    const result = await db.delete(seoKeywords).where(eq(seoKeywords.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getSeoKeywordHistory(keywordId: string): Promise<SeoKeywordHistoryEntry[]> {
+    return db.select().from(seoKeywordHistory).where(eq(seoKeywordHistory.keywordId, keywordId)).orderBy(desc(seoKeywordHistory.checkedAt));
+  }
+
+  async createSeoKeywordHistoryEntry(entry: { keywordId: string; position: number | null }): Promise<SeoKeywordHistoryEntry> {
+    const [created] = await db.insert(seoKeywordHistory).values(entry).returning();
+    return created;
   }
 }
 

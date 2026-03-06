@@ -171,20 +171,22 @@ export default function Overview() {
       )}
 
       <Card className="p-4 border-primary/20 bg-primary/5 dark:bg-primary/10" data-testid="card-agent-cost-reminder">
-        <div className="flex items-start gap-3">
-          <Bot className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">
-              Did an AI agent do work recently? Don't forget to log the cost!
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {agentSummary && agentSummary.unbilledCount > 0
-                ? `You have ${agentSummary.unbilledCount} unbilled entr${agentSummary.unbilledCount === 1 ? "y" : "ies"} worth ${formatCurrency(agentSummary.unbilledChargeCents)} ready to invoice.`
-                : "Track what the agents built so you can bill your clients accurately."}
-            </p>
+        <div className="flex flex-col sm:flex-row items-start gap-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <Bot className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">
+                Did an AI agent do work recently? Don't forget to log the cost!
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {agentSummary && agentSummary.unbilledCount > 0
+                  ? `You have ${agentSummary.unbilledCount} unbilled entr${agentSummary.unbilledCount === 1 ? "y" : "ies"} worth ${formatCurrency(agentSummary.unbilledChargeCents)} ready to invoice.`
+                  : "Track what the agents built so you can bill your clients accurately."}
+              </p>
+            </div>
           </div>
           <Link href="/billing-rates">
-            <Button variant="outline" data-testid="button-go-to-agent-costs">
+            <Button variant="outline" className="w-full sm:w-auto" data-testid="button-go-to-agent-costs">
               Log Costs
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
