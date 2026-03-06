@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { usePageMeta } from "@/hooks/use-page-title";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Search, ChevronRight, ArrowLeft, FileText } from "lucide-react";
 import type { KnowledgeBaseArticle } from "@shared/schema";
@@ -14,6 +15,7 @@ function stripHtml(html: string) {
 }
 
 export default function PublicHelp() {
+  usePageMeta("Help Center — Guides, Tutorials & Support", "Find answers in our help center. Browse knowledge base articles, tutorials, and guides about AI Powered Sites services.", "https://aipoweredsites.com/help");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);

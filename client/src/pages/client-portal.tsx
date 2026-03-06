@@ -458,42 +458,73 @@ function PortalClientFiles({ token, projectId }: { token: string; projectId: str
           <Skeleton className="h-10 w-full rounded-md" />
         </div>
       )}
-      {files && files.length > 0 && (
-        <div className="space-y-1.5">
-          {files.map((f) => (
-            <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-md border bg-muted/30" data-testid={`client-file-${f.id}`}>
-              {fileIcon(f.contentType)}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{f.fileName}</p>
-                <p className="text-[10px] text-muted-foreground">{formatFileSize(f.fileSize)}</p>
+      {files && files.length > 0 && (() => {
+        const adminFiles = files.filter(f => f.uploadedBy === "admin");
+        const clientFiles = files.filter(f => f.uploadedBy !== "admin");
+        return (
+          <div className="space-y-3">
+            {adminFiles.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-primary uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <Download className="w-3 h-3" /> From Your Team ({adminFiles.length})
+                </p>
+                <div className="space-y-1.5">
+                  {adminFiles.map((f) => (
+                    <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-md border border-primary/20 bg-primary/5" data-testid={`team-file-${f.id}`}>
+                      {fileIcon(f.contentType)}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{f.fileName}</p>
+                        <p className="text-[10px] text-muted-foreground">{f.category || ""}{f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {f.contentType?.startsWith("image/") && (
+                          <a href={f.objectPath} target="_blank" rel="noreferrer">
+                            <Button size="icon" variant="ghost" data-testid={`button-view-file-${f.id}`}><Eye className="w-3.5 h-3.5" /></Button>
+                          </a>
+                        )}
+                        <a href={f.objectPath} download={f.fileName}>
+                          <Button size="icon" variant="ghost" data-testid={`button-download-file-${f.id}`}><Download className="w-3.5 h-3.5" /></Button>
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {f.contentType?.startsWith("image/") && (
-                  <a href={f.objectPath} target="_blank" rel="noreferrer">
-                    <Button size="icon" variant="ghost" data-testid={`button-view-file-${f.id}`}>
-                      <Eye className="w-3.5 h-3.5" />
-                    </Button>
-                  </a>
-                )}
-                <a href={f.objectPath} download={f.fileName}>
-                  <Button size="icon" variant="ghost" data-testid={`button-download-file-${f.id}`}>
-                    <Download className="w-3.5 h-3.5" />
-                  </Button>
-                </a>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => deleteMutation.mutate(f.id)}
-                  disabled={deleteMutation.isPending}
-                  data-testid={`button-delete-file-${f.id}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+            )}
+            {clientFiles.length > 0 && (
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <Upload className="w-3 h-3" /> Your Uploads ({clientFiles.length})
+                </p>
+                <div className="space-y-1.5">
+                  {clientFiles.map((f) => (
+                    <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-md border bg-muted/30" data-testid={`client-file-${f.id}`}>
+                      {fileIcon(f.contentType)}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{f.fileName}</p>
+                        <p className="text-[10px] text-muted-foreground">{formatFileSize(f.fileSize)}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {f.contentType?.startsWith("image/") && (
+                          <a href={f.objectPath} target="_blank" rel="noreferrer">
+                            <Button size="icon" variant="ghost" data-testid={`button-view-file-${f.id}`}><Eye className="w-3.5 h-3.5" /></Button>
+                          </a>
+                        )}
+                        <a href={f.objectPath} download={f.fileName}>
+                          <Button size="icon" variant="ghost" data-testid={`button-download-file-${f.id}`}><Download className="w-3.5 h-3.5" /></Button>
+                        </a>
+                        <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(f.id)} disabled={deleteMutation.isPending} data-testid={`button-delete-file-${f.id}`}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })()}
       {files && files.length === 0 && !isLoading && (
         <p className="text-xs text-muted-foreground text-center py-3">Upload logos, brand assets, or documents for this project.</p>
       )}

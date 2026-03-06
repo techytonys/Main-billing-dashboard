@@ -192,6 +192,9 @@ Sitemap: ${baseUrl}/sitemap.xml
       { loc: "/questions", changefreq: "daily", priority: "0.8" },
       { loc: "/help", changefreq: "weekly", priority: "0.7" },
       { loc: "/api/docs", changefreq: "monthly", priority: "0.6" },
+      { loc: "/subscribe", changefreq: "monthly", priority: "0.5" },
+      { loc: "/privacy", changefreq: "yearly", priority: "0.3" },
+      { loc: "/terms", changefreq: "yearly", priority: "0.3" },
     ];
 
     let urls = staticPages.map(p =>
@@ -1833,6 +1836,28 @@ ${urls}
       res.json(files);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch client files" });
+    }
+  });
+
+  app.post("/api/projects/:id/client-files", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const { objectPath, fileName, fileSize, contentType, category } = req.body;
+      if (!objectPath || !fileName) return res.status(400).json({ message: "objectPath and fileName are required" });
+      const file = await storage.createProjectClientFile({
+        projectId: project.id,
+        customerId: project.customerId,
+        objectPath,
+        fileName,
+        fileSize: fileSize || null,
+        contentType: contentType || null,
+        uploadedBy: "admin",
+        category: category || null,
+      });
+      res.json(file);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to upload file" });
     }
   });
 

@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePageMeta } from "@/hooks/use-page-title";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2429,6 +2430,7 @@ interface CommunityProps {
 }
 
 export default function Community({ isAdmin: isAdminProp = false, portalToken }: CommunityProps) {
+  usePageMeta("Community Forum — Connect with Web Designers & Developers", "Join the AI Powered Sites community. Share ideas, ask questions, showcase projects, and connect with fellow developers.", "https://aipoweredsites.com/community");
   const { toast } = useToast();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageMeta } from "@/hooks/use-page-title";
 import { Book, Key, Shield, Code2, Copy, Check, ChevronDown, ChevronRight, Zap, Users, FolderOpen, FileText, ArrowRight, Terminal, Globe, Lock, CheckCircle2, AlertCircle, Info, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +105,7 @@ function StepCard({ number, title, description, children }: { number: number; ti
 }
 
 export default function ApiDocs() {
+  usePageMeta("API Documentation — Developer Reference", "Complete REST API documentation for AI Powered Sites. Endpoints for customers, projects, invoices, and more with API key authentication.", "https://aipoweredsites.com/api/docs");
   const [activeSection, setActiveSection] = useState("getting-started");
   const baseUrl = window.location.origin;
 

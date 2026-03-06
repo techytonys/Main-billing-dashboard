@@ -247,6 +247,8 @@ export const projectClientFiles = pgTable("project_client_files", {
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size"),
   contentType: text("content_type"),
+  uploadedBy: text("uploaded_by").default("client"),
+  category: text("category"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

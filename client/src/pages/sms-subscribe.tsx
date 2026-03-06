@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { usePageMeta } from "@/hooks/use-page-title";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -44,6 +45,7 @@ const INTERESTS = [
 ];
 
 export default function SmsSubscribe() {
+  usePageMeta("Subscribe to SMS Updates", "Stay informed with SMS updates from AI Powered Sites. Get project updates, offers, and notifications delivered to your phone.", "https://aipoweredsites.com/subscribe");
   const { toast } = useToast();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");

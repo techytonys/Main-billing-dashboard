@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePageMeta } from "@/hooks/use-page-title";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -292,6 +293,7 @@ function NewsletterForm() {
 }
 
 export default function LandingPage() {
+  usePageMeta("AI Web Design Agency — Custom AI-Powered Websites & Web Development", "AI web design agency offering custom website development for small businesses and startups. Affordable AI-powered web solutions delivered in days, not months.", "https://aipoweredsites.com");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatName, setChatName] = useState("");

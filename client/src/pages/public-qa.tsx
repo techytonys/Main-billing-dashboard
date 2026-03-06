@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "wouter";
 import DOMPurify from "dompurify";
+import { usePageMeta } from "@/hooks/use-page-title";
 import {
   MessageSquare, Send, ChevronDown, ChevronUp, CheckCircle2,
   CircleDot, Clock, Loader2, Zap, ArrowLeft, Search,
@@ -97,6 +98,7 @@ function QuestionItem({ question }: { question: QaQuestion }) {
 }
 
 export default function PublicQA() {
+  usePageMeta("Q&A — Get Answers About Web Design & Development", "Ask questions and get expert answers about web design, AI-powered websites, SEO, hosting, and more.", "https://aipoweredsites.com/questions");
   const { toast } = useToast();
   const [askOpen, setAskOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");

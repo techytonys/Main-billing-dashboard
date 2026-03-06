@@ -340,7 +340,22 @@ function ProjectScreenshotsSection({ projectId }: { projectId: string }) {
   );
 }
 
+const FILE_CATEGORIES = [
+  { value: "brand-assets", label: "Brand Assets" },
+  { value: "content", label: "Content & Copy" },
+  { value: "design", label: "Design Files" },
+  { value: "deliverable", label: "Deliverables" },
+  { value: "document", label: "Documents" },
+  { value: "image", label: "Images & Photos" },
+  { value: "other", label: "Other" },
+];
+
 function AdminClientFilesSection({ projectId }: { projectId: string }) {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("deliverable");
+  const { uploadFile } = useUpload({});
+
   const { data: files, isLoading } = useQuery<ProjectClientFile[]>({
     queryKey: ["/api/projects", projectId, "client-files"],
     queryFn: async () => {
@@ -350,45 +365,191 @@ function AdminClientFilesSection({ projectId }: { projectId: string }) {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="p-3 rounded-md bg-muted/40">
-        <div className="flex items-center gap-2 mb-2">
-          <Upload className="w-4 h-4 text-muted-foreground" />
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Client Files</span>
-        </div>
-        <Skeleton className="h-8 w-full" />
-      </div>
-    );
-  }
+  const deleteMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      const res = await fetch(`/api/client-files/${fileId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "client-files"] });
+      toast({ title: "File deleted" });
+    },
+  });
 
-  if (!files || files.length === 0) return null;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    setUploading(true);
+    try {
+      for (let i = 0; i < fileList.length; i++) {
+        const f = fileList[i];
+        const response = await uploadFile(f);
+        if (response) {
+          await fetch(`/api/projects/${projectId}/client-files`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              objectPath: response.objectPath,
+              fileName: f.name,
+              fileSize: response.metadata.size,
+              contentType: response.metadata.contentType,
+              category: selectedCategory,
+            }),
+          });
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "client-files"] });
+      toast({ title: "Files uploaded", description: `${fileList.length} file${fileList.length > 1 ? "s" : ""} shared with client.` });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const formatFileSize = (bytes: number | null) => {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const fileIcon = (contentType: string | null) => {
+    if (contentType?.startsWith("image/")) return <Image className="w-4 h-4 text-blue-500" />;
+    if (contentType?.includes("pdf")) return <FileText className="w-4 h-4 text-red-500" />;
+    return <File className="w-4 h-4 text-muted-foreground" />;
+  };
+
+  const clientFiles = files?.filter(f => f.uploadedBy !== "admin") || [];
+  const adminFiles = files?.filter(f => f.uploadedBy === "admin") || [];
 
   return (
-    <div className="p-3 rounded-md bg-muted/40" data-testid={`client-files-section-${projectId}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <Upload className="w-4 h-4 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Client Files</span>
-        <Badge variant="secondary" className="text-xs">{files.length}</Badge>
+    <div className="p-4 rounded-lg bg-muted/30 border" data-testid={`client-files-section-${projectId}`}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <FolderOpen className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold">File Sharing</span>
+          {files && files.length > 0 && <Badge variant="secondary" className="text-xs">{files.length}</Badge>}
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="h-8 text-xs w-[130px]" data-testid={`select-file-category-${projectId}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FILE_CATEGORIES.map(c => (
+                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input
+            type="file"
+            multiple
+            onChange={handleFileUpload}
+            className="hidden"
+            id={`admin-file-upload-${projectId}`}
+            data-testid={`input-admin-file-upload-${projectId}`}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => document.getElementById(`admin-file-upload-${projectId}`)?.click()}
+            disabled={uploading}
+            data-testid={`button-admin-upload-file-${projectId}`}
+          >
+            {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+            {uploading ? "Uploading..." : "Share Files"}
+          </Button>
+        </div>
       </div>
-      <div className="space-y-1.5">
-        {files.map((f) => (
-          <div key={f.id} className="flex items-center gap-2 p-2 rounded-md border bg-background" data-testid={`client-file-${f.id}`}>
-            <File className="w-4 h-4 text-muted-foreground shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate" data-testid={`text-client-file-name-${f.id}`}>{f.fileName}</p>
-              <p className="text-[10px] text-muted-foreground">
-                {f.contentType} {f.fileSize ? `· ${(f.fileSize / 1024).toFixed(1)} KB` : ""}
-              </p>
-            </div>
-            <a href={f.objectPath} target="_blank" rel="noopener noreferrer">
-              <Button size="icon" variant="ghost" data-testid={`button-download-client-file-${f.id}`}>
-                <Download className="w-3.5 h-3.5" />
-              </Button>
-            </a>
+
+      {isLoading && (
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full rounded-md" />
+          <Skeleton className="h-10 w-full rounded-md" />
+        </div>
+      )}
+
+      {adminFiles.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+            <Send className="w-3 h-3" /> Shared by You ({adminFiles.length})
+          </p>
+          <div className="space-y-1.5">
+            {adminFiles.map((f) => (
+              <div key={f.id} className="flex items-center gap-2.5 p-2.5 rounded-md border bg-background" data-testid={`admin-file-${f.id}`}>
+                {fileIcon(f.contentType)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate" data-testid={`text-admin-file-name-${f.id}`}>{f.fileName}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {f.category ? FILE_CATEGORIES.find(c => c.value === f.category)?.label || f.category : ""}{f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <a href={f.objectPath} target="_blank" rel="noopener noreferrer">
+                    <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-view-admin-file-${f.id}`}>
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                  </a>
+                  <a href={f.objectPath} download={f.fileName}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-download-admin-file-${f.id}`}>
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
+                  </a>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteMutation.mutate(f.id)} data-testid={`button-delete-admin-file-${f.id}`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {clientFiles.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+            <Users className="w-3 h-3" /> Uploaded by Client ({clientFiles.length})
+          </p>
+          <div className="space-y-1.5">
+            {clientFiles.map((f) => (
+              <div key={f.id} className="flex items-center gap-2.5 p-2.5 rounded-md border bg-background" data-testid={`client-file-${f.id}`}>
+                {fileIcon(f.contentType)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate" data-testid={`text-client-file-name-${f.id}`}>{f.fileName}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {f.contentType}{f.fileSize ? ` · ${formatFileSize(f.fileSize)}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <a href={f.objectPath} target="_blank" rel="noopener noreferrer">
+                    <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-view-client-file-${f.id}`}>
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                  </a>
+                  <a href={f.objectPath} download={f.fileName}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" data-testid={`button-download-client-file-${f.id}`}>
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
+                  </a>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteMutation.mutate(f.id)} data-testid={`button-delete-client-file-${f.id}`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isLoading && (!files || files.length === 0) && (
+        <div className="text-center py-6 text-muted-foreground">
+          <FolderOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-xs">No files shared yet</p>
+          <p className="text-[10px] mt-1">Upload files to share with your client</p>
+        </div>
+      )}
     </div>
   );
 }

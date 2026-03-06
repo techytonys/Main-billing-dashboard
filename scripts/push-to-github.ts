@@ -5,7 +5,7 @@ import * as path from 'path';
 const OWNER = 'techytonys';
 const REPO = 'Main-billing-dashboard';
 const BRANCH = 'main';
-const COMMIT_MESSAGE = `Deploy ${new Date().toISOString().split('T')[0]}: Content Creator, SMS fixes, Directory Submissions, Link Tracker fixes`;
+const COMMIT_MESSAGE = `Deploy ${new Date().toISOString().split('T')[0]}: SEO optimization, client file sharing, SMS fixes, Content Creator`;
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 

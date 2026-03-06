@@ -1,6 +1,8 @@
 import { FileText, ArrowLeft } from "lucide-react";
+import { usePageMeta } from "@/hooks/use-page-title";
 
 export default function TermsOfService() {
+  usePageMeta("Terms of Service", "Review our terms of service for using AI Powered Sites services, client portal, community features, and API access.", "https://aipoweredsites.com/terms");
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white">
       <div className="max-w-4xl mx-auto px-4 py-16">
