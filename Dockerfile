@@ -15,6 +15,8 @@ COPY shared ./shared
 
 RUN npm run build && echo "Build OK" && ls -la dist/
 
+RUN npm prune --production --legacy-peer-deps 2>&1 | tail -3
+
 FROM node:20-slim
 
 WORKDIR /app
@@ -22,9 +24,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=5000
 
-RUN apt-get update -qq && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
-RUN npm init -y > /dev/null 2>&1 && npm install pdfkit@0.17.2 --save 2>&1 | tail -3
+RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/client/public ./client/public
 COPY deploy/migrations ./deploy/migrations

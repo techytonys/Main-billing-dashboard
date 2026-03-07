@@ -38,7 +38,6 @@ import AdminConversations from "@/pages/admin-conversations";
 import ApiKeys from "@/pages/api-keys";
 import ApiDocs from "@/pages/api-docs";
 import CodeBackups from "@/pages/code-backups";
-import LeadGenerator from "@/pages/lead-generator";
 import Analytics from "@/pages/analytics";
 import LinkTracker from "@/pages/link-tracker";
 import LinodeServers from "@/pages/linode-servers";
@@ -75,7 +74,6 @@ function DashboardRouter() {
       <Route path="/admin/conversations" component={AdminConversations} />
       <Route path="/admin/api-keys" component={ApiKeys} />
       <Route path="/admin/code-backups" component={CodeBackups} />
-      <Route path="/admin/lead-generator" component={LeadGenerator} />
       <Route path="/admin/analytics" component={Analytics} />
       <Route path="/admin/link-tracker" component={LinkTracker} />
       <Route path="/admin/servers" component={LinodeServers} />
