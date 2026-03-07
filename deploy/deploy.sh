@@ -25,18 +25,8 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Clean malformed lines from env files before doing anything
-for _ef in "$APP_DIR/.env" "/root/.aips_env_backup"; do
-  [ -f "$_ef" ] && sed -i '/^[^#=]*$/d' "$_ef" && sed -i '/^$/d' "$_ef"
-done
-
-# IMMEDIATELY save .env to a safe location OUTSIDE the repo before anything else
-if [ -f "$APP_DIR/.env" ]; then
-  cp -f "$APP_DIR/.env" "$ENV_BACKUP"
-fi
-
 IS_UPDATE=false
-if [ -f "$ENV_BACKUP" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
+if [ -f "$APP_DIR/.env" ] && [ -f "$APP_DIR/docker-compose.yml" ]; then
   IS_UPDATE=true
 fi
 
@@ -51,7 +41,7 @@ echo -e "${RESET}"
 
 if $IS_UPDATE; then
   echo -e "  ${WHITE}${BOLD}Updating AI Powered Sites${RESET}"
-  echo -e "  ${DIM}Pull latest code → Rebuild → Restart (zero prompts)${RESET}"
+  echo -e "  ${DIM}Pull latest code -> Rebuild -> Restart (zero prompts)${RESET}"
   TOTAL=8
 else
   echo -e "  ${WHITE}${BOLD}AI Powered Sites - Full Deploy + Security Hardening${RESET}"
@@ -60,23 +50,96 @@ else
 fi
 echo ""
 
+write_env() {
+  local TARGET="$1"
+  local EXISTING_SESS="" EXISTING_DB="" EXISTING_WEBHOOK=""
+  local EXISTING_TWILIO_SID="" EXISTING_TWILIO_TOKEN="" EXISTING_TWILIO_PHONE=""
+  local EXISTING_NOTION=""
+
+  if [ -f "$TARGET" ]; then
+    EXISTING_SESS=$(grep "^SESSION_SECRET=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+    EXISTING_DB=$(grep "^POSTGRES_PASSWORD=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+    EXISTING_WEBHOOK=$(grep "^STRIPE_WEBHOOK_SECRET=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+    EXISTING_TWILIO_SID=$(grep "^TWILIO_ACCOUNT_SID=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+    EXISTING_TWILIO_TOKEN=$(grep "^TWILIO_AUTH_TOKEN=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+    EXISTING_TWILIO_PHONE=$(grep "^TWILIO_PHONE_NUMBER=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+    EXISTING_NOTION=$(grep "^NOTION_API_KEY=" "$TARGET" 2>/dev/null | cut -d= -f2-)
+  fi
+
+  local SESS_SECRET="${EXISTING_SESS:-$(openssl rand -hex 32)}"
+  local DB_PASS="${EXISTING_DB:-$(openssl rand -hex 16)}"
+
+  DECODED_KEYS=""
+  if [ -f "$APP_DIR/deploy/.env.b64" ]; then
+    DECODED_KEYS=$(base64 -d "$APP_DIR/deploy/.env.b64" 2>/dev/null || echo "")
+  fi
+  get_key() { echo "$DECODED_KEYS" | grep "^$1=" 2>/dev/null | head -1 | cut -d= -f2-; }
+
+  cat > "$TARGET" << ENVFILE
+DOMAIN=aipoweredsites.com
+SITE_URL=https://aipoweredsites.com
+POSTGRES_USER=aips
+POSTGRES_PASSWORD=${DB_PASS}
+POSTGRES_DB=aipoweredsites
+SESSION_SECRET=${SESS_SECRET}
+ADMIN_EMAIL=anthonyjacksonverizon@gmail.com
+ADMIN_PASSWORD=Aipowered2025!
+STRIPE_SECRET_KEY=$(get_key STRIPE_SECRET_KEY)
+STRIPE_PUBLISHABLE_KEY=$(get_key STRIPE_PUBLISHABLE_KEY)
+STRIPE_WEBHOOK_SECRET=${EXISTING_WEBHOOK}
+RESEND_API_KEY=$(get_key RESEND_API_KEY)
+RESEND_AUDIENCE_ID=
+OPENAI_API_KEY=$(get_key OPENAI_API_KEY)
+AI_INTEGRATIONS_OPENAI_API_KEY=$(get_key OPENAI_API_KEY)
+AI_INTEGRATIONS_OPENAI_BASE_URL=https://api.openai.com/v1
+LINODE_API_KEY=$(get_key LINODE_API_KEY)
+GITHUB_CLIENT_ID=$(get_key GITHUB_CLIENT_ID)
+GITHUB_CLIENT_SECRET=$(get_key GITHUB_CLIENT_SECRET)
+NETLIFY_API_TOKEN=$(get_key NETLIFY_API_TOKEN)
+VERCEL_API_TOKEN=$(get_key VERCEL_API_TOKEN)
+RAILWAY_API_TOKEN=$(get_key RAILWAY_API_TOKEN)
+GOOGLE_PLACES_API_KEY=$(get_key GOOGLE_PLACES_API_KEY)
+HUNTER_API_KEY=$(get_key HUNTER_API_KEY)
+VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
+VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
+VAPID_SUBJECT=mailto:hello@aipoweredsites.com
+TWILIO_ACCOUNT_SID=${EXISTING_TWILIO_SID}
+TWILIO_AUTH_TOKEN=${EXISTING_TWILIO_TOKEN}
+TWILIO_PHONE_NUMBER=${EXISTING_TWILIO_PHONE}
+NOTION_API_KEY=${EXISTING_NOTION}
+ENVFILE
+
+  sed -i '/^[^#=]*$/d' "$TARGET"
+  sed -i '/^$/d' "$TARGET"
+
+  local KEY_COUNT=$(wc -l < "$TARGET")
+  echo -e "  ${DIM}Wrote ${KEY_COUNT} env vars${RESET}"
+
+  local MISSING=""
+  while IFS='=' read -r key val; do
+    [ -z "$key" ] && continue
+    [[ "$key" == \#* ]] && continue
+    if [ -z "$val" ]; then
+      MISSING="${MISSING} ${key}"
+    fi
+  done < "$TARGET"
+
+  if [ -n "$MISSING" ]; then
+    echo -e "  ${DIM}Empty (optional):${MISSING}${RESET}"
+  fi
+
+  cp -f "$TARGET" "$ENV_BACKUP"
+}
+
 if $IS_UPDATE; then
 
   cd "$APP_DIR"
-  if [ -f "$ENV_BACKUP" ]; then
-    sed -i '/^[^#=]*$/d' "$ENV_BACKUP"
-    sed -i '/^$/d' "$ENV_BACKUP"
-  fi
-  if [ -f "$APP_DIR/.env" ]; then
-    sed -i '/^[^#=]*$/d' "$APP_DIR/.env"
-    sed -i '/^$/d' "$APP_DIR/.env"
-  fi
-  set -a; source "$ENV_BACKUP"; set +a
 
   step 1 "Backing up database"
   BACKUP_DIR="$APP_DIR/backups"
   mkdir -p "$BACKUP_DIR"
   BACKUP_FILE="$BACKUP_DIR/db_$(date +%Y%m%d_%H%M%S).sql"
+  set -a; source "$APP_DIR/.env"; set +a
   if docker compose exec -T db pg_dump -U "${POSTGRES_USER:-aips}" "${POSTGRES_DB:-aipoweredsites}" > "$BACKUP_FILE" 2>/dev/null; then
     BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
     echo -e "  ${DIM}Backed up (${BACKUP_SIZE})${RESET}"
@@ -97,43 +160,29 @@ if $IS_UPDATE; then
   tar xzf "$TMP_TAR" -C "$TMP_DIR" --strip-components=1
   rsync -a --exclude='.env' --exclude='backups' --exclude='node_modules' "$TMP_DIR/" "$APP_DIR/"
   rm -rf "$TMP_TAR" "$TMP_DIR"
-  cp -f "$ENV_BACKUP" "$APP_DIR/.env"
-
-  # Inject any NEW keys from .env.b64 that are missing or have dummy values in existing .env
-  if [ -f "$APP_DIR/deploy/.env.b64" ]; then
-    DECODED_KEYS=$(base64 -d "$APP_DIR/deploy/.env.b64" 2>/dev/null || echo "")
-    while IFS='=' read -r key val; do
-      [ -z "$key" ] && continue
-      CURRENT_VAL=$(grep "^${key}=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-      if [ -z "$CURRENT_VAL" ] || [ "$CURRENT_VAL" = "_DUMMY_API_KEY_" ]; then
-        if [ -n "$val" ]; then
-          sed -i "/^${key}=/d" "$APP_DIR/.env"
-          echo "${key}=${val}" >> "$APP_DIR/.env"
-          echo -e "  ${DIM}Updated ${key}${RESET}"
-        fi
-      fi
-    done <<< "$DECODED_KEYS"
-    cp -f "$APP_DIR/.env" "$ENV_BACKUP"
-  fi
-
-  COMMIT="latest"
   echo -e "  ${DIM}Code updated${RESET}"
   ok
 
-  step 3 "Running migrations"
+  step 3 "Updating environment"
+  write_env "$APP_DIR/.env"
+  echo -e "  ${GREEN}All keys configured${RESET}"
+  ok
+
+  step 4 "Running migrations"
+  set -a; source "$APP_DIR/.env"; set +a
   for f in $(ls deploy/migrations/*.sql 2>/dev/null | sort); do
     echo -e "  ${DIM}$(basename $f)${RESET}"
     docker compose exec -T db psql -U "${POSTGRES_USER:-aips}" -d "${POSTGRES_DB:-aipoweredsites}" < "$f" > /dev/null 2>&1 || true
   done
   ok
 
-  step 4 "Stopping app"
+  step 5 "Stopping app"
   docker compose stop app 2>/dev/null || true
   docker compose rm -f app 2>/dev/null || true
   echo -e "  ${DIM}Database still running${RESET}"
   ok
 
-  step 5 "Rebuilding (3-5 min)"
+  step 6 "Rebuilding (3-5 min)"
   docker compose build --no-cache app 2>&1 | tail -5
   BUILD_EXIT=${PIPESTATUS[0]}
   if [ $BUILD_EXIT -ne 0 ]; then
@@ -141,12 +190,12 @@ if $IS_UPDATE; then
   fi
   ok
 
-  step 6 "Starting"
+  step 7 "Starting"
   docker compose up -d
   docker image prune -f > /dev/null 2>&1 || true
   ok
 
-  step 7 "Health check"
+  step 8 "Health check"
   sleep 8
   APP_READY=0
   for i in $(seq 1 10); do
@@ -167,7 +216,7 @@ if $IS_UPDATE; then
   ok
 
   echo ""
-  echo -e "  ${GREEN}${BOLD}Update complete!${RESET} Commit: ${COMMIT}"
+  echo -e "  ${GREEN}${BOLD}Update complete!${RESET}"
   echo -e "  ${DIM}View logs: docker compose logs -f app${RESET}"
   echo ""
 
@@ -176,7 +225,7 @@ else
   step 1 "System packages & updates"
   apt update -qq > /dev/null 2>&1
   apt upgrade -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" > /dev/null 2>&1
-  apt install -y -qq ca-certificates curl gnupg git ufw bc > /dev/null 2>&1
+  apt install -y -qq ca-certificates curl gnupg git ufw bc rsync > /dev/null 2>&1
   ok
 
   step 2 "Docker"
@@ -277,61 +326,12 @@ UPGEOF
   rsync -a --exclude='.env' --exclude='backups' "$TMP_DIR/" "$APP_DIR/"
   rm -rf "$TMP_TAR" "$TMP_DIR"
   cd "$APP_DIR"
-  if [ -f "$ENV_BACKUP" ]; then
-    cp -f "$ENV_BACKUP" "$APP_DIR/.env"
-  fi
   echo -e "  ${DIM}Code downloaded${RESET}"
   ok
 
   step 8 "Environment"
-  SESS_SECRET=$(openssl rand -hex 32)
-  DB_PASS=$(openssl rand -hex 16)
-
-  # If existing .env, preserve session secret and db password
-  if [ -f "$APP_DIR/.env" ]; then
-    EXISTING_SESS=$(grep "^SESSION_SECRET=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    EXISTING_DB=$(grep "^POSTGRES_PASSWORD=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
-    [ -n "$EXISTING_SESS" ] && SESS_SECRET="$EXISTING_SESS"
-    [ -n "$EXISTING_DB" ] && DB_PASS="$EXISTING_DB"
-  fi
-
-  # Decode keys from bundled config - ZERO prompts ever
-  DECODED_KEYS=$(base64 -d "$APP_DIR/deploy/.env.b64" 2>/dev/null || echo "")
-
-  get_key() { echo "$DECODED_KEYS" | grep "^$1=" 2>/dev/null | cut -d= -f2-; }
-
-  cat > "$APP_DIR/.env" << ENVFILE
-DOMAIN=aipoweredsites.com
-SITE_URL=https://aipoweredsites.com
-POSTGRES_USER=aips
-POSTGRES_PASSWORD=${DB_PASS}
-POSTGRES_DB=aipoweredsites
-SESSION_SECRET=${SESS_SECRET}
-ADMIN_EMAIL=anthonyjacksonverizon@gmail.com
-ADMIN_PASSWORD=Aipowered2025!
-STRIPE_SECRET_KEY=$(get_key STRIPE_SECRET_KEY)
-STRIPE_PUBLISHABLE_KEY=$(get_key STRIPE_PUBLISHABLE_KEY)
-STRIPE_WEBHOOK_SECRET=
-RESEND_API_KEY=$(get_key RESEND_API_KEY)
-RESEND_AUDIENCE_ID=
-OPENAI_API_KEY=$(get_key OPENAI_API_KEY)
-AI_INTEGRATIONS_OPENAI_API_KEY=$(get_key OPENAI_API_KEY)
-AI_INTEGRATIONS_OPENAI_BASE_URL=https://api.openai.com/v1
-LINODE_API_KEY=$(get_key LINODE_API_KEY)
-GITHUB_CLIENT_ID=$(get_key GITHUB_CLIENT_ID)
-GITHUB_CLIENT_SECRET=$(get_key GITHUB_CLIENT_SECRET)
-NETLIFY_API_TOKEN=$(get_key NETLIFY_API_TOKEN)
-VERCEL_API_TOKEN=$(get_key VERCEL_API_TOKEN)
-RAILWAY_API_TOKEN=$(get_key RAILWAY_API_TOKEN)
-VAPID_PUBLIC_KEY=BK8LITNbUoKFCIiM7EHrf6CVTCuQnaiF0GtXU7NGzVt20Ykiaau-Iyg5efzglQ-wZKYQ47Da6XtQOnlYLSmEZ7Y
-VAPID_PRIVATE_KEY=7JAIKLBBlFOACt9AoAJoe-IApXdfHrzOcFGlZaUcxDQ
-VAPID_SUBJECT=mailto:hello@aipoweredsites.com
-ENVFILE
-
+  write_env "$APP_DIR/.env"
   echo -e "  ${GREEN}All keys configured (zero prompts)${RESET}"
-
-  # Save backup for next time
-  cp -f "$APP_DIR/.env" "$ENV_BACKUP"
 
   SITE_DOMAIN="aipoweredsites.com"
   cat > "$APP_DIR/deploy/Caddyfile" << CADDYEOF
