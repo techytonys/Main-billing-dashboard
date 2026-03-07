@@ -1082,3 +1082,29 @@ export type InsertOnboardingQuestionnaire = z.infer<typeof insertOnboardingQuest
 export const insertOnboardingResponseSchema = createInsertSchema(onboardingResponses).omit({ id: true, submittedAt: true, reviewedAt: true });
 export type OnboardingResponse = typeof onboardingResponses.$inferSelect;
 export type InsertOnboardingResponse = z.infer<typeof insertOnboardingResponseSchema>;
+
+export const dailyTips = pgTable("daily_tips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  difficulty: varchar("difficulty", { length: 20 }).notNull().default("beginner"),
+  icon: varchar("icon", { length: 50 }),
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+export type DailyTip = typeof dailyTips.$inferSelect;
+
+export const tipSubscribers = pgTable("tip_subscribers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  firstName: varchar("first_name", { length: 100 }),
+  lastName: varchar("last_name", { length: 100 }),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  subscribedAt: timestamp("subscribed_at").defaultNow(),
+});
+
+export const insertTipSubscriberSchema = createInsertSchema(tipSubscribers).omit({ id: true, subscribedAt: true });
+export type TipSubscriber = typeof tipSubscribers.$inferSelect;
+export type InsertTipSubscriber = z.infer<typeof insertTipSubscriberSchema>;

@@ -54,6 +54,8 @@ import DirectorySubmissions from "@/pages/directory-submissions";
 import SeoKeywords from "@/pages/seo-keywords";
 import ContentCreator from "@/pages/content-creator";
 import Onboarding from "@/pages/onboarding";
+import TipOfTheDay from "@/pages/tip-of-the-day";
+import UpdatesSubscribe from "@/pages/updates-subscribe";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import TermsOfService from "@/pages/terms-of-service";
 import LoginPage from "@/pages/login";
@@ -239,6 +241,9 @@ function AppRouter() {
       <Route path="/api/docs" component={ApiDocs} />
       <Route path="/help" component={PublicHelp} />
       <Route path="/subscribe" component={SmsSubscribe} />
+      <Route path="/tips" component={TipOfTheDay} />
+      <Route path="/tips/:id" component={TipOfTheDay} />
+      <Route path="/updates" component={UpdatesSubscribe} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/community">{() => <Community />}</Route>

@@ -1,10 +1,14 @@
 import type { Request, Response, NextFunction } from "express";
+import { db } from "./db";
+import { dailyTips } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 interface PageMeta {
   title: string;
   description: string;
   canonical: string;
   ogType?: string;
+  ogImage?: string;
 }
 
 const SITE = "https://aipoweredsites.com";
@@ -74,9 +78,35 @@ export function seoMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!isCrawler(ua)) return next();
 
   const urlPath = req.path;
+
+  const tipMatch = urlPath.match(/^\/tips\/([a-f0-9-]+)$/);
+  if (tipMatch) {
+    const tipId = tipMatch[1];
+    db.select().from(dailyTips).where(eq(dailyTips.id, tipId)).limit(1).then(tips => {
+      if (tips.length > 0) {
+        const tip = tips[0];
+        const meta: PageMeta = {
+          title: `${tip.title} — Tip of the Day | AI Powered Sites`,
+          description: tip.content.substring(0, 160).replace(/\n/g, " ") + "...",
+          canonical: `${SITE}/tips/${tip.id}`,
+          ogType: "article",
+          ogImage: `${SITE}/api/tips/og-image/${tip.id}`,
+        };
+        injectMeta(res, meta, next);
+      } else {
+        next();
+      }
+    }).catch(() => next());
+    return;
+  }
+
   const meta = PAGE_META[urlPath];
   if (!meta) return next();
 
+  injectMeta(res, meta, next);
+}
+
+function injectMeta(res: Response, meta: PageMeta, next: NextFunction) {
   const originalEnd = res.end.bind(res);
   (res as any).end = function(chunk: any, ...args: any[]) {
     if (chunk && res.getHeader("content-type")?.toString().includes("text/html")) {
@@ -133,6 +163,21 @@ function replaceMeta(html: string, meta: PageMeta): string {
     /<meta name="twitter:description" content="[^"]*"\s*\/?>/,
     `<meta name="twitter:description" content="${meta.description}" />`
   );
+
+  if (meta.ogImage) {
+    modified = modified.replace(
+      /<meta property="og:image" content="[^"]*"\s*\/?>/,
+      `<meta property="og:image" content="${meta.ogImage}" />`
+    );
+    modified = modified.replace(
+      /<meta name="twitter:image" content="[^"]*"\s*\/?>/,
+      `<meta name="twitter:image" content="${meta.ogImage}" />`
+    );
+    modified = modified.replace(
+      /<meta name="twitter:card" content="[^"]*"\s*\/?>/,
+      `<meta name="twitter:card" content="summary_large_image" />`
+    );
+  }
 
   return modified;
 }

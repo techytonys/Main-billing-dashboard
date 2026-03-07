@@ -1,10 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews, analyticsEvents } from "@shared/schema";
+import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews, analyticsEvents, dailyTips, tipSubscribers, smsSubscribers } from "@shared/schema";
 import crypto from "crypto";
 import { z } from "zod";
-import { sql, and, gte, lte } from "drizzle-orm";
+import { sql, and, gte, lte, desc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { sendInvoiceEmail, sendTicketNotification, sendPortalWelcomeEmail, sendNotificationEmail, sendEmail, sendQuoteEmail, sendQuoteAdminNotification, sendQuoteRequirementsEmail, sendConversationNotificationToAdmin, sendConversationReplyToVisitor, sendAuditReportEmail } from "./email";
 import { isAuthenticated } from "./replit_integrations/auth";
@@ -8591,6 +8591,279 @@ IMPORTANT: Return ONLY valid JSON, no markdown code fences.`;
         status: "submitted",
       });
       res.status(201).json(r);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===== TIP OF THE DAY =====
+  app.post("/api/tips/generate", async (_req, res) => {
+    try {
+      const OpenAI = (await import("openai")).default;
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "OpenAI API key not configured" });
+
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+      });
+
+      const existingTips = await db.select({ title: dailyTips.title }).from(dailyTips);
+      const existingTitles = existingTips.map(t => t.title).slice(-200);
+
+      const categories = [
+        "Domain Names", "Web Hosting", "WordPress", "Website Speed",
+        "SEO Basics", "Google My Business", "Social Media Marketing",
+        "Instagram Marketing", "Facebook Marketing", "TikTok Marketing",
+        "YouTube Marketing", "LinkedIn Marketing", "Pinterest Marketing",
+        "Digital Marketing", "Email Marketing", "Content Marketing",
+        "DNS Management", "SSL Certificates", "Website Security",
+        "AI Tools for Business", "AI Website Builders", "Chatbots & AI",
+        "E-commerce Tips", "Online Reviews", "Local SEO",
+        "Google Ads", "Facebook Ads", "Branding & Logo",
+        "Web Design Tips", "Mobile-Friendly Websites", "Landing Pages",
+        "Analytics & Tracking", "Conversion Optimization", "Lead Generation",
+        "Online Reputation", "Business Email", "Website Backups",
+        "Cloud Hosting", "Managed Hosting", "Website Migration",
+        "Page Speed", "Image Optimization", "Video Marketing",
+        "Blog Strategy", "Hashtag Strategy", "Influencer Marketing",
+        "Customer Engagement", "Online Directories", "Nameservers & DNS",
+        "Website Accessibility", "UX Design Tips", "Color & Branding",
+        "Typography Tips", "CMS Basics", "Website Maintenance",
+        "Cybersecurity Basics", "Password Security", "Two-Factor Authentication",
+        "SMS Marketing", "Push Notifications", "Retargeting Ads",
+        "Content Creation Tools", "Canva & Design Tools", "Stock Photos & Media",
+        "Domain Email Setup", "CDN & Performance", "Website Analytics",
+        "Social Proof", "Testimonials & Reviews", "Client Communication",
+        "Project Management", "Invoicing Tips", "Online Payments"
+      ];
+      const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a friendly digital marketing and web expert who gives practical tips to small business owners and entrepreneurs. Your audience is NOT developers — they are regular people who want to grow their business online. Explain things in plain English with zero jargon. Use real-world examples and analogies anyone can understand. Every tip should be something they can act on today.`
+          },
+          {
+            role: "user",
+            content: `Generate a unique "Tip of the Day" about "${randomCategory}" for a small business owner who wants to improve their online presence.
+
+The tip should be beginner-friendly, practical, and focused on growing their business — NOT about coding or programming. Think: domains, hosting, social media, marketing, SEO, AI tools, branding, websites, online reputation, etc.
+
+${existingTitles.length > 0 ? `IMPORTANT: These tips have already been generated, do NOT repeat any of them:\n${existingTitles.join("\n")}` : ""}
+
+Return ONLY valid JSON (no markdown, no code fences):
+{
+  "title": "A short catchy title (max 60 chars)",
+  "content": "A 2-3 paragraph explanation that's beginner-friendly. Include a practical example or analogy. End with a quick actionable takeaway.",
+  "category": "${randomCategory}",
+  "difficulty": "beginner",
+  "icon": "one of: globe, server, shield, zap, code, palette, search, database, cloud, lock, rocket, lightbulb, layers, cpu, wifi, terminal, smartphone, image, gauge, key"
+}`
+          }
+        ],
+        temperature: 0.9,
+        max_tokens: 800,
+      });
+
+      const raw = response.choices[0]?.message?.content?.trim() || "";
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const tip = JSON.parse(cleaned);
+
+      const [saved] = await db.insert(dailyTips).values({
+        title: tip.title,
+        content: tip.content,
+        category: tip.category || randomCategory,
+        difficulty: tip.difficulty || "beginner",
+        icon: tip.icon || "lightbulb",
+      }).returning();
+
+      res.json(saved);
+    } catch (err: any) {
+      console.error("Tip generation error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/tips/latest", async (_req, res) => {
+    try {
+      const tips = await db.select().from(dailyTips).orderBy(desc(dailyTips.generatedAt)).limit(1);
+      res.json(tips[0] || null);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/tips/history", async (_req, res) => {
+    try {
+      const tips = await db.select().from(dailyTips).orderBy(desc(dailyTips.generatedAt)).limit(50);
+      res.json(tips);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/tips/subscribe", async (req, res) => {
+    try {
+      const { email, phone, firstName, lastName } = req.body;
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return res.status(400).json({ error: "Valid email is required" });
+      }
+
+      const existing = await db.select().from(tipSubscribers).where(eq(tipSubscribers.email, email.trim()));
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "You're already subscribed!" });
+      }
+
+      const [sub] = await db.insert(tipSubscribers).values({
+        email: email.trim(),
+        phone: phone?.trim() || null,
+        firstName: firstName?.trim() || null,
+        lastName: lastName?.trim() || null,
+      }).returning();
+
+      try {
+        const { addNewsletterContact } = await import("./email");
+        await addNewsletterContact({
+          email: email.trim(),
+          firstName: firstName?.trim() || undefined,
+          lastName: lastName?.trim() || undefined,
+        });
+      } catch (e) {
+        console.log("Resend contact add (non-blocking):", e);
+      }
+
+      if (phone?.trim()) {
+        try {
+          const existingSms = await db.select().from(smsSubscribers).where(eq(smsSubscribers.phone, phone.trim()));
+          if (existingSms.length === 0) {
+            await db.insert(smsSubscribers).values({
+              phone: phone.trim(),
+              email: email.trim(),
+              firstName: firstName?.trim() || null,
+              lastName: lastName?.trim() || null,
+              name: [firstName, lastName].filter(Boolean).join(" ") || null,
+              source: "tip-of-the-day",
+              status: "active",
+            });
+          }
+        } catch (e) {
+          console.log("SMS subscriber add (non-blocking):", e);
+        }
+      }
+
+      res.json({ message: "Subscribed successfully!", subscriber: sub });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/tips/subscribers", isAuthenticated, async (_req, res) => {
+    try {
+      const subs = await db.select().from(tipSubscribers).orderBy(desc(tipSubscribers.subscribedAt));
+      res.json(subs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/tips/og-image/:id", async (req, res) => {
+    try {
+      const tips = await db.select().from(dailyTips).where(eq(dailyTips.id, req.params.id)).limit(1);
+      if (!tips.length) return res.status(404).send("Not found");
+      const tip = tips[0];
+
+      const categoryColor: Record<string, string> = {
+        "Instagram Marketing": "#E4405F", "Facebook Marketing": "#1877F2",
+        "TikTok Marketing": "#00F2EA", "YouTube Marketing": "#FF0000",
+        "LinkedIn Marketing": "#0A66C2", "Pinterest Marketing": "#E60023",
+        "Social Media Marketing": "#E4405F", "Digital Marketing": "#8B5CF6",
+        "SEO Basics": "#E37400", "Local SEO": "#34A853",
+        "AI Tools for Business": "#10A37F", "Web Hosting": "#F38020",
+        "WordPress": "#21759B", "E-commerce Tips": "#7AB55C",
+        "Email Marketing": "#FFE01B", "Google Ads": "#4285F4",
+      };
+      const accent = categoryColor[tip.category] || "#6366F1";
+
+      const titleLines: string[] = [];
+      const words = tip.title.split(" ");
+      let line = "";
+      for (const word of words) {
+        if ((line + " " + word).trim().length > 28) {
+          titleLines.push(line.trim());
+          line = word;
+        } else {
+          line = line ? line + " " + word : word;
+        }
+      }
+      if (line.trim()) titleLines.push(line.trim());
+
+      const contentText = tip.content.split("\n\n")[0] || tip.content;
+      const snippet = contentText.length > 140 ? contentText.substring(0, 140).replace(/\s+\S*$/, "") + "..." : contentText;
+      const snippetLines: string[] = [];
+      const sWords = snippet.split(" ");
+      let sLine = "";
+      for (const w of sWords) {
+        if ((sLine + " " + w).trim().length > 50) {
+          snippetLines.push(sLine.trim());
+          sLine = w;
+        } else {
+          sLine = sLine ? sLine + " " + w : w;
+        }
+      }
+      if (sLine.trim()) snippetLines.push(sLine.trim());
+
+      const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#08080d"/>
+            <stop offset="50%" style="stop-color:#0d0d1a"/>
+            <stop offset="100%" style="stop-color:#08080d"/>
+          </linearGradient>
+          <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:${accent}"/>
+            <stop offset="100%" style="stop-color:#6366F1"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="40" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <rect width="1200" height="630" fill="url(#bg)"/>
+        <circle cx="200" cy="150" r="200" fill="${accent}" opacity="0.06" filter="url(#glow)"/>
+        <circle cx="1000" cy="500" r="250" fill="#6366F1" opacity="0.05" filter="url(#glow)"/>
+        <rect x="60" y="60" width="1080" height="510" rx="24" fill="white" opacity="0.03" stroke="white" stroke-opacity="0.06" stroke-width="1"/>
+        <rect x="60" y="60" width="6" height="510" rx="3" fill="url(#accent)"/>
+        <rect x="80" y="82" width="120" height="32" rx="16" fill="${accent}" opacity="0.15"/>
+        <text x="140" y="104" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="${accent}" text-anchor="middle">${tip.category.length > 20 ? tip.category.substring(0, 20) : tip.category}</text>
+        ${titleLines.map((l, i) => `<text x="100" y="${155 + i * 52}" font-family="system-ui,sans-serif" font-size="44" font-weight="700" fill="white">${l.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>`).join("")}
+        ${snippetLines.map((l, i) => `<text x="100" y="${155 + titleLines.length * 52 + 30 + i * 28}" font-family="system-ui,sans-serif" font-size="18" fill="#9CA3AF">${l.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>`).join("")}
+        <line x1="100" y1="490" x2="1100" y2="490" stroke="white" stroke-opacity="0.06"/>
+        <text x="100" y="530" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="white" opacity="0.6">AI Powered Sites</text>
+        <text x="1100" y="530" font-family="system-ui,sans-serif" font-size="14" fill="white" opacity="0.3" text-anchor="end">aipoweredsites.com</text>
+        <rect x="100" y="542" width="180" height="2" rx="1" fill="url(#accent)" opacity="0.4"/>
+      </svg>`;
+
+      const sharp = (await import("sharp")).default;
+      const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
+
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.setHeader("Content-Length", pngBuffer.length.toString());
+      res.send(pngBuffer);
+    } catch (err: any) {
+      console.error("OG image error:", err);
+      res.status(500).send("Error generating image");
+    }
+  });
+
+  app.get("/api/tips/by-id/:id", async (req, res) => {
+    try {
+      const tips = await db.select().from(dailyTips).where(eq(dailyTips.id, req.params.id)).limit(1);
+      if (!tips.length) return res.status(404).json({ error: "Tip not found" });
+      res.json(tips[0]);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

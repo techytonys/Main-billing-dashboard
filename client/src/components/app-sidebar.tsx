@@ -25,6 +25,7 @@ import {
   Bell,
   Building2,
   Search,
+  Lightbulb,
 } from "lucide-react";
 import {
   Sidebar,
@@ -61,7 +62,7 @@ const engageItems = [
   { title: "SMS", url: "/admin/sms", icon: MessageSquare },
   { title: "Directories", url: "/admin/directories", icon: Building2 },
   { title: "SEO Keywords", url: "/admin/seo-keywords", icon: Search },
-  { title: "Content Creator", url: "/admin/content-creator", icon: Sparkles },
+  { title: "Tip of the Day", url: "/tips", icon: Lightbulb },
   { title: "Subscribe", url: "/subscribe", icon: Bell },
 ];
 
