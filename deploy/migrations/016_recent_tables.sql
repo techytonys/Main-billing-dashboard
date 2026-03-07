@@ -67,11 +67,12 @@ CREATE TABLE IF NOT EXISTS onboarding_responses (
 CREATE TABLE IF NOT EXISTS project_client_files (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id VARCHAR NOT NULL,
+  customer_id VARCHAR NOT NULL,
+  object_path TEXT NOT NULL,
   file_name TEXT NOT NULL,
-  file_url TEXT NOT NULL,
   file_size INTEGER,
-  mime_type TEXT,
+  content_type TEXT,
   uploaded_by TEXT DEFAULT 'client',
-  category TEXT DEFAULT 'general',
+  category TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
