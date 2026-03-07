@@ -8346,6 +8346,120 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  app.post("/api/content/generate", isAuthenticated, async (req, res) => {
+    try {
+      const { platform, contentType, topic, tone, includeHashtags, includeEmojis } = req.body;
+      if (!topic || !platform || !contentType) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const OpenAI = (await import("openai")).default;
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+      });
+
+      const isVideo = ["reel", "video", "short"].includes(contentType);
+      const isCarousel = ["carousel", "idea_pin"].includes(contentType);
+      const isThread = contentType === "thread";
+
+      let formatInstructions = `Return valid JSON with these fields:
+- "content": the main post/caption text
+- "hook": a compelling opening hook line
+- "cta": a clear call-to-action
+- "hashtags": array of relevant hashtags (without #)
+- "keywords": array of 5-8 SEO keywords
+- "bestTimeToPost": recommended posting time for this platform
+- "tips": array of 3-4 engagement tips specific to this content
+- "estimatedReach": "high", "medium", or "low" based on topic virality`;
+
+      if (isVideo) {
+        formatInstructions += `
+- "script": array of scene objects, each with "scene" (number), "duration" (e.g. "3-5s"), "visual" (what to show), "text" (on-screen text), "narration" (voiceover text)
+- "musicMood": suggested music mood/genre`;
+      }
+      if (isCarousel) {
+        formatInstructions += `
+- "slides": array of slide objects, each with "number", "headline", "body", "visualDescription"`;
+      }
+      if (isThread) {
+        formatInstructions += `
+The "content" field should contain the full thread with each post separated by "---".`;
+      }
+
+      const emojiNote = includeEmojis ? "Use emojis throughout to boost engagement." : "Do NOT use any emojis.";
+      const hashtagNote = includeHashtags ? "Include 15-20 relevant hashtags." : "Do NOT include hashtags.";
+
+      const prompt = `You are an expert social media content creator for a web design agency called "AI Powered Sites". 
+Create a ${contentType} for ${platform} about: "${topic}"
+
+Tone: ${tone}
+${emojiNote}
+${hashtagNote}
+
+The content should be optimized for ${platform}'s algorithm and best practices.
+Make it engaging, scroll-stopping, and designed to drive interaction.
+Keep the content within ${platform}'s character limits.
+
+${formatInstructions}
+
+IMPORTANT: Return ONLY valid JSON, no markdown code fences.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.8,
+        max_tokens: 2000,
+      });
+
+      const raw = response.choices[0]?.message?.content || "{}";
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("Content generation error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/content/tips", isAuthenticated, async (req, res) => {
+    try {
+      const { platform, contentType } = req.body;
+
+      const OpenAI = (await import("openai")).default;
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+      });
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `You are a social media expert. Give 5 actionable pro tips for creating high-performing ${contentType} content on ${platform} for a web design business. Return JSON: {"tips": ["tip1", "tip2", ...]}. Return ONLY valid JSON, no markdown.`
+        }],
+        temperature: 0.7,
+        max_tokens: 500,
+      });
+
+      const raw = response.choices[0]?.message?.content || '{"tips":[]}';
+      const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      res.json(parsed);
+    } catch (err: any) {
+      console.error("Tips generation error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/onboarding/questionnaires", isAuthenticated, async (req, res) => {
     try {
       const questionnaires = await storage.getOnboardingQuestionnaires();
