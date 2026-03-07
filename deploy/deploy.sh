@@ -98,6 +98,24 @@ if $IS_UPDATE; then
   rsync -a --exclude='.env' --exclude='backups' --exclude='node_modules' "$TMP_DIR/" "$APP_DIR/"
   rm -rf "$TMP_TAR" "$TMP_DIR"
   cp -f "$ENV_BACKUP" "$APP_DIR/.env"
+
+  # Inject any NEW keys from .env.b64 that are missing or have dummy values in existing .env
+  if [ -f "$APP_DIR/deploy/.env.b64" ]; then
+    DECODED_KEYS=$(base64 -d "$APP_DIR/deploy/.env.b64" 2>/dev/null || echo "")
+    while IFS='=' read -r key val; do
+      [ -z "$key" ] && continue
+      CURRENT_VAL=$(grep "^${key}=" "$APP_DIR/.env" 2>/dev/null | cut -d= -f2-)
+      if [ -z "$CURRENT_VAL" ] || [ "$CURRENT_VAL" = "_DUMMY_API_KEY_" ]; then
+        if [ -n "$val" ]; then
+          sed -i "/^${key}=/d" "$APP_DIR/.env"
+          echo "${key}=${val}" >> "$APP_DIR/.env"
+          echo -e "  ${DIM}Updated ${key}${RESET}"
+        fi
+      fi
+    done <<< "$DECODED_KEYS"
+    cp -f "$APP_DIR/.env" "$ENV_BACKUP"
+  fi
+
   COMMIT="latest"
   echo -e "  ${DIM}Code updated${RESET}"
   ok
