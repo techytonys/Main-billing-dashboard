@@ -53,6 +53,7 @@ import SmsSubscribe from "@/pages/sms-subscribe";
 import DirectorySubmissions from "@/pages/directory-submissions";
 import SeoKeywords from "@/pages/seo-keywords";
 import ContentCreator from "@/pages/content-creator";
+import VideoOptimizer from "@/pages/video-optimizer";
 import Onboarding from "@/pages/onboarding";
 import TipOfTheDay from "@/pages/tip-of-the-day";
 import UpdatesSubscribe from "@/pages/updates-subscribe";
@@ -86,6 +87,7 @@ function DashboardRouter() {
       <Route path="/admin/directories" component={DirectorySubmissions} />
       <Route path="/admin/seo-keywords" component={SeoKeywords} />
       <Route path="/admin/content-creator" component={ContentCreator} />
+      <Route path="/admin/video-optimizer" component={VideoOptimizer} />
       <Route path="/admin/onboarding" component={Onboarding} />
       <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
       <Route path="/admin/settings" component={Settings} />

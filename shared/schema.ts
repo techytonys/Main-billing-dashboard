@@ -1108,3 +1108,55 @@ export const tipSubscribers = pgTable("tip_subscribers", {
 export const insertTipSubscriberSchema = createInsertSchema(tipSubscribers).omit({ id: true, subscribedAt: true });
 export type TipSubscriber = typeof tipSubscribers.$inferSelect;
 export type InsertTipSubscriber = z.infer<typeof insertTipSubscriberSchema>;
+
+export const socialVideos = pgTable("social_videos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  hashtags: text("hashtags"),
+  originalUrl: text("original_url").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  fileSize: integer("file_size"),
+  duration: numeric("duration"),
+  width: integer("width"),
+  height: integer("height"),
+  thumbnailUrl: text("thumbnail_url"),
+  status: varchar("status", { length: 20 }).notNull().default("ready"),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+export const insertSocialVideoSchema = createInsertSchema(socialVideos).omit({ id: true, uploadedAt: true });
+export type SocialVideo = typeof socialVideos.$inferSelect;
+export type InsertSocialVideo = z.infer<typeof insertSocialVideoSchema>;
+
+export const socialVideoVariants = pgTable("social_video_variants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  videoId: varchar("video_id").notNull(),
+  platform: varchar("platform", { length: 30 }).notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  url: text("url").notNull(),
+  fileSize: integer("file_size"),
+  status: varchar("status", { length: 20 }).notNull().default("processing"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSocialVideoVariantSchema = createInsertSchema(socialVideoVariants).omit({ id: true, createdAt: true });
+export type SocialVideoVariant = typeof socialVideoVariants.$inferSelect;
+export type InsertSocialVideoVariant = z.infer<typeof insertSocialVideoVariantSchema>;
+
+export const socialPosts = pgTable("social_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  videoId: varchar("video_id"),
+  platform: varchar("platform", { length: 30 }).notNull(),
+  caption: text("caption"),
+  hashtags: text("hashtags"),
+  scheduledAt: timestamp("scheduled_at"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
+  postedAt: timestamp("posted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSocialPostSchema = createInsertSchema(socialPosts).omit({ id: true, createdAt: true });
+export type SocialPost = typeof socialPosts.$inferSelect;
+export type InsertSocialPost = z.infer<typeof insertSocialPostSchema>;

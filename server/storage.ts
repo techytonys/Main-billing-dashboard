@@ -80,6 +80,10 @@ import {
   onboardingQuestionnaires, onboardingResponses,
   type OnboardingQuestionnaire, type InsertOnboardingQuestionnaire,
   type OnboardingResponse, type InsertOnboardingResponse,
+  socialVideos, socialVideoVariants, socialPosts,
+  type SocialVideo, type InsertSocialVideo,
+  type SocialVideoVariant, type InsertSocialVideoVariant,
+  type SocialPost, type InsertSocialPost,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -378,6 +382,23 @@ export interface IStorage {
   getOnboardingResponse(id: string): Promise<OnboardingResponse | undefined>;
   createOnboardingResponse(r: InsertOnboardingResponse): Promise<OnboardingResponse>;
   updateOnboardingResponseStatus(id: string, status: string): Promise<OnboardingResponse | undefined>;
+
+  getSocialVideos(): Promise<SocialVideo[]>;
+  getSocialVideo(id: string): Promise<SocialVideo | undefined>;
+  createSocialVideo(v: InsertSocialVideo): Promise<SocialVideo>;
+  updateSocialVideo(id: string, updates: Partial<InsertSocialVideo>): Promise<SocialVideo | undefined>;
+  deleteSocialVideo(id: string): Promise<boolean>;
+
+  getSocialVideoVariants(videoId: string): Promise<SocialVideoVariant[]>;
+  createSocialVideoVariant(v: InsertSocialVideoVariant): Promise<SocialVideoVariant>;
+  updateSocialVideoVariant(id: string, updates: Partial<InsertSocialVideoVariant>): Promise<SocialVideoVariant | undefined>;
+  deleteSocialVideoVariants(videoId: string): Promise<boolean>;
+
+  getSocialPosts(filters?: { videoId?: string; status?: string }): Promise<SocialPost[]>;
+  getSocialPost(id: string): Promise<SocialPost | undefined>;
+  createSocialPost(p: InsertSocialPost): Promise<SocialPost>;
+  updateSocialPost(id: string, updates: Partial<InsertSocialPost>): Promise<SocialPost | undefined>;
+  deleteSocialPost(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2494,6 +2515,79 @@ export class DatabaseStorage implements IStorage {
     if (status === "reviewed") updates.reviewedAt = new Date();
     const [updated] = await db.update(onboardingResponses).set(updates).where(eq(onboardingResponses.id, id)).returning();
     return updated;
+  }
+
+  async getSocialVideos(): Promise<SocialVideo[]> {
+    return db.select().from(socialVideos).orderBy(desc(socialVideos.uploadedAt));
+  }
+
+  async getSocialVideo(id: string): Promise<SocialVideo | undefined> {
+    const [v] = await db.select().from(socialVideos).where(eq(socialVideos.id, id));
+    return v;
+  }
+
+  async createSocialVideo(v: InsertSocialVideo): Promise<SocialVideo> {
+    const [created] = await db.insert(socialVideos).values(v).returning();
+    return created;
+  }
+
+  async updateSocialVideo(id: string, updates: Partial<InsertSocialVideo>): Promise<SocialVideo | undefined> {
+    const [updated] = await db.update(socialVideos).set(updates).where(eq(socialVideos.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSocialVideo(id: string): Promise<boolean> {
+    const result = await db.delete(socialVideos).where(eq(socialVideos.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getSocialVideoVariants(videoId: string): Promise<SocialVideoVariant[]> {
+    return db.select().from(socialVideoVariants).where(eq(socialVideoVariants.videoId, videoId)).orderBy(socialVideoVariants.platform);
+  }
+
+  async createSocialVideoVariant(v: InsertSocialVideoVariant): Promise<SocialVideoVariant> {
+    const [created] = await db.insert(socialVideoVariants).values(v).returning();
+    return created;
+  }
+
+  async updateSocialVideoVariant(id: string, updates: Partial<InsertSocialVideoVariant>): Promise<SocialVideoVariant | undefined> {
+    const [updated] = await db.update(socialVideoVariants).set(updates).where(eq(socialVideoVariants.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSocialVideoVariants(videoId: string): Promise<boolean> {
+    const result = await db.delete(socialVideoVariants).where(eq(socialVideoVariants.videoId, videoId)).returning();
+    return result.length >= 0;
+  }
+
+  async getSocialPosts(filters?: { videoId?: string; status?: string }): Promise<SocialPost[]> {
+    const conditions = [];
+    if (filters?.videoId) conditions.push(eq(socialPosts.videoId, filters.videoId));
+    if (filters?.status) conditions.push(eq(socialPosts.status, filters.status));
+    if (conditions.length > 0) {
+      return db.select().from(socialPosts).where(and(...conditions)).orderBy(desc(socialPosts.createdAt));
+    }
+    return db.select().from(socialPosts).orderBy(desc(socialPosts.createdAt));
+  }
+
+  async getSocialPost(id: string): Promise<SocialPost | undefined> {
+    const [p] = await db.select().from(socialPosts).where(eq(socialPosts.id, id));
+    return p;
+  }
+
+  async createSocialPost(p: InsertSocialPost): Promise<SocialPost> {
+    const [created] = await db.insert(socialPosts).values(p).returning();
+    return created;
+  }
+
+  async updateSocialPost(id: string, updates: Partial<InsertSocialPost>): Promise<SocialPost | undefined> {
+    const [updated] = await db.update(socialPosts).set(updates).where(eq(socialPosts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSocialPost(id: string): Promise<boolean> {
+    const result = await db.delete(socialPosts).where(eq(socialPosts.id, id)).returning();
+    return result.length > 0;
   }
 }
 

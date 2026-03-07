@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews, analyticsEvents, dailyTips, tipSubscribers, smsSubscribers } from "@shared/schema";
+import { insertCustomerSchema, insertProjectSchema, insertBillingRateSchema, insertWorkEntrySchema, insertQuoteRequestSchema, insertSupportTicketSchema, insertTicketMessageSchema, insertQaQuestionSchema, insertProjectUpdateSchema, analyticsSessions, analyticsPageViews, analyticsEvents, dailyTips, tipSubscribers, smsSubscribers, insertSocialVideoSchema, insertSocialPostSchema } from "@shared/schema";
 import crypto from "crypto";
 import { z } from "zod";
 import { sql, and, gte, lte, desc, eq } from "drizzle-orm";
@@ -8612,30 +8612,61 @@ IMPORTANT: Return ONLY valid JSON, no markdown code fences.`;
       const existingTitles = existingTips.map(t => t.title).slice(-200);
 
       const categories = [
-        "Domain Names", "Web Hosting", "WordPress", "Website Speed",
-        "SEO Basics", "Google My Business", "Social Media Marketing",
-        "Instagram Marketing", "Facebook Marketing", "TikTok Marketing",
-        "YouTube Marketing", "LinkedIn Marketing", "Pinterest Marketing",
-        "Digital Marketing", "Email Marketing", "Content Marketing",
-        "DNS Management", "SSL Certificates", "Website Security",
-        "AI Tools for Business", "AI Website Builders", "Chatbots & AI",
-        "E-commerce Tips", "Online Reviews", "Local SEO",
-        "Google Ads", "Facebook Ads", "Branding & Logo",
-        "Web Design Tips", "Mobile-Friendly Websites", "Landing Pages",
-        "Analytics & Tracking", "Conversion Optimization", "Lead Generation",
-        "Online Reputation", "Business Email", "Website Backups",
-        "Cloud Hosting", "Managed Hosting", "Website Migration",
-        "Page Speed", "Image Optimization", "Video Marketing",
-        "Blog Strategy", "Hashtag Strategy", "Influencer Marketing",
-        "Customer Engagement", "Online Directories", "Nameservers & DNS",
-        "Website Accessibility", "UX Design Tips", "Color & Branding",
-        "Typography Tips", "CMS Basics", "Website Maintenance",
+        "Domain Names", "How to Pick a Domain", "Domain Extensions (.com .net .io)", "Domain Privacy Protection",
+        "SSL Certificates", "Why SSL Matters", "Free vs Paid SSL",
+        "Web Hosting Basics", "Shared Hosting", "VPS Hosting", "Managed Hosting", "Cloud Hosting",
+        "WordPress Hosting", "WordPress Tips", "WordPress Plugins", "WordPress Security", "WordPress Speed",
+        "Website Speed", "Page Speed Optimization", "Image Optimization", "Website Caching",
+        "DNS Explained Simply", "Nameservers", "DNS Records (A, CNAME, MX)", "Domain Email Setup",
+        "Website Backups", "Website Migration", "Website Maintenance", "Website Uptime",
+        "SEO Basics", "On-Page SEO", "Off-Page SEO", "Local SEO", "Google My Business",
+        "Keyword Research", "Meta Tags & Descriptions", "Internal Linking", "Backlink Building",
+        "Google Search Console", "Google Analytics", "Bing Webmaster Tools",
+        "Social Media Marketing", "Instagram Marketing", "Instagram Reels", "Instagram Stories",
+        "Facebook Marketing", "Facebook Groups", "Facebook Ads", "Facebook Business Page",
+        "TikTok Marketing", "TikTok for Business", "TikTok Trends",
+        "YouTube Marketing", "YouTube Shorts", "YouTube SEO", "Video Marketing",
+        "LinkedIn Marketing", "LinkedIn for Business", "LinkedIn Content Strategy",
+        "Pinterest Marketing", "Pinterest for Business", "Pinterest SEO",
+        "X (Twitter) Marketing", "Threads Marketing",
+        "Digital Marketing", "Email Marketing", "Email Subject Lines", "Email Newsletters",
+        "Email Automation", "Building an Email List", "Mailchimp Tips", "Email Deliverability",
+        "Content Marketing", "Blog Strategy", "Content Calendar", "Repurposing Content",
+        "Content Creation Tools", "Canva Tips", "Canva for Business", "Design Tools",
+        "Stock Photos & Media", "Free Design Resources", "Brand Photography",
+        "Hashtag Strategy", "Influencer Marketing", "User-Generated Content",
+        "SMS Marketing", "Push Notifications", "WhatsApp Business",
+        "Google Ads", "Google Ads for Beginners", "Pay-Per-Click (PPC)",
+        "Retargeting Ads", "Display Advertising", "Ad Copywriting",
+        "AI Tools for Business", "AI Website Builders", "ChatGPT for Business",
+        "AI Content Writing", "AI Image Generation", "AI Social Media Tools",
+        "AI Email Writing", "AI Customer Service", "Chatbots for Websites",
+        "Branding Basics", "Logo Design", "Brand Colors", "Brand Voice",
+        "Color Psychology in Marketing", "Typography for Websites",
+        "Web Design Tips", "Mobile-Friendly Websites", "Responsive Design",
+        "Landing Pages", "Call-to-Action Tips", "Website Navigation",
+        "UX Design Tips", "Website Accessibility", "Website Forms",
+        "E-commerce Tips", "Online Store Setup", "Product Photography",
+        "Shopping Cart Optimization", "Payment Processing", "Shipping & Fulfillment",
+        "Analytics & Tracking", "Conversion Optimization", "A/B Testing",
+        "Lead Generation", "Sales Funnels", "Customer Engagement",
+        "Online Reviews", "Google Reviews", "Yelp for Business", "Online Reputation",
+        "Social Proof", "Testimonials", "Case Studies",
+        "Online Directories", "Business Listings", "NAP Consistency",
+        "Git Basics", "GitHub for Beginners", "Version Control Explained",
+        "GitHub Pages", "Code Backups", "GitHub Repos",
         "Cybersecurity Basics", "Password Security", "Two-Factor Authentication",
-        "SMS Marketing", "Push Notifications", "Retargeting Ads",
-        "Content Creation Tools", "Canva & Design Tools", "Stock Photos & Media",
-        "Domain Email Setup", "CDN & Performance", "Website Analytics",
-        "Social Proof", "Testimonials & Reviews", "Client Communication",
-        "Project Management", "Invoicing Tips", "Online Payments"
+        "Website Security", "Malware Protection", "Firewall Basics",
+        "CDN Explained", "Cloudflare Tips", "Website Performance",
+        "CMS Basics", "Headless CMS", "Website Builders Compared",
+        "Client Communication", "Project Management", "Invoicing Tips",
+        "Online Payments", "Stripe for Business", "PayPal Tips",
+        "Freelancing Tips", "Pricing Your Services", "Client Onboarding",
+        "Remote Work Tools", "Productivity Apps", "Business Automation",
+        "QR Codes for Business", "Google Workspace", "Microsoft 365",
+        "Podcast Marketing", "Webinar Marketing", "Community Building",
+        "Customer Retention", "Loyalty Programs", "Referral Marketing",
+        "Print vs Digital Marketing", "Direct Mail", "Networking Tips"
       ];
       const randomCategory = categories[Math.floor(Math.random() * categories.length)];
 
@@ -8644,23 +8675,29 @@ IMPORTANT: Return ONLY valid JSON, no markdown code fences.`;
         messages: [
           {
             role: "system",
-            content: `You are a friendly digital marketing and web expert who gives practical tips to small business owners and entrepreneurs. Your audience is NOT developers — they are regular people who want to grow their business online. Explain things in plain English with zero jargon. Use real-world examples and analogies anyone can understand. Every tip should be something they can act on today.`
+            content: `You are a friendly, down-to-earth digital marketing and web expert who gives simple, practical tips to small business owners and entrepreneurs. Your audience has ZERO technical knowledge — they are regular people like hairdressers, plumbers, restaurant owners, and shop owners who want to grow their business online. Explain EVERYTHING like you're talking to a friend over coffee. Use everyday analogies (like comparing a domain to a street address, or hosting to renting a store). Never use jargon without explaining it in simple terms first. Every tip should include one specific thing they can do TODAY in under 10 minutes.`
           },
           {
             role: "user",
             content: `Generate a unique "Tip of the Day" about "${randomCategory}" for a small business owner who wants to improve their online presence.
 
-The tip should be beginner-friendly, practical, and focused on growing their business — NOT about coding or programming. Think: domains, hosting, social media, marketing, SEO, AI tools, branding, websites, online reputation, etc.
+Rules:
+- Write like you're explaining to someone who has never built a website before
+- Use a real-world analogy to make the concept click (e.g. "Think of SSL like a lock on your front door")
+- Give ONE specific action they can take in under 10 minutes
+- NO coding, NO terminal commands, NO developer talk
+- Keep it warm, encouraging, and simple
+- Focus on WHY it matters for their business, not just WHAT it is
 
 ${existingTitles.length > 0 ? `IMPORTANT: These tips have already been generated, do NOT repeat any of them:\n${existingTitles.join("\n")}` : ""}
 
 Return ONLY valid JSON (no markdown, no code fences):
 {
   "title": "A short catchy title (max 60 chars)",
-  "content": "A 2-3 paragraph explanation that's beginner-friendly. Include a practical example or analogy. End with a quick actionable takeaway.",
+  "content": "2-3 short paragraphs. Start with an analogy or relatable scenario. Explain the concept simply. End with 'Quick win:' followed by one specific thing they can do right now.",
   "category": "${randomCategory}",
   "difficulty": "beginner",
-  "icon": "one of: globe, server, shield, zap, code, palette, search, database, cloud, lock, rocket, lightbulb, layers, cpu, wifi, terminal, smartphone, image, gauge, key"
+  "icon": "one of: globe, server, shield, zap, palette, search, cloud, lock, rocket, lightbulb, layers, wifi, smartphone, image, gauge, key, mail, share2, megaphone, target, heart, star, camera, video, music, pen-tool, gift, thumbs-up, trending-up, bar-chart, users, shopping-cart, credit-card, bookmark, bell, map-pin, link, hash, at-sign, send"
 }`
           }
         ],
@@ -8864,6 +8901,345 @@ Return ONLY valid JSON (no markdown, no code fences):
       const tips = await db.select().from(dailyTips).where(eq(dailyTips.id, req.params.id)).limit(1);
       if (!tips.length) return res.status(404).json({ error: "Tip not found" });
       res.json(tips[0]);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============ VIDEO OPTIMIZER ============
+
+  app.get("/api/social-videos", isAuthenticated, async (_req, res) => {
+    try {
+      const videos = await storage.getSocialVideos();
+      res.json(videos);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/social-videos/:id", isAuthenticated, async (req, res) => {
+    try {
+      const video = await storage.getSocialVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+      const variants = await storage.getSocialVideoVariants(req.params.id);
+      res.json({ ...video, variants });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/social-videos", isAuthenticated, async (req, res) => {
+    try {
+      const { objectPath, fileName, fileSize, title } = req.body;
+      if (!objectPath || !fileName) return res.status(400).json({ error: "objectPath and fileName required" });
+
+      const validated = insertSocialVideoSchema.parse({
+        title: title || fileName.replace(/\.[^/.]+$/, ""),
+        originalUrl: objectPath,
+        originalFilename: fileName,
+        fileSize: fileSize || null,
+        status: "ready",
+      });
+      const video = await storage.createSocialVideo(validated);
+      res.json(video);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/social-videos/:id/optimize", isAuthenticated, async (req, res) => {
+    try {
+      const video = await storage.getSocialVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+
+      await storage.updateSocialVideo(req.params.id, { status: "processing" } as any);
+      await storage.deleteSocialVideoVariants(req.params.id);
+
+      res.json({ message: "Optimization started", videoId: video.id });
+
+      const { execSync, exec: execAsync } = await import("child_process");
+      const fsSync = await import("fs");
+      const pathMod = await import("path");
+      const os = await import("os");
+
+      const platforms = [
+        { name: "tiktok", label: "TikTok / Reels", w: 1080, h: 1920 },
+        { name: "instagram_reel", label: "Instagram Reel", w: 1080, h: 1920 },
+        { name: "facebook_reel", label: "Facebook Reel", w: 1080, h: 1920 },
+        { name: "pinterest", label: "Pinterest Pin", w: 1000, h: 1500 },
+        { name: "youtube", label: "YouTube", w: 1920, h: 1080 },
+        { name: "square", label: "Square Post", w: 1080, h: 1080 },
+      ];
+
+      const tmpDir = fsSync.mkdtempSync(pathMod.join(os.tmpdir(), "vidopt-"));
+
+      let inputPath = "";
+      const objectUrl = video.originalUrl.startsWith("/") ? video.originalUrl : `/${video.originalUrl}`;
+
+      const gcsMatch = objectUrl.match(/https:\/\/storage\.googleapis\.com\/[^\s]+/);
+      if (gcsMatch) {
+        inputPath = pathMod.join(tmpDir, "input" + pathMod.extname(video.originalFilename));
+        try {
+          console.log("Downloading video via object storage SDK...");
+          const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+          const objService = new ObjectStorageService();
+          const normalizedPath = objService.normalizeObjectEntityPath(gcsMatch[0]);
+          console.log("Normalized path:", normalizedPath);
+          const file = await objService.getObjectEntityFile(normalizedPath);
+          const [buffer] = await file.download();
+          fsSync.writeFileSync(inputPath, buffer);
+          console.log("Downloaded video:", inputPath, "size:", buffer.length);
+        } catch (e: any) {
+          console.log("Object storage download error:", e.message);
+          inputPath = "";
+        }
+      }
+
+      if (!inputPath && objectUrl.startsWith("/objects/")) {
+        try {
+          const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+          const objService = new ObjectStorageService();
+          const file = await objService.getObjectEntityFile(objectUrl);
+          inputPath = pathMod.join(tmpDir, "input" + pathMod.extname(video.originalFilename));
+          const [buffer] = await file.download();
+          fsSync.writeFileSync(inputPath, buffer);
+          console.log("Downloaded via object storage:", inputPath, "size:", buffer.length);
+        } catch (e: any) {
+          console.log("Object entity download error:", e.message);
+        }
+      }
+
+      if (!inputPath) {
+        const localPath = pathMod.join(process.cwd(), objectUrl.replace(/^\//, ""));
+        if (fsSync.existsSync(localPath)) inputPath = localPath;
+      }
+
+      if (!inputPath || !fsSync.existsSync(inputPath)) {
+        await storage.updateSocialVideo(req.params.id, { status: "error" } as any);
+        return;
+      }
+
+      let probeWidth = 1920, probeHeight = 1080;
+      try {
+        const probe = execSync(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${inputPath}"`, { encoding: "utf8" }).trim();
+        const [w, h] = probe.split(",").map(Number);
+        if (w && h) { probeWidth = w; probeHeight = h; }
+      } catch {}
+
+      await storage.updateSocialVideo(req.params.id, { width: probeWidth, height: probeHeight } as any);
+
+      let thumbPath = pathMod.join(tmpDir, "thumb.jpg");
+      try {
+        execSync(`ffmpeg -i "${inputPath}" -ss 00:00:01 -vframes 1 -q:v 2 -vf "scale=480:-1" "${thumbPath}" -y 2>/dev/null`);
+        const thumbResponse = await fetch("http://localhost:5000/api/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: `thumb_${video.id}.jpg`, size: fsSync.statSync(thumbPath).size, contentType: "image/jpeg" }),
+        });
+        if (thumbResponse.ok) {
+          const thumbData = await thumbResponse.json() as any;
+          const thumbBuffer = fsSync.readFileSync(thumbPath);
+          await fetch(thumbData.uploadURL, { method: "PUT", body: thumbBuffer, headers: { "Content-Type": "image/jpeg" } });
+          await storage.updateSocialVideo(req.params.id, { thumbnailUrl: thumbData.objectPath } as any);
+        }
+      } catch {}
+
+      const { ObjectStorageService, objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const objServiceUpload = new ObjectStorageService();
+      const privateDir = process.env.PRIVATE_OBJECT_DIR || "";
+
+      for (const platform of platforms) {
+        try {
+          const outFile = pathMod.join(tmpDir, `${platform.name}.mp4`);
+          const targetW = platform.w;
+          const targetH = platform.h;
+
+          const vf = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`;
+          execSync(`ffmpeg -i "${inputPath}" -vf "${vf}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -y "${outFile}" 2>&1`, { timeout: 180000 });
+
+          const stat = fsSync.statSync(outFile);
+          const fileBuffer = fsSync.readFileSync(outFile);
+
+          const { randomUUID } = await import("crypto");
+          const objectId = randomUUID();
+          const cleanDir = privateDir.startsWith("/") ? privateDir.slice(1) : privateDir;
+          const fullPath = `${cleanDir}/uploads/${objectId}`;
+          const parts = fullPath.split("/");
+          const bucketName = parts[0];
+          const objectName = parts.slice(1).join("/");
+          console.log(`Uploading variant ${platform.name} to bucket=${bucketName} obj=${objectName}`);
+          const bucket = objectStorageClient.bucket(bucketName);
+          const gcsFile = bucket.file(objectName);
+          await gcsFile.save(fileBuffer, { contentType: "video/mp4", resumable: false });
+          console.log(`Uploaded variant ${platform.name} OK, size=${stat.size}`);
+
+          const objectPath = `/objects/uploads/${objectId}`;
+
+          await storage.createSocialVideoVariant({
+            videoId: video.id,
+            platform: platform.name,
+            width: targetW,
+            height: targetH,
+            url: objectPath,
+            fileSize: stat.size,
+            status: "ready",
+          });
+        } catch (e: any) {
+          console.log(`Variant ${platform.name} failed:`, e.message?.substring(0, 200));
+          await storage.createSocialVideoVariant({
+            videoId: video.id,
+            platform: platform.name,
+            width: platform.w,
+            height: platform.h,
+            url: "",
+            status: "error",
+          });
+        }
+      }
+
+      try {
+        fsSync.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {}
+
+      await storage.updateSocialVideo(req.params.id, { status: "ready" } as any);
+
+    } catch (err: any) {
+      console.error("Video optimization error:", err);
+      try { await storage.updateSocialVideo(req.params.id, { status: "error" } as any); } catch {}
+    }
+  });
+
+  app.patch("/api/social-videos/:id", isAuthenticated, async (req, res) => {
+    try {
+      const patchSchema = z.object({
+        title: z.string().min(1).optional(),
+        description: z.string().optional(),
+        hashtags: z.string().optional(),
+      }).refine(data => Object.values(data).some(v => v !== undefined), {
+        message: "At least one field must be provided",
+      });
+      const validated = patchSchema.parse(req.body);
+      const updates: any = {};
+      if (validated.title !== undefined) updates.title = validated.title;
+      if (validated.description !== undefined) updates.description = validated.description;
+      if (validated.hashtags !== undefined) updates.hashtags = validated.hashtags;
+      const updated = await storage.updateSocialVideo(req.params.id, updates);
+      if (!updated) return res.status(404).json({ error: "Video not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/social-videos/:id/generate-description", isAuthenticated, async (req, res) => {
+    try {
+      const video = await storage.getSocialVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+
+      const OpenAI = (await import("openai")).default;
+      const aiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      const aiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      const legacyKey = process.env.OPENAI_API_KEY;
+      if (!aiBaseUrl && !legacyKey) return res.status(500).json({ error: "OpenAI not configured" });
+      const openai = aiBaseUrl
+        ? new OpenAI({ apiKey: aiApiKey || "replit", baseURL: aiBaseUrl })
+        : new OpenAI({ apiKey: legacyKey });
+
+      const generateSchema = z.object({ type: z.enum(["description", "hashtags"]) });
+      const { type } = generateSchema.parse(req.body);
+      const videoTitle = video.title || video.originalFilename || "video";
+
+      if (type === "hashtags") {
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are a social media expert. Generate 15-25 relevant, trending hashtags for a social media video post. Mix popular broad hashtags with niche specific ones. Return ONLY the hashtags, each starting with #, separated by spaces. No explanations, no numbering, just hashtags."
+            },
+            {
+              role: "user",
+              content: `Generate hashtags for a video titled: "${videoTitle}"${video.description ? `\n\nVideo description: ${video.description}` : ""}`
+            }
+          ],
+          max_tokens: 200,
+          temperature: 0.8,
+        });
+        const hashtags = response.choices[0]?.message?.content?.trim() || "";
+        res.json({ hashtags });
+      } else {
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are a social media expert for a web design and AI-powered solutions business. Write an engaging, scroll-stopping post caption/description for a video. Keep it 2-4 sentences. Use a conversational, professional tone. Include a call to action. Do NOT include hashtags. Return ONLY the description text, nothing else."
+            },
+            {
+              role: "user",
+              content: `Write a social media post description for a video titled: "${videoTitle}"`
+            }
+          ],
+          max_tokens: 250,
+          temperature: 0.8,
+        });
+        const description = response.choices[0]?.message?.content?.trim() || "";
+        res.json({ description });
+      }
+    } catch (err: any) {
+      console.error("AI generation error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/social-videos/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteSocialVideoVariants(req.params.id);
+      const deleted = await storage.deleteSocialVideo(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Video not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/social-posts", isAuthenticated, async (req, res) => {
+    try {
+      const posts = await storage.getSocialPosts({
+        videoId: req.query.videoId as string,
+        status: req.query.status as string,
+      });
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/social-posts", isAuthenticated, async (req, res) => {
+    try {
+      const validated = insertSocialPostSchema.parse(req.body);
+      const post = await storage.createSocialPost(validated);
+      res.json(post);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/social-posts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateSocialPost(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Post not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/social-posts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteSocialPost(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Post not found" });
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

@@ -26,6 +26,7 @@ import {
   Building2,
   Search,
   Lightbulb,
+  Film,
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,6 +61,7 @@ const engageItems = [
   { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
   { title: "Link Tracker", url: "/admin/link-tracker", icon: Link2 },
   { title: "SMS", url: "/admin/sms", icon: MessageSquare },
+  { title: "Video Optimizer", url: "/admin/video-optimizer", icon: Film },
   { title: "Directories", url: "/admin/directories", icon: Building2 },
   { title: "SEO Keywords", url: "/admin/seo-keywords", icon: Search },
   { title: "Tip of the Day", url: "/tips", icon: Lightbulb },
