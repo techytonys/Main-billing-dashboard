@@ -8723,5 +8723,141 @@ ${transferUsedGB > 0 ? `<p style="margin:12px 0 0;font-size:12px;color:#6b7280;t
     }
   });
 
+  app.get("/api/onboarding/questionnaires", isAuthenticated, async (req, res) => {
+    try {
+      const questionnaires = await storage.getOnboardingQuestionnaires();
+      res.json(questionnaires);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/onboarding/questionnaires/:id", isAuthenticated, async (req, res) => {
+    try {
+      const q = await storage.getOnboardingQuestionnaire(req.params.id);
+      if (!q) return res.status(404).json({ error: "Not found" });
+      res.json(q);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/onboarding/questionnaires", isAuthenticated, async (req, res) => {
+    try {
+      const { title, description, fields, isDefault, isActive } = req.body;
+      if (!title || !fields) return res.status(400).json({ error: "Title and fields are required" });
+      const q = await storage.createOnboardingQuestionnaire({
+        title, description, fields: typeof fields === "string" ? fields : JSON.stringify(fields),
+        isDefault: isDefault || false, isActive: isActive !== false,
+      });
+      res.status(201).json(q);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/onboarding/questionnaires/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updates: any = {};
+      if (req.body.title !== undefined) updates.title = req.body.title;
+      if (req.body.description !== undefined) updates.description = req.body.description;
+      if (req.body.fields !== undefined) updates.fields = typeof req.body.fields === "string" ? req.body.fields : JSON.stringify(req.body.fields);
+      if (req.body.isDefault !== undefined) updates.isDefault = req.body.isDefault;
+      if (req.body.isActive !== undefined) updates.isActive = req.body.isActive;
+      const q = await storage.updateOnboardingQuestionnaire(req.params.id, updates);
+      if (!q) return res.status(404).json({ error: "Not found" });
+      res.json(q);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/onboarding/questionnaires/:id", isAuthenticated, async (req, res) => {
+    try {
+      const ok = await storage.deleteOnboardingQuestionnaire(req.params.id);
+      if (!ok) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/onboarding/responses", isAuthenticated, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.customerId) filters.customerId = req.query.customerId as string;
+      if (req.query.questionnaireId) filters.questionnaireId = req.query.questionnaireId as string;
+      const responses = await storage.getOnboardingResponses(Object.keys(filters).length ? filters : undefined);
+      const enriched = await Promise.all(responses.map(async (r) => {
+        const customer = await storage.getCustomer(r.customerId);
+        const questionnaire = await storage.getOnboardingQuestionnaire(r.questionnaireId);
+        return {
+          ...r,
+          responses: typeof r.responses === "string" ? JSON.parse(r.responses) : r.responses,
+          customerName: customer?.company || customer?.name || "Unknown",
+          questionnaireName: questionnaire?.title || "Unknown",
+          questionnaireFields: questionnaire?.fields ? (typeof questionnaire.fields === "string" ? JSON.parse(questionnaire.fields) : questionnaire.fields) : [],
+        };
+      }));
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/onboarding/responses/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.body;
+      if (!status) return res.status(400).json({ error: "Status is required" });
+      const r = await storage.updateOnboardingResponseStatus(req.params.id, status);
+      if (!r) return res.status(404).json({ error: "Not found" });
+      res.json(r);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/portal/:token/onboarding", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ error: "Invalid portal" });
+      const questionnaires = await storage.getOnboardingQuestionnaires();
+      const active = questionnaires.filter(q => q.isActive).map(q => ({
+        ...q, fields: typeof q.fields === "string" ? JSON.parse(q.fields) : q.fields,
+      }));
+      const rawResponses = await storage.getOnboardingResponses({ customerId: customer.id });
+      const responses = await Promise.all(rawResponses.map(async (r) => {
+        const questionnaire = await storage.getOnboardingQuestionnaire(r.questionnaireId);
+        return {
+          ...r,
+          answers: typeof r.responses === "string" ? JSON.parse(r.responses) : r.responses,
+          questionnaireTitle: questionnaire?.title || "Unknown",
+          createdAt: r.submittedAt,
+        };
+      }));
+      res.json({ questionnaires: active, responses });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/portal/:token/onboarding", async (req, res) => {
+    try {
+      const customer = await storage.getCustomerByPortalToken(req.params.token);
+      if (!customer) return res.status(404).json({ error: "Invalid portal" });
+      const { questionnaireId, answers, responses: rawResponses, projectId } = req.body;
+      const responseData = answers || rawResponses;
+      if (!questionnaireId || !responseData) return res.status(400).json({ error: "Questionnaire and answers required" });
+      const r = await storage.createOnboardingResponse({
+        questionnaireId, customerId: customer.id, projectId: projectId || null,
+        responses: typeof responseData === "string" ? responseData : JSON.stringify(responseData),
+        status: "submitted",
+      });
+      res.status(201).json(r);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return httpServer;
 }

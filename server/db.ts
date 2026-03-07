@@ -589,6 +589,25 @@ export async function ensureTables() {
       keyword_id VARCHAR NOT NULL,
       position INTEGER,
       checked_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS onboarding_questionnaires (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      description TEXT,
+      fields TEXT NOT NULL,
+      is_default BOOLEAN DEFAULT false,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS onboarding_responses (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      questionnaire_id VARCHAR NOT NULL,
+      customer_id VARCHAR NOT NULL,
+      project_id VARCHAR,
+      responses TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'submitted',
+      submitted_at TIMESTAMP DEFAULT NOW(),
+      reviewed_at TIMESTAMP
     )`
   ];
 

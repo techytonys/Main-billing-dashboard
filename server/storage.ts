@@ -77,6 +77,9 @@ import {
   seoKeywords, seoKeywordHistory,
   type SeoKeyword, type InsertSeoKeyword,
   type SeoKeywordHistoryEntry,
+  onboardingQuestionnaires, onboardingResponses,
+  type OnboardingQuestionnaire, type InsertOnboardingQuestionnaire,
+  type OnboardingResponse, type InsertOnboardingResponse,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -364,6 +367,17 @@ export interface IStorage {
   deleteSeoKeyword(id: string): Promise<boolean>;
   getSeoKeywordHistory(keywordId: string): Promise<SeoKeywordHistoryEntry[]>;
   createSeoKeywordHistoryEntry(entry: { keywordId: string; position: number | null }): Promise<SeoKeywordHistoryEntry>;
+
+  getOnboardingQuestionnaires(): Promise<OnboardingQuestionnaire[]>;
+  getOnboardingQuestionnaire(id: string): Promise<OnboardingQuestionnaire | undefined>;
+  createOnboardingQuestionnaire(q: InsertOnboardingQuestionnaire): Promise<OnboardingQuestionnaire>;
+  updateOnboardingQuestionnaire(id: string, updates: Partial<InsertOnboardingQuestionnaire>): Promise<OnboardingQuestionnaire | undefined>;
+  deleteOnboardingQuestionnaire(id: string): Promise<boolean>;
+
+  getOnboardingResponses(filters?: { customerId?: string; questionnaireId?: string }): Promise<OnboardingResponse[]>;
+  getOnboardingResponse(id: string): Promise<OnboardingResponse | undefined>;
+  createOnboardingResponse(r: InsertOnboardingResponse): Promise<OnboardingResponse>;
+  updateOnboardingResponseStatus(id: string, status: string): Promise<OnboardingResponse | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2423,6 +2437,63 @@ export class DatabaseStorage implements IStorage {
   async createSeoKeywordHistoryEntry(entry: { keywordId: string; position: number | null }): Promise<SeoKeywordHistoryEntry> {
     const [created] = await db.insert(seoKeywordHistory).values(entry).returning();
     return created;
+  }
+
+  async getOnboardingQuestionnaires(): Promise<OnboardingQuestionnaire[]> {
+    return db.select().from(onboardingQuestionnaires).orderBy(desc(onboardingQuestionnaires.createdAt));
+  }
+
+  async getOnboardingQuestionnaire(id: string): Promise<OnboardingQuestionnaire | undefined> {
+    const [q] = await db.select().from(onboardingQuestionnaires).where(eq(onboardingQuestionnaires.id, id));
+    return q;
+  }
+
+  async createOnboardingQuestionnaire(q: InsertOnboardingQuestionnaire): Promise<OnboardingQuestionnaire> {
+    if (q.isDefault) {
+      await db.update(onboardingQuestionnaires).set({ isDefault: false }).where(eq(onboardingQuestionnaires.isDefault, true));
+    }
+    const [created] = await db.insert(onboardingQuestionnaires).values(q).returning();
+    return created;
+  }
+
+  async updateOnboardingQuestionnaire(id: string, updates: Partial<InsertOnboardingQuestionnaire>): Promise<OnboardingQuestionnaire | undefined> {
+    if (updates.isDefault) {
+      await db.update(onboardingQuestionnaires).set({ isDefault: false }).where(eq(onboardingQuestionnaires.isDefault, true));
+    }
+    const [updated] = await db.update(onboardingQuestionnaires).set(updates).where(eq(onboardingQuestionnaires.id, id)).returning();
+    return updated;
+  }
+
+  async deleteOnboardingQuestionnaire(id: string): Promise<boolean> {
+    const result = await db.delete(onboardingQuestionnaires).where(eq(onboardingQuestionnaires.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getOnboardingResponses(filters?: { customerId?: string; questionnaireId?: string }): Promise<OnboardingResponse[]> {
+    const conditions = [];
+    if (filters?.customerId) conditions.push(eq(onboardingResponses.customerId, filters.customerId));
+    if (filters?.questionnaireId) conditions.push(eq(onboardingResponses.questionnaireId, filters.questionnaireId));
+    if (conditions.length > 0) {
+      return db.select().from(onboardingResponses).where(and(...conditions)).orderBy(desc(onboardingResponses.submittedAt));
+    }
+    return db.select().from(onboardingResponses).orderBy(desc(onboardingResponses.submittedAt));
+  }
+
+  async getOnboardingResponse(id: string): Promise<OnboardingResponse | undefined> {
+    const [r] = await db.select().from(onboardingResponses).where(eq(onboardingResponses.id, id));
+    return r;
+  }
+
+  async createOnboardingResponse(r: InsertOnboardingResponse): Promise<OnboardingResponse> {
+    const [created] = await db.insert(onboardingResponses).values(r).returning();
+    return created;
+  }
+
+  async updateOnboardingResponseStatus(id: string, status: string): Promise<OnboardingResponse | undefined> {
+    const updates: any = { status };
+    if (status === "reviewed") updates.reviewedAt = new Date();
+    const [updated] = await db.update(onboardingResponses).set(updates).where(eq(onboardingResponses.id, id)).returning();
+    return updated;
   }
 }
 

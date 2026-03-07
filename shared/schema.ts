@@ -1053,3 +1053,32 @@ export const insertSeoKeywordSchema = createInsertSchema(seoKeywords).omit({ id:
 export type SeoKeyword = typeof seoKeywords.$inferSelect;
 export type InsertSeoKeyword = z.infer<typeof insertSeoKeywordSchema>;
 export type SeoKeywordHistoryEntry = typeof seoKeywordHistory.$inferSelect;
+
+export const onboardingQuestionnaires = pgTable("onboarding_questionnaires", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  fields: text("fields").notNull(),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const onboardingResponses = pgTable("onboarding_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionnaireId: varchar("questionnaire_id").notNull(),
+  customerId: varchar("customer_id").notNull(),
+  projectId: varchar("project_id"),
+  responses: text("responses").notNull(),
+  status: text("status").notNull().default("submitted"),
+  submittedAt: timestamp("submitted_at").defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+});
+
+export const insertOnboardingQuestionnaireSchema = createInsertSchema(onboardingQuestionnaires).omit({ id: true, createdAt: true });
+export type OnboardingQuestionnaire = typeof onboardingQuestionnaires.$inferSelect;
+export type InsertOnboardingQuestionnaire = z.infer<typeof insertOnboardingQuestionnaireSchema>;
+
+export const insertOnboardingResponseSchema = createInsertSchema(onboardingResponses).omit({ id: true, submittedAt: true, reviewedAt: true });
+export type OnboardingResponse = typeof onboardingResponses.$inferSelect;
+export type InsertOnboardingResponse = z.infer<typeof insertOnboardingResponseSchema>;

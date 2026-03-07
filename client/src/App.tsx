@@ -54,6 +54,7 @@ import SmsSubscribe from "@/pages/sms-subscribe";
 import DirectorySubmissions from "@/pages/directory-submissions";
 import SeoKeywords from "@/pages/seo-keywords";
 import ContentCreator from "@/pages/content-creator";
+import Onboarding from "@/pages/onboarding";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import TermsOfService from "@/pages/terms-of-service";
 import LoginPage from "@/pages/login";
@@ -85,6 +86,7 @@ function DashboardRouter() {
       <Route path="/admin/directories" component={DirectorySubmissions} />
       <Route path="/admin/seo-keywords" component={SeoKeywords} />
       <Route path="/admin/content-creator" component={ContentCreator} />
+      <Route path="/admin/onboarding" component={Onboarding} />
       <Route path="/admin/community">{() => <Community isAdmin={true} />}</Route>
       <Route path="/admin/settings" component={Settings} />
       <Route component={NotFound} />

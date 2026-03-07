@@ -7,6 +7,7 @@ import {
   DollarSign,
   Settings,
   LifeBuoy,
+  ClipboardList,
   Calculator,
   MessagesSquare,
   Key,
@@ -49,6 +50,7 @@ const mainItems = [
   { title: "Rates", url: "/admin/billing-rates", icon: DollarSign },
   { title: "Payments", url: "/admin/payment-methods", icon: CreditCard },
   { title: "Quotes", url: "/admin/quote-builder", icon: Calculator },
+  { title: "Onboarding", url: "/admin/onboarding", icon: ClipboardList },
 ];
 
 const engageItems = [

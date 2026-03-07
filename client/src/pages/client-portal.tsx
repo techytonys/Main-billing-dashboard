@@ -9,7 +9,7 @@ import {
   Upload, File, ThumbsUp, RotateCcw, Eye, BellRing, BellOff, Globe, Maximize2, RefreshCw, Monitor, Smartphone,
   FolderGit2, Github, GitBranch, Zap, Play, HelpCircle, DollarSign,
   Server, Cpu, HardDrive, MemoryStick, Terminal, Copy, MapPin, BookOpen, Search, ChevronRight, ArrowUpDown,
-  Users,
+  Users, ClipboardList,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -733,7 +735,389 @@ function PortalScreenshots({ token, projectId }: { token: string; projectId: str
   );
 }
 
-type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "help" | "community";
+interface OnboardingField {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "checkbox" | "radio" | "file_upload";
+  required: boolean;
+  placeholder?: string;
+  options?: string[];
+}
+
+interface OnboardingQuestionnaire {
+  id: string;
+  title: string;
+  description: string | null;
+  fields: OnboardingField[];
+  isActive: boolean;
+  isDefault: boolean;
+}
+
+interface OnboardingResponse {
+  id: string;
+  questionnaireId: string;
+  questionnaireTitle: string;
+  answers: Record<string, any>;
+  status: string;
+  createdAt: string;
+}
+
+interface OnboardingData {
+  questionnaires: OnboardingQuestionnaire[];
+  responses: OnboardingResponse[];
+}
+
+function PortalOnboardingTab({ token }: { token: string }) {
+  const { toast } = useToast();
+  const [selectedQuestionnaire, setSelectedQuestionnaire] = useState<OnboardingQuestionnaire | null>(null);
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  const { data, isLoading } = useQuery<OnboardingData>({
+    queryKey: ["/api/portal", token, "onboarding"],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/${token}/onboarding`);
+      if (!res.ok) throw new Error("Failed to load onboarding data");
+      return res.json();
+    },
+    enabled: !!token,
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: async (payload: { questionnaireId: string; answers: Record<string, any> }) => {
+      const res = await apiRequest("POST", `/api/portal/${token}/onboarding`, payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Submitted", description: "Your questionnaire has been submitted successfully." });
+      setSubmitted(true);
+      setSelectedQuestionnaire(null);
+      setFormData({});
+      queryClient.invalidateQueries({ queryKey: ["/api/portal", token, "onboarding"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to submit questionnaire.", variant: "destructive" });
+    },
+  });
+
+  const questionnaires = data?.questionnaires || [];
+  const responses = data?.responses || [];
+  const submittedQuestionnaireIds = new Set(responses.map(r => r.questionnaireId));
+  const availableQuestionnaires = questionnaires.filter(q => !submittedQuestionnaireIds.has(q.id));
+
+  const handleFieldChange = (fieldId: string, value: any) => {
+    setFormData(prev => ({ ...prev, [fieldId]: value }));
+  };
+
+  const handleCheckboxChange = (fieldId: string, option: string, checked: boolean) => {
+    setFormData(prev => {
+      const current = Array.isArray(prev[fieldId]) ? prev[fieldId] : [];
+      if (checked) {
+        return { ...prev, [fieldId]: [...current, option] };
+      }
+      return { ...prev, [fieldId]: current.filter((v: string) => v !== option) };
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!selectedQuestionnaire) return;
+    const missing = selectedQuestionnaire.fields
+      .filter(f => f.required)
+      .filter(f => {
+        const val = formData[f.id];
+        if (f.type === "checkbox") return !val || (Array.isArray(val) && val.length === 0);
+        return !val || (typeof val === "string" && val.trim() === "");
+      });
+    if (missing.length > 0) {
+      toast({ title: "Required fields missing", description: `Please fill in: ${missing.map(f => f.label).join(", ")}`, variant: "destructive" });
+      return;
+    }
+    submitMutation.mutate({ questionnaireId: selectedQuestionnaire.id, answers: formData });
+  };
+
+  const renderField = (field: OnboardingField) => {
+    switch (field.type) {
+      case "text":
+        return (
+          <Input
+            value={formData[field.id] || ""}
+            onChange={e => handleFieldChange(field.id, e.target.value)}
+            placeholder={field.placeholder || ""}
+            data-testid={`input-onboarding-${field.id}`}
+          />
+        );
+      case "textarea":
+        return (
+          <Textarea
+            value={formData[field.id] || ""}
+            onChange={e => handleFieldChange(field.id, e.target.value)}
+            placeholder={field.placeholder || ""}
+            className="resize-none"
+            data-testid={`textarea-onboarding-${field.id}`}
+          />
+        );
+      case "select":
+        return (
+          <Select
+            value={formData[field.id] || ""}
+            onValueChange={val => handleFieldChange(field.id, val)}
+          >
+            <SelectTrigger data-testid={`select-onboarding-${field.id}`}>
+              <SelectValue placeholder={field.placeholder || "Select an option"} />
+            </SelectTrigger>
+            <SelectContent>
+              {(field.options || []).map(opt => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      case "checkbox":
+        return (
+          <div className="space-y-2">
+            {(field.options || []).map(opt => (
+              <div key={opt} className="flex items-center gap-2">
+                <Checkbox
+                  id={`${field.id}-${opt}`}
+                  checked={(formData[field.id] || []).includes(opt)}
+                  onCheckedChange={(checked) => handleCheckboxChange(field.id, opt, !!checked)}
+                  data-testid={`checkbox-onboarding-${field.id}-${opt}`}
+                />
+                <Label htmlFor={`${field.id}-${opt}`} className="text-sm font-normal cursor-pointer">{opt}</Label>
+              </div>
+            ))}
+          </div>
+        );
+      case "radio":
+        return (
+          <RadioGroup
+            value={formData[field.id] || ""}
+            onValueChange={val => handleFieldChange(field.id, val)}
+            data-testid={`radio-onboarding-${field.id}`}
+          >
+            {(field.options || []).map(opt => (
+              <div key={opt} className="flex items-center gap-2">
+                <RadioGroupItem value={opt} id={`${field.id}-${opt}`} />
+                <Label htmlFor={`${field.id}-${opt}`} className="text-sm font-normal cursor-pointer">{opt}</Label>
+              </div>
+            ))}
+          </RadioGroup>
+        );
+      case "file_upload":
+        return (
+          <div>
+            <Input
+              type="file"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleFieldChange(field.id, file.name);
+              }}
+              data-testid={`input-file-onboarding-${field.id}`}
+            />
+            {formData[field.id] && (
+              <p className="text-xs text-muted-foreground mt-1">{formData[field.id]}</p>
+            )}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4" data-testid="section-onboarding">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+
+  if (submitted && availableQuestionnaires.length === 0) {
+    return (
+      <div className="space-y-6" data-testid="section-onboarding">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <CheckCircle className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold" data-testid="text-onboarding-title">Onboarding Complete</h2>
+            <p className="text-xs text-muted-foreground">All questionnaires have been submitted</p>
+          </div>
+        </div>
+        <Card className="p-8 text-center">
+          <CheckCircle className="w-12 h-12 mx-auto text-emerald-500 mb-4" />
+          <h3 className="font-semibold mb-2">All Done!</h3>
+          <p className="text-sm text-muted-foreground">
+            Thank you for completing all onboarding questionnaires. Your responses have been recorded.
+          </p>
+        </Card>
+        {responses.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Your Submissions</h3>
+            <div className="space-y-2">
+              {responses.map(r => (
+                <Card key={r.id} className="p-4" data-testid={`card-response-${r.id}`}>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-medium">{r.questionnaireTitle}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(r.createdAt)}</p>
+                    </div>
+                    <Badge variant={r.status === "reviewed" ? "default" : "secondary"} data-testid={`badge-response-status-${r.id}`}>
+                      {r.status === "reviewed" ? <CheckCircle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+                      {r.status === "reviewed" ? "Reviewed" : "Submitted"}
+                    </Badge>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-testid="section-onboarding">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+          <ClipboardList className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold" data-testid="text-onboarding-title">Onboarding</h2>
+          <p className="text-xs text-muted-foreground">Complete your onboarding questionnaires to help us get started</p>
+        </div>
+      </div>
+
+      {selectedQuestionnaire ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setSelectedQuestionnaire(null); setFormData({}); }}
+              data-testid="button-back-questionnaires"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Back
+            </Button>
+          </div>
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-1" data-testid="text-questionnaire-title">{selectedQuestionnaire.title}</h3>
+            {selectedQuestionnaire.description && (
+              <p className="text-sm text-muted-foreground mb-6">{selectedQuestionnaire.description}</p>
+            )}
+            <div className="space-y-5">
+              {selectedQuestionnaire.fields.map(field => (
+                <div key={field.id} className="space-y-1.5">
+                  <Label className="text-sm font-medium">
+                    {field.label}
+                    {field.required && <span className="text-destructive ml-0.5">*</span>}
+                  </Label>
+                  {renderField(field)}
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 pt-4 border-t">
+              <Button
+                onClick={handleSubmit}
+                disabled={submitMutation.isPending}
+                data-testid="button-submit-questionnaire"
+              >
+                {submitMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 mr-1.5" />
+                )}
+                Submit
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : (
+        <>
+          {availableQuestionnaires.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Available Questionnaires</h3>
+              <div className="space-y-2">
+                {availableQuestionnaires.map(q => (
+                  <Card
+                    key={q.id}
+                    className="p-4 hover-elevate cursor-pointer"
+                    onClick={() => { setSelectedQuestionnaire(q); setFormData({}); setSubmitted(false); }}
+                    data-testid={`card-questionnaire-${q.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                          <ClipboardList className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{q.title}</p>
+                          {q.description && <p className="text-xs text-muted-foreground">{q.description}</p>}
+                          <p className="text-xs text-muted-foreground mt-0.5">{q.fields.length} field{q.fields.length !== 1 ? "s" : ""}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {q.isDefault && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Star className="w-3 h-3 mr-0.5" />
+                            Default
+                          </Badge>
+                        )}
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {availableQuestionnaires.length === 0 && responses.length === 0 && (
+            <Card className="p-8 text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-3">
+                <ClipboardList className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium mb-1">No questionnaires available</p>
+              <p className="text-xs text-muted-foreground">There are no onboarding questionnaires at this time.</p>
+            </Card>
+          )}
+
+          {responses.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Your Submissions</h3>
+              <div className="space-y-2">
+                {responses.map(r => (
+                  <Card key={r.id} className="p-4" data-testid={`card-response-${r.id}`}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{r.questionnaireTitle}</p>
+                          <p className="text-xs text-muted-foreground">{formatDate(r.createdAt)}</p>
+                        </div>
+                      </div>
+                      <Badge variant={r.status === "reviewed" ? "default" : "secondary"} data-testid={`badge-response-status-${r.id}`}>
+                        {r.status === "reviewed" ? <CheckCircle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+                        {r.status === "reviewed" ? "Reviewed" : "Submitted"}
+                      </Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+type PortalTab = "dashboard" | "invoices" | "projects" | "billing" | "support" | "backups" | "help" | "community" | "onboarding";
 
 interface PortalNotification {
   id: string;
@@ -2496,6 +2880,7 @@ export default function ClientPortal() {
     { id: "backups", label: "Backups", icon: FolderGit2 },
     { id: "help", label: "Help Center", icon: BookOpen },
     { id: "community", label: "Community", icon: Users },
+    { id: "onboarding", label: "Onboarding", icon: ClipboardList },
   ];
 
   return (
@@ -3533,6 +3918,10 @@ export default function ClientPortal() {
             <div className="-mx-4 -mt-2" data-testid="section-community">
               <Community portalToken={params.token} />
             </div>
+          )}
+
+          {activeTab === "onboarding" && (
+            <PortalOnboardingTab token={params.token!} />
           )}
 
           {activeTab === "backups" && (
