@@ -2,6 +2,8 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
+RUN apt-get update -qq && apt-get install -y --no-install-recommends build-essential python3 pkg-config libvips-dev && rm -rf /var/lib/apt/lists/*
+
 COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps 2>&1 | tail -5
 
@@ -24,7 +26,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=5000
 
-RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -qq && apt-get install -y --no-install-recommends curl ca-certificates libvips42 && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
